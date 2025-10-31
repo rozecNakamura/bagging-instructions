@@ -31,11 +31,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. 環境変数設定
-`.env`ファイルを作成し、以下を設定：
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-ENVIRONMENT=development
-```
+`.env`ファイルを作成
 
 ### 4. サーバー起動
 ```bash
@@ -79,7 +75,4 @@ bagging-instructions/
 - SQLAlchemy 2.0を使用
 - 既存DBのため、マイグレーションは不要
 - ログは `log/` ディレクトリに出力
-
-## ライセンス
-内部利用のみ
 

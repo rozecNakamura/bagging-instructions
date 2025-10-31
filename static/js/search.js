@@ -11,8 +11,9 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
     const productionDate = document.getElementById('productionDate').value;
     const productCode = document.getElementById('productCode').value;
     
-    if (!productionDate || !productCode) {
-        alert('製造日と品目コードを入力してください');
+    // 少なくとも1つは入力が必要
+    if (!productionDate && !productCode) {
+        alert('製造日または品目コードのいずれかを入力してください');
         return;
     }
     
@@ -45,16 +46,14 @@ function displayResults(items) {
     items.forEach(item => {
         const row = tbody.insertRow();
         row.innerHTML = `
-            <td><input type="checkbox" class="item-checkbox" data-id="${item.id}"></td>
-            <td>${item.production_date}</td>
-            <td>${item.eating_date}</td>
-            <td>${item.eating_time}</td>
-            <td>${item.customer_code}</td>
-            <td>${item.facility_code}</td>
-            <td>${item.facility_name || '-'}</td>
-            <td>${item.product_code}</td>
-            <td>${item.product_name || '-'}</td>
-            <td>${item.order_quantity}</td>
+            <td><input type="checkbox" class="item-checkbox" data-id="${item.prkey}"></td>
+            <td>${item.prddt || '-'}</td>
+            <td>${item.cuscd || '-'}</td>
+            <td>${item.shpctrcd || '-'}</td>
+            <td>${item.shpctrnm || '-'}</td>
+            <td>${item.itemcd || '-'}</td>
+            <td>${item.itemnm || '-'}</td>
+            <td>${item.jobordqun || 0}</td>
         `;
     });
     

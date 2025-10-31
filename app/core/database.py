@@ -7,18 +7,15 @@ from app.core.config import settings
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,  # 接続チェック
-    echo=settings.ENVIRONMENT == "development"  # 開発時はSQLログ出力
+    echo=settings.ENVIRONMENT == "development",  # 開発時はSQLログ出力
 )
 
 # セッションファクトリ
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # ベースクラス
 Base = declarative_base()
+
 
 # 依存性注入用のDB取得関数
 def get_db():
@@ -27,4 +24,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

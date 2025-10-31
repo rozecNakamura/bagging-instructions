@@ -9,9 +9,15 @@ const API_BASE_URL = '/api';
  */
 export async function searchOrders(productionDate, productCode) {
     try {
+        // 日付をYYYYMMDD形式に変換（YYYY-MM-DD → YYYYMMDD）
+        let prddt = productionDate;
+        if (productionDate && productionDate.includes('-')) {
+            prddt = productionDate.replace(/-/g, ''); // ハイフンを削除
+        }
+        
         const params = new URLSearchParams({
-            production_date: productionDate,
-            product_code: productCode
+            prddt: prddt,
+            itemcd: productCode
         });
         
         const response = await fetch(`${API_BASE_URL}/search?${params}`);
