@@ -39,6 +39,15 @@
     overflow-x: auto;
 }
 
+/* 検索結果のテーブル行のホバー効果 */
+#resultsTable tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+#resultsTable tbody tr:hover {
+    background-color: #f0f8ff;
+}
+
 .print-mode {
     margin-bottom: 20px;
 }
@@ -61,3 +70,104 @@
     color: #2c3e50;
 }
 
+/* PDFプレビューエリアのスタイル */
+.pdf-preview {
+    background: white;
+    padding: 20px;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+.pdf-header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+}
+
+.pdf-header h1 {
+    font-size: 24px;
+    color: #333;
+    margin: 0;
+}
+
+/* 袋詰指示書テーブルのスタイル */
+.pdf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.pdf-table thead {
+    background-color: #428bca;
+    color: white;
+}
+
+.pdf-table th,
+.pdf-table td {
+    border: 1px solid #333;
+    padding: 8px;
+    text-align: left;
+}
+
+.pdf-table th {
+    font-weight: 600;
+    text-align: center;
+}
+
+.pdf-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* ラベルのスタイル */
+#pdfLabelContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.pdf-label {
+    border: 2px solid #333;
+    padding: 15px;
+    background: white;
+    page-break-inside: avoid;
+}
+
+.label-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.label-row {
+    display: flex;
+    gap: 10px;
+    font-size: 14px;
+    align-items: baseline;
+}
+
+.label-title {
+    font-weight: 600;
+    color: #333;
+    min-width: 80px;
+}
+
+.label-value {
+    color: #555;
+    flex: 1;
+}
+
+/* 印刷時の調整 */
+@media print {
+    .pdf-preview {
+        padding: 0;
+        margin: 0;
+        width: 100%;
+    }
+    
+    .pdf-label {
+        page-break-inside: avoid;
+    }
+}

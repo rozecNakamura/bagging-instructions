@@ -39,9 +39,10 @@ def get_aggregation_method(cuscd: str, shptm: str) -> str:
 def apply_aggregation_rule(jobords: List[Jobord]) -> Dict[str, List[Jobord]]:
     """
     集計ルールを適用してグルーピング
+    グループ内のjobordはprkey昇順で保持される
 
     Args:
-        jobords: 受注明細リスト
+        jobords: 受注明細リスト（prkey昇順でソート済み想定）
 
     Returns:
         集計キーごとにグルーピングされた辞書
@@ -61,5 +62,9 @@ def apply_aggregation_rule(jobords: List[Jobord]) -> Dict[str, List[Jobord]]:
         if key not in grouped:
             grouped[key] = []
         grouped[key].append(jobord)
+    
+    # 各グループ内でもprkey昇順でソート（念のため）
+    for key in grouped:
+        grouped[key].sort(key=lambda j: j.prkey)
 
     return grouped

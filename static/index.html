@@ -6,6 +6,20 @@
     <title>袋詰指示書・ラベル管理システム</title>
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/main.css">
+    <!-- 印刷用スタイル -->
+    <style>
+        @media print {
+            /* 印刷時は通常のページコンテンツを非表示 */
+            body > *:not(#print-preview-container) {
+                display: none !important;
+            }
+            
+            /* 印刷プレビューコンテナのみ表示 */
+            #print-preview-container {
+                display: block !important;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -45,12 +59,13 @@
                         <tr>
                             <th><input type="checkbox" id="headerCheckbox"></th>
                             <th>製造日</th>
+                            <th>喫食日</th>
+                            <th>喫食時間</th>
                             <th>得意先コード</th>
                             <th>納入場所コード</th>
-                            <th>納入場所名</th>
                             <th>品目コード</th>
-                            <th>品目名</th>
-                            <th>受注数</th>
+                            <th>受注商品名称</th>
+                            <th>受注数量</th>
                         </tr>
                     </thead>
                     <tbody id="resultsBody">
@@ -79,10 +94,6 @@
         </section>
     </div>
 
-    <!-- jsPDF読み込み -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-    
     <!-- アプリケーションスクリプト -->
     <script type="module" src="/static/js/api.js"></script>
     <script type="module" src="/static/js/search.js"></script>

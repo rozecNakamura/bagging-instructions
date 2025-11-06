@@ -7,7 +7,7 @@ from app.core.config import settings
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,  # 接続チェック
-    echo=settings.ENVIRONMENT == "development",  # 開発時はSQLログ出力
+    echo=False,  # SQLログを無効化
 )
 
 # セッションファクトリ

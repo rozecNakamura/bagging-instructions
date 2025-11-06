@@ -11,9 +11,9 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
     const productionDate = document.getElementById('productionDate').value;
     const productCode = document.getElementById('productCode').value;
     
-    // 少なくとも1つは入力が必要
-    if (!productionDate && !productCode) {
-        alert('製造日または品目コードのいずれかを入力してください');
+    // 製造日は必須
+    if (!productionDate) {
+        alert('製造日を入力してください');
         return;
     }
     
@@ -48,13 +48,29 @@ function displayResults(items) {
         row.innerHTML = `
             <td><input type="checkbox" class="item-checkbox" data-id="${item.prkey}"></td>
             <td>${item.prddt || '-'}</td>
+            <td>${item.delvedt || '-'}</td>
+            <td>${item.shptm || '-'}</td>
             <td>${item.cuscd || '-'}</td>
             <td>${item.shpctrcd || '-'}</td>
-            <td>${item.shpctrnm || '-'}</td>
             <td>${item.itemcd || '-'}</td>
-            <td>${item.itemnm || '-'}</td>
+            <td>${item.jobordmernm || '-'}</td>
             <td>${item.jobordqun || 0}</td>
         `;
+        
+        // 行全体をクリック可能にする
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', (e) => {
+            // チェックボックス自体がクリックされた場合は何もしない（デフォルトの動作に任せる）
+            if (e.target.classList.contains('item-checkbox')) {
+                return;
+            }
+            
+            // 行内のチェックボックスを取得して状態を切り替える
+            const checkbox = row.querySelector('.item-checkbox');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+        });
     });
     
     resultsSection.style.display = 'block';
@@ -81,8 +97,8 @@ document.getElementById('deselectAllBtn').addEventListener('click', () => {
     document.getElementById('headerCheckbox').checked = false;
 });
 
-// 選択されたIDを取得
-export function getSelectedIds() {
+// 選択されたプライマリキーを取得
+export function getSelectedPrkeys() {
     const checkboxes = document.querySelectorAll('.item-checkbox:checked');
     return Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
 }

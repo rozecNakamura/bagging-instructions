@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, BigInteger, Numeric, DateTime
 from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
@@ -89,6 +90,25 @@ class Mbom(Base):
             "stadt",
             "enddt",
         ),
+    )
+
+    # ========================================
+    # リレーション定義
+    # ========================================
+
+    # 子品目マスタ（Item）
+    child_item = relationship(
+        "Item",
+        primaryjoin=(
+            "and_("
+            "foreign(Mbom.cfctcd) == Item.fctcd, "
+            "foreign(Mbom.cdeptcd) == Item.deptcd, "
+            "foreign(Mbom.citemgr) == Item.itemgr, "
+            "foreign(Mbom.citemcd) == Item.itemcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
     )
 
     def __repr__(self):

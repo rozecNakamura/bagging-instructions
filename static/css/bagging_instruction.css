@@ -1,0 +1,238 @@
+/**
+ * 袋詰指示書テンプレート用スタイル
+ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+    font-size: 11px;
+    line-height: 1.2;
+    background: white;
+    padding: 10mm;
+}
+
+.page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: white;
+    position: relative;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 5px;
+    position: relative;
+}
+
+.header h1 {
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    margin-bottom: 3px;
+}
+
+.header-icon {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 40px;
+    height: 40px;
+    border: 2px solid #000;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.date-info {
+    position: absolute;
+    right: 0;
+    top: 0;
+    font-size: 10px;
+}
+
+.info-section {
+    border: 1px solid #000;
+    margin-bottom: 3px;
+}
+
+.info-row {
+    display: flex;
+    border-bottom: 1px solid #000;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-cell {
+    border-right: 1px solid #000;
+    padding: 2px 4px;
+    min-height: 18px;
+    display: flex;
+    align-items: center;
+}
+
+.info-cell:last-child {
+    border-right: none;
+}
+
+.info-label {
+    background-color: #e0e0e0;
+    font-weight: bold;
+}
+
+.info-value {
+    flex: 1;
+}
+
+/* ヘッダー情報テーブル */
+.header-table {
+    width: 100%;
+    margin-bottom: 3px;
+}
+
+.header-table .row1 {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px 1fr 60px 80px 50px 80px;
+    border-bottom: 1px solid #000;
+}
+
+.header-table .row2 {
+    display: grid;
+    grid-template-columns: 60px 2fr 60px 1fr 60px 1fr 60px 1fr;
+    border-bottom: 1px solid #000;
+}
+
+.header-table .row3 {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px 80px 60px 80px 60px 80px;
+    border-bottom: 1px solid #000;
+}
+
+.header-table .row4 {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    border-bottom: 1px solid #000;
+}
+
+.header-table .row5 {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+}
+
+/* 印欄 */
+.stamp-area {
+    display: flex;
+    margin-bottom: 3px;
+}
+
+.stamp-box {
+    width: 50px;
+    height: 50px;
+    border: 1px solid #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    margin-right: 5px;
+}
+
+/* 配送先テーブル */
+.delivery-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 5px;
+}
+
+.delivery-table th,
+.delivery-table td {
+    border: 1px solid #000;
+    padding: 3px 4px;
+    text-align: left;
+    font-size: 10px;
+}
+
+.delivery-table th {
+    background-color: #e0e0e0;
+    font-weight: bold;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.delivery-table .facility-name {
+    width: 100px;
+}
+
+.delivery-table .bags-col {
+    width: 60px;
+    text-align: center;
+}
+
+.delivery-table .quantity-col {
+    width: 80px;
+    text-align: right;
+}
+
+.delivery-table .notes-col {
+    min-width: 150px;
+}
+
+.delivery-table .total-row {
+    font-weight: bold;
+    background-color: #f5f5f5;
+}
+
+.delivery-table .summary-row {
+    background-color: #e8e8e8;
+}
+
+.delivery-table td.right-align {
+    text-align: right;
+}
+
+.delivery-table td.center-align {
+    text-align: center;
+}
+
+/* 印刷時の設定 */
+@media print {
+    body {
+        padding: 0;
+    }
+
+    .page {
+        margin: 0;
+        padding: 10mm;
+    }
+
+    @page {
+        size: A4;
+        margin: 0;
+    }
+}
+
+/* データ挿入用のクラス */
+.data-placeholder {
+    min-height: 16px;
+}
+
+/* 小さなフォント */
+.small-text {
+    font-size: 9px;
+}
+
+/* 複数行表示用 */
+.multi-line {
+    display: block;
+    line-height: 1.4;
+}
+

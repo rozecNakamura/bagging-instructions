@@ -10,6 +10,9 @@ from app.models.shpctr import Shpctr
 from app.models.jobord import Jobord
 from app.models.mbom import Mbom
 from app.models.rout import Rout
+from app.models.uni import Uni
+from app.models.ware import Ware
+from app.models.workc import Workc
 
 __all__ = [
     "Item",
@@ -19,4 +22,7 @@ __all__ = [
     "Jobord",
     "Mbom",
     "Rout",
+    "Uni",
+    "Ware",
+    "Workc",
 ]

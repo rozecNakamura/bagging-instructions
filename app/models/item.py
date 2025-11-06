@@ -1,10 +1,11 @@
 from sqlalchemy import Column, String, BigInteger, Numeric, DateTime
 from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
 class Item(Base):
-    """品目マスタ（ITEM）- 全391カラム定義"""
+    """品目マスタ（ITEM）- 全393カラム定義"""
 
     __tablename__ = "item"
 
@@ -545,6 +546,10 @@ class Item(Base):
     # 計画締め追加日数 (NOT NULL)
     planclosadddays = Column(String(4), nullable=False, default="0", comment="")
 
+    # 殺菌関連
+    steritemprange = Column(String(50), default="", comment="")
+    steritime = Column(Numeric, default=0, comment="")
+
     # 制約定義
     __table_args__ = (
         UniqueConstraint(
@@ -562,6 +567,34 @@ class Item(Base):
             "midgrpcd",
             "nargrpcd",
         ),
+    )
+
+    # ========================================
+    # リレーション定義
+    # ========================================
+
+    # 単位マスタ（Uni）
+    uni = relationship(
+        "Uni",
+        primaryjoin="foreign(Item.uni0) == Uni.unicd",
+        viewonly=True,
+        lazy="select",
+    )
+
+    # 工程手順マスタ（Rout）- 複数レコード
+    routs = relationship(
+        "Rout",
+        primaryjoin=(
+            "and_("
+            "foreign(Item.fctcd) == Rout.fctcd, "
+            "foreign(Item.deptcd) == Rout.deptcd, "
+            "foreign(Item.itemgr) == Rout.itemgr, "
+            "foreign(Item.itemcd) == Rout.itemcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
+        uselist=True,  # 必ず複数レコード（リスト）として扱う
     )
 
     def __repr__(self):

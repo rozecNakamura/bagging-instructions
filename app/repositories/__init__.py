@@ -11,6 +11,7 @@ from app.repositories import (
     jobord_repository,
     mbom_repository,
     rout_repository,
+    daystoc_repository,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "jobord_repository",
     "mbom_repository",
     "rout_repository",
+    "daystoc_repository",
 ]

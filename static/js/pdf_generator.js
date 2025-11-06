@@ -1,82 +1,152 @@
 /**
- * PDF生成処理
+ * PDF生成処理（ブラウザ印刷プレビュー）
  */
 
+import { loadTemplate, injectData, prepareBaggingInstructionData, prepareLabelData, injectLabelData } from './template_loader.js';
+
 /**
- * 袋詰指示書PDFを生成
+ * 印刷プレビューを表示
+ * @param {string} templatePath - テンプレートHTMLファイルのパス
+ * @param {Object} data - テンプレートに注入するデータ
+ * @param {Function} injectFunction - データ注入関数（オプション、デフォルトはinjectData）
  */
-export function generateInstructionPDF(data) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    
-    // タイトル
-    doc.setFontSize(18);
-    doc.text('袋詰指示書', 105, 15, { align: 'center' });
-    
-    // テーブルデータ準備
-    const tableData = data.items.map(item => [
-        item.facility_name,
-        item.product_name,
-        item.eating_date,
-        item.eating_time,
-        item.planned_quantity.toFixed(2),
-        item.adjusted_quantity.toFixed(2),
-        item.standard_bags,
-        item.irregular_quantity.toFixed(2)
-    ]);
-    
-    // テーブル生成
-    doc.autoTable({
-        startY: 25,
-        head: [['施設名', '品目名', '喫食日', '喫食時間', '計画量', '調整後数量', '規格袋数', '端数']],
-        body: tableData,
-        theme: 'grid',
-        styles: { font: 'helvetica', fontSize: 10 },
-        headStyles: { fillColor: [66, 139, 202] }
-    });
-    
-    // PDF出力
-    doc.save('袋詰指示書.pdf');
+async function showPrintPreview(templatePath, data, injectFunction = injectData) {
+    try {
+        console.log('Loading template for print preview:', templatePath);
+        // テンプレートを読み込み
+        const templateHtml = await loadTemplate(templatePath);
+        console.log('Template loaded, length:', templateHtml.length);
+        
+        console.log('Injecting data...');
+        // データを注入
+        const element = injectFunction(templateHtml, data);
+        console.log('Data injected, element:', element);
+        
+        // 既存の印刷用コンテナがあれば削除
+        const existingContainer = document.getElementById('print-preview-container');
+        if (existingContainer) {
+            document.body.removeChild(existingContainer);
+        }
+        
+        // 印刷用のコンテナを作成
+        const printContainer = document.createElement('div');
+        printContainer.id = 'print-preview-container';
+        printContainer.style.display = 'none'; // 画面には表示しない
+        printContainer.appendChild(element);
+        document.body.appendChild(printContainer);
+        
+        console.log('Print container added to DOM');
+        
+        // 少し待ってからブラウザの印刷ダイアログを表示
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        console.log('Opening print dialog...');
+        // 印刷プレビューを表示
+        window.print();
+        
+        // 印刷ダイアログが閉じられた後に要素を削除
+        // （印刷完了を待つために少し遅延）
+        setTimeout(() => {
+            const container = document.getElementById('print-preview-container');
+            if (container && container.parentNode) {
+                document.body.removeChild(container);
+                console.log('Print container removed from DOM');
+            }
+        }, 1000);
+        
+    } catch (error) {
+        console.error('印刷プレビュー表示エラー:', error);
+        console.error('Error stack:', error.stack);
+        throw error;
+    }
 }
 
 /**
- * ラベルPDFを生成
+ * 袋詰指示書の印刷プレビューを表示（複数ページ対応）
+ * @param {Object} data - 袋詰指示書データ（APIレスポンス）
  */
-export function generateLabelPDF(data) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    
-    let yPosition = 20;
-    const labelHeight = 50;
-    const pageHeight = 280;
-    
-    data.items.forEach((item, index) => {
-        // ページ送り
-        if (yPosition + labelHeight > pageHeight) {
-            doc.addPage();
-            yPosition = 20;
-        }
-        
-        // ラベル枠
-        doc.rect(10, yPosition, 190, labelHeight);
-        
-        // ラベル内容
-        doc.setFontSize(12);
-        doc.text(`品目: ${item.product_name} (${item.product_code})`, 15, yPosition + 10);
-        doc.text(`喫食日: ${item.eating_date} ${item.eating_time}`, 15, yPosition + 20);
-        doc.text(`賞味期限: ${item.expiry_date || '-'}`, 15, yPosition + 30);
-        
-        if (item.label_type === 'standard') {
-            doc.text(`規格量: ${item.standard_quantity}`, 15, yPosition + 40);
-        } else {
-            doc.text(`施設: ${item.facility_name}`, 15, yPosition + 40);
-            doc.text(`端数: ${item.irregular_quantity}`, 100, yPosition + 40);
-        }
-        
-        yPosition += labelHeight + 10;
+export async function generateInstructionPDF(data) {
+    console.log('[1] APIレスポンス受信:', {
+        items_count: data.items?.length,
     });
     
-    // PDF出力
-    doc.save('ラベル.pdf');
+    // APIレスポンスをページデータ配列に変換
+    const pages = prepareBaggingInstructionData(data);
+    
+    console.log('[2] ページング処理完了:', {
+        total_pages: pages.length,
+        pages_info: pages.map(p => ({
+            itemcd: p.itemcd,
+            pageNumber: p.pageNumber,
+            totalPages: p.totalPages,
+            items_count: p.items.length
+        }))
+    });
+    
+    try {
+        // テンプレートを読み込み
+        const templateHtml = await loadTemplate('/static/templates/bagging_instruction.html');
+        
+        // 既存の印刷用コンテナがあれば削除
+        const existingContainer = document.getElementById('print-preview-container');
+        if (existingContainer) {
+            document.body.removeChild(existingContainer);
+        }
+        
+        // 全ページのHTML要素を生成
+        const printContainer = document.createElement('div');
+        printContainer.id = 'print-preview-container';
+        printContainer.style.display = 'none';
+        
+        pages.forEach((pageData, index) => {
+            // 各ページのデータを注入
+            const pageElement = injectData(templateHtml, pageData);
+            
+            // 最後のページ以外にはpage-breakを追加
+            if (index < pages.length - 1) {
+                pageElement.style.pageBreakAfter = 'always';
+            }
+            
+            printContainer.appendChild(pageElement);
+        });
+        
+        document.body.appendChild(printContainer);
+        
+        console.log('[3] 印刷ダイアログを開きます...');
+        
+        // 少し待ってから印刷ダイアログを表示
+        await new Promise(resolve => setTimeout(resolve, 100));
+        window.print();
+        
+        // 印刷ダイアログが閉じられた後に要素を削除
+        setTimeout(() => {
+            const container = document.getElementById('print-preview-container');
+            if (container && container.parentNode) {
+                document.body.removeChild(container);
+                console.log('[4] 印刷コンテナを削除しました');
+            }
+        }, 1000);
+        
+    } catch (error) {
+        console.error('印刷プレビュー表示エラー:', error);
+        console.error('Error stack:', error.stack);
+        throw error;
+    }
+}
+
+/**
+ * ラベルの印刷プレビューを表示
+ * @param {Object} data - ラベルデータ（APIレスポンス）
+ */
+export async function generateLabelPDF(data) {
+    // APIレスポンスをラベル用データに変換
+    const labelData = prepareLabelData(data);
+    
+    // 印刷プレビュー表示
+    await showPrintPreview(
+        '/static/templates/label.html',
+        labelData,
+        injectLabelData
+    );
 }
 

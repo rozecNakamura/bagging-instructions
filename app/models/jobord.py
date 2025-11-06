@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, BigInteger, Numeric, DateTime
 from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
@@ -254,6 +255,69 @@ class Jobord(Base):
             "schdshpdt",
             "delvedt",
         ),
+    )
+
+    # ========================================
+    # リレーション定義
+    # ========================================
+
+    # 品目マスタ（Item）
+    item = relationship(
+        "Item",
+        primaryjoin=(
+            "and_("
+            "foreign(Jobord.fctcd) == Item.fctcd, "
+            "foreign(Jobord.deptcd) == Item.deptcd, "
+            "foreign(Jobord.itemgr) == Item.itemgr, "
+            "foreign(Jobord.itemcd) == Item.itemcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
+    )
+
+    # 納入場所マスタ（Shpctr）
+    shpctr = relationship(
+        "Shpctr",
+        primaryjoin=(
+            "and_("
+            "foreign(Jobord.fctcd) == Shpctr.fctcd, "
+            "foreign(Jobord.cuscd) == Shpctr.cuscd, "
+            "foreign(Jobord.shpctrcd) == Shpctr.shpctrcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
+    )
+
+    # レシピマスタ（Mbom）- 複数レコード
+    mboms = relationship(
+        "Mbom",
+        primaryjoin=(
+            "and_("
+            "foreign(Jobord.fctcd) == Mbom.pfctcd, "
+            "foreign(Jobord.deptcd) == Mbom.pdeptcd, "
+            "foreign(Jobord.itemgr) == Mbom.pitemgr, "
+            "foreign(Jobord.itemcd) == Mbom.pitemcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
+        uselist=True,  # 必ず複数レコード（リスト）として扱う
+    )
+
+    # 得意先品目変換マスタ（Cusmcd）
+    cusmcd = relationship(
+        "Cusmcd",
+        primaryjoin=(
+            "and_("
+            "foreign(Jobord.merfctcd) == Cusmcd.merfctcd, "
+            "foreign(Jobord.cuscd) == Cusmcd.cuscd, "
+            "foreign(Jobord.cusitemcd) == Cusmcd.cusitemcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
     )
 
     def __repr__(self):

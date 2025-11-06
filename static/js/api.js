@@ -34,9 +34,34 @@ export async function searchOrders(productionDate, productCode) {
 }
 
 /**
+ * 受注明細詳細を取得（全リレーションデータ含む）
+ * 印刷処理の前に呼び出す
+ */
+export async function searchOrdersDetail(prkeys) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/search/detail`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ prkeys }),
+        });
+        
+        if (!response.ok) {
+            throw new Error(`詳細検索エラー: ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('詳細検索APIエラー:', error);
+        throw error;
+    }
+}
+
+/**
  * 袋詰指示書・ラベルデータを計算
  */
-export async function calculateBagging(jobordIds, printType) {
+export async function calculateBagging(jobordPrkeys, printType) {
     try {
         const response = await fetch(`${API_BASE_URL}/bagging/calculate`, {
             method: 'POST',
@@ -44,7 +69,7 @@ export async function calculateBagging(jobordIds, printType) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                jobord_ids: jobordIds,
+                jobord_prkeys: jobordPrkeys,
                 print_type: printType
             })
         });
@@ -53,7 +78,16 @@ export async function calculateBagging(jobordIds, printType) {
             throw new Error(`計算エラー: ${response.status}`);
         }
         
-        return await response.json();
+        const data = await response.json();
+        
+        // デバッグログ: APIレスポンス
+        console.log('[API DEBUG] calculateBagging レスポンス:', {
+            data: data,
+            items_count: data?.items?.length,
+            first_item_current_stock: data?.items?.[0]?.current_stock,
+        });
+        
+        return data;
     } catch (error) {
         console.error('計算APIエラー:', error);
         throw error;

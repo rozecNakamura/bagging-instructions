@@ -1,5 +1,6 @@
-from sqlalchemy import Column, String, BigInteger, Numeric, DateTime
+from sqlalchemy import Column, String, BigInteger, Numeric, DateTime, func, and_
 from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.orm import relationship, foreign
 from app.core.database import Base
 
 
@@ -110,5 +111,38 @@ class Rout(Base):
         ),
     )
 
+    # ========================================
+    # リレーション定義
+    # ========================================
+
+    # 倉庫マスタ（Ware）- 保管場所
+    ware = relationship(
+        "Ware",
+        primaryjoin=(
+            "and_("
+            "foreign(Rout.fctcd) == Ware.fctcd, "
+            "foreign(Rout.whcd) == Ware.whcd"
+            ")"
+        ),
+        viewonly=True,
+        lazy="select",
+    )
+
+    # 工程マスタ（Workc）- 前工程（ロケーション）
+    # LOCCDの先頭1文字を削除してWCCDと照合
+    workc = relationship(
+        "Workc",
+        primaryjoin=lambda: and_(
+            foreign(Rout.fctcd) == Workc.fctcd,
+            func.substr(foreign(Rout.loccd), 2) == Workc.wccd,
+        ),
+        viewonly=True,
+        lazy="select",
+    )
+
     def __repr__(self):
         return f"<Rout(prkey={self.prkey}, itemcd={self.itemcd}, routno={self.routno})>"
+
+
+# lambda式でWorkcを参照するためのインポート
+from app.models.workc import Workc
