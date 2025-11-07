@@ -80,13 +80,6 @@ export async function calculateBagging(jobordPrkeys, printType) {
         
         const data = await response.json();
         
-        // デバッグログ: APIレスポンス
-        console.log('[API DEBUG] calculateBagging レスポンス:', {
-            data: data,
-            items_count: data?.items?.length,
-            first_item_current_stock: data?.items?.[0]?.current_stock,
-        });
-        
         return data;
     } catch (error) {
         console.error('計算APIエラー:', error);

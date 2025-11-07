@@ -12,15 +12,11 @@ import { loadTemplate, injectData, prepareBaggingInstructionData, prepareLabelDa
  */
 async function showPrintPreview(templatePath, data, injectFunction = injectData) {
     try {
-        console.log('Loading template for print preview:', templatePath);
         // テンプレートを読み込み
         const templateHtml = await loadTemplate(templatePath);
-        console.log('Template loaded, length:', templateHtml.length);
         
-        console.log('Injecting data...');
         // データを注入
         const element = injectFunction(templateHtml, data);
-        console.log('Data injected, element:', element);
         
         // 既存の印刷用コンテナがあれば削除
         const existingContainer = document.getElementById('print-preview-container');
@@ -35,12 +31,9 @@ async function showPrintPreview(templatePath, data, injectFunction = injectData)
         printContainer.appendChild(element);
         document.body.appendChild(printContainer);
         
-        console.log('Print container added to DOM');
-        
         // 少し待ってからブラウザの印刷ダイアログを表示
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        console.log('Opening print dialog...');
         // 印刷プレビューを表示
         window.print();
         
@@ -50,7 +43,6 @@ async function showPrintPreview(templatePath, data, injectFunction = injectData)
             const container = document.getElementById('print-preview-container');
             if (container && container.parentNode) {
                 document.body.removeChild(container);
-                console.log('Print container removed from DOM');
             }
         }, 1000);
         
@@ -66,22 +58,8 @@ async function showPrintPreview(templatePath, data, injectFunction = injectData)
  * @param {Object} data - 袋詰指示書データ（APIレスポンス）
  */
 export async function generateInstructionPDF(data) {
-    console.log('[1] APIレスポンス受信:', {
-        items_count: data.items?.length,
-    });
-    
     // APIレスポンスをページデータ配列に変換
     const pages = prepareBaggingInstructionData(data);
-    
-    console.log('[2] ページング処理完了:', {
-        total_pages: pages.length,
-        pages_info: pages.map(p => ({
-            itemcd: p.itemcd,
-            pageNumber: p.pageNumber,
-            totalPages: p.totalPages,
-            items_count: p.items.length
-        }))
-    });
     
     try {
         // テンプレートを読み込み
@@ -112,8 +90,6 @@ export async function generateInstructionPDF(data) {
         
         document.body.appendChild(printContainer);
         
-        console.log('[3] 印刷ダイアログを開きます...');
-        
         // 少し待ってから印刷ダイアログを表示
         await new Promise(resolve => setTimeout(resolve, 100));
         window.print();
@@ -123,7 +99,6 @@ export async function generateInstructionPDF(data) {
             const container = document.getElementById('print-preview-container');
             if (container && container.parentNode) {
                 document.body.removeChild(container);
-                console.log('[4] 印刷コンテナを削除しました');
             }
         }, 1000);
         

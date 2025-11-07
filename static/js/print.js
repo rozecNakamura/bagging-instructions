@@ -19,9 +19,7 @@ document.getElementById('printBtn').addEventListener('click', async () => {
     
     try {
         // 袋詰計算を実行（リレーションデータも含まれる）
-        console.log('袋詰計算を実行中（リレーションデータ含む）...');
         const data = await calculateBagging(selectedPrkeys, printType);
-        console.log('袋詰計算結果:', data);
         
         if (printType === 'instruction') {
             generateInstructionPDF(data);

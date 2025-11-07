@@ -228,12 +228,6 @@ function injectHeaderData(container, data) {
     
     if (!sourceData) return;
     
-    console.log('[TEMPLATE DEBUG] injectHeaderData開始', {
-        hasCommonInfo: !!data.commonInfo,
-        pageNumber: data.pageNumber,
-        totalPages: data.totalPages,
-    });
-    
     const item = sourceData.item;  // ITEM（品目マスタ）
     const shpctr = sourceData.shpctr;  // SHPCTR（納入場所マスタ）
     const routs = item?.routs || [];  // ROUT（工程手順マスタ）配列
@@ -306,15 +300,6 @@ function injectMainTableHeaders(container, data) {
     const sourceData = data.commonInfo || (data.items && data.items.length > 0 ? data.items[0] : null);
     const mboms = sourceData?.mboms || [];
     
-    console.log('[3] ヘッダー行設定:', {
-        mboms_count: mboms.length,
-        first_mbom: mboms[0] ? {
-            citemcd: mboms[0].citemcd,
-            child_item_itemnm: mboms[0].child_item?.itemnm,
-            child_item_uni_uninm: mboms[0].child_item?.uni?.uninm
-        } : null
-    });
-    
     // 品目ヘッダー行
     const itemHeaderRow = container.querySelector('#itemHeaderRow');
     if (itemHeaderRow) {
@@ -351,14 +336,6 @@ function injectTableData(container, data) {
     if (!tbody) return;
     
     const items = data.items || [];
-    
-    console.log('[4] テーブルデータ注入:', {
-        items_count: items.length,
-        first_item_seasoning_amounts: items[0] ? {
-            count: items[0].seasoning_amounts?.length,
-            data: items[0].seasoning_amounts
-        } : null
-    });
     
     // tbodyをクリア
     tbody.innerHTML = '';
@@ -464,17 +441,6 @@ function injectTableData(container, data) {
         }
         totalCell.appendChild(totalContent);
         row.appendChild(totalCell);
-        
-        // 最初の行のみログ出力
-        if (i === 0 && item) {
-            console.log('[4-detail] 最初の行の詳細:', {
-                facility_name: item.facility_name || item.shpctrnm,
-                standard_bags: item.standard_bags,
-                seasoningAmounts_count: seasoningAmounts.length,
-                rowTotal: rowTotal,
-                formatted_rowTotal: formatNumber(rowTotal)
-            });
-        }
         
         tbody.appendChild(row);
     }
