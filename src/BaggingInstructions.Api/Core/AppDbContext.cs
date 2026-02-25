@@ -1,0 +1,126 @@
+using Microsoft.EntityFrameworkCore;
+using BaggingInstructions.Api.Entities;
+
+namespace BaggingInstructions.Api.Core;
+
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    // 新DB（craftlineax）エンティティ
+    public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
+    public DbSet<SalesOrderLine> SalesOrderLines => Set<SalesOrderLine>();
+    public DbSet<SalesOrderLineAddinfo> SalesOrderLineAddinfos => Set<SalesOrderLineAddinfo>();
+    public DbSet<Item> Items => Set<Item>();
+    public DbSet<ItemAdditionalInformation> ItemAdditionalInformations => Set<ItemAdditionalInformation>();
+    public DbSet<Bom> Boms => Set<Bom>();
+    public DbSet<Stock> Stocks => Set<Stock>();
+    public DbSet<Unit> Units => Set<Unit>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<Workcenter> Workcenters => Set<Workcenter>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<CustomerDeliveryLocation> CustomerDeliveryLocations => Set<CustomerDeliveryLocation>();
+    public DbSet<CustomerItem> CustomerItems => Set<CustomerItem>();
+    public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // Unit
+        modelBuilder.Entity<Unit>().HasIndex(u => u.UnitCode).IsUnique();
+
+        // SalesOrder -> Customer, CustomerDeliveryLocation
+        modelBuilder.Entity<SalesOrder>()
+            .HasOne(so => so.Customer)
+            .WithMany()
+            .HasForeignKey(so => so.CustomerId)
+            .IsRequired(false);
+        modelBuilder.Entity<SalesOrder>()
+            .HasOne(so => so.CustomerDeliveryLocation)
+            .WithMany()
+            .HasForeignKey(so => so.CustomerDeliveryLocationId)
+            .HasPrincipalKey(c => c.DeliveryLocationId)
+            .IsRequired(false);
+
+        // SalesOrderLine -> SalesOrder, Item, CustomerItem, SalesOrderLineAddinfo
+        modelBuilder.Entity<SalesOrderLine>()
+            .HasOne(l => l.SalesOrder)
+            .WithMany(so => so.SalesOrderLines)
+            .HasForeignKey(l => l.SalesOrderId);
+        modelBuilder.Entity<SalesOrderLine>()
+            .HasOne(l => l.Item)
+            .WithMany()
+            .HasForeignKey(l => l.ItemId)
+            .IsRequired(false);
+        modelBuilder.Entity<SalesOrderLine>()
+            .HasOne(l => l.CustomerItem)
+            .WithMany()
+            .HasForeignKey(l => l.CustomerItemId)
+            .IsRequired(false);
+        modelBuilder.Entity<SalesOrderLine>()
+            .HasOne(l => l.Addinfo)
+            .WithOne(a => a.SalesOrderLine)
+            .HasForeignKey<SalesOrderLineAddinfo>(a => a.SalesOrderLineId)
+            .IsRequired(false);
+
+        // Item -> Unit, ItemAdditionalInformation
+        modelBuilder.Entity<Item>()
+            .HasOne(i => i.Unit0)
+            .WithMany()
+            .HasForeignKey(i => i.UnitId0)
+            .IsRequired(false);
+        modelBuilder.Entity<Item>()
+            .HasOne(i => i.AdditionalInformation)
+            .WithOne(ai => ai.Item)
+            .HasForeignKey<ItemAdditionalInformation>(ai => ai.ItemId);
+
+        // Item -> ItemWorkCenterMapping (ItemCd)
+        modelBuilder.Entity<Item>()
+            .HasMany(i => i.WorkCenterMappings)
+            .WithOne()
+            .HasForeignKey(m => m.ItemCd)
+            .HasPrincipalKey(i => i.ItemCd)
+            .IsRequired(false);
+        modelBuilder.Entity<ItemWorkCenterMapping>()
+            .HasKey(m => new { m.ItemCd, m.WorkcenterId });
+        modelBuilder.Entity<ItemWorkCenterMapping>()
+            .HasOne(m => m.Workcenter)
+            .WithMany()
+            .HasForeignKey(m => m.WorkcenterId);
+
+        // Bom -> ChildItem (ChildItemCd -> Item.ItemCd)
+        modelBuilder.Entity<Bom>()
+            .HasOne(b => b.ChildItem)
+            .WithMany()
+            .HasForeignKey(b => b.ChildItemCd)
+            .HasPrincipalKey(i => i.ItemCd)
+            .IsRequired(false);
+
+        // Stock -> Item, Warehouse
+        modelBuilder.Entity<Stock>()
+            .HasOne(s => s.Item)
+            .WithMany()
+            .HasForeignKey(s => s.ItemId);
+        modelBuilder.Entity<Stock>()
+            .HasOne(s => s.Warehouse)
+            .WithMany()
+            .HasForeignKey(s => s.WarehouseId);
+
+        // CustomerDeliveryLocation -> Customer
+        modelBuilder.Entity<CustomerDeliveryLocation>()
+            .HasOne(c => c.Customer)
+            .WithMany(c => c.DeliveryLocations)
+            .HasForeignKey(c => c.CustomerId);
+
+        // CustomerItem -> Customer, Item
+        modelBuilder.Entity<CustomerItem>()
+            .HasOne(ci => ci.Customer)
+            .WithMany()
+            .HasForeignKey(ci => ci.CustomerId)
+            .IsRequired(false);
+        modelBuilder.Entity<CustomerItem>()
+            .HasOne(ci => ci.Item)
+            .WithMany()
+            .HasForeignKey(ci => ci.ItemId)
+            .IsRequired(false);
+    }
+}
