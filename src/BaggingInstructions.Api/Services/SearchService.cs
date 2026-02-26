@@ -18,6 +18,8 @@ public class SearchService
     public async Task<List<JobordItemDto>> SearchAsync(string prddt, string? itemcd, CancellationToken ct = default)
     {
         var prddtDate = ParseProductDate(prddt);
+        if (!prddtDate.HasValue)
+            throw new ArgumentException("製造日はYYYYMMDD形式（8桁）で指定してください。", nameof(prddt));
         var query = _db.SalesOrderLines.AsNoTracking()
             .Include(l => l.SalesOrder!)
                 .ThenInclude(so => so!.Customer)
@@ -43,6 +45,46 @@ public class SearchService
                 Itemcd = l.Item != null ? l.Item.ItemCd : null,
                 Jobordmernm = l.Item != null ? l.Item.ItemName : null,
                 Jobordqun = l.Quantity
+            })
+            .ToListAsync(ct);
+
+        return list;
+    }
+
+    /// <summary>汁仕分表用：喫食日・品目コードで検索。delvedt は YYYYMMDD、itemcd は部分一致。</summary>
+    public async Task<List<JobordItemDto>> SearchByDeliveryDateAsync(string delvedt, string? itemcd, CancellationToken ct = default)
+    {
+        var delvedtDate = ParseProductDate(delvedt);
+        if (!delvedtDate.HasValue)
+            throw new ArgumentException("喫食日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
+        var query = _db.SalesOrderLines.AsNoTracking()
+            .Include(l => l.SalesOrder!)
+                .ThenInclude(so => so!.Customer)
+            .Include(l => l.SalesOrder!)
+                .ThenInclude(so => so!.CustomerDeliveryLocation)
+            .Include(l => l.Addinfo)
+            .Include(l => l.Item)
+            .Where(l => l.PlannedDeliveryDate == delvedtDate);
+
+        if (!string.IsNullOrEmpty(itemcd))
+            query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
+
+        var list = await query
+            .OrderBy(l => l.SalesOrderLineId)
+            .Select(l => new JobordItemDto
+            {
+                Prkey = l.SalesOrderLineId,
+                Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
+                Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
+                Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
+                ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+                Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
+                Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
+                Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
+                Itemcd = l.Item != null ? l.Item.ItemCd : null,
+                Jobordmernm = l.Item != null ? l.Item.ItemName : null,
+                Jobordqun = l.Quantity,
+                Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null
             })
             .ToListAsync(ct);
 

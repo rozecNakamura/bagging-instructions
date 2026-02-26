@@ -44,7 +44,7 @@ public class SalesOrderLine
     [Column("productdate")]
     public DateOnly? ProductDate { get; set; }
 
-    [Column("customeritemid")]
+    [Column("cusitemid")]
     public long? CustomerItemId { get; set; }
 
     [Column("status")]

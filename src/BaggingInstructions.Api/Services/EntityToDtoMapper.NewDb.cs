@@ -82,7 +82,7 @@ public static partial class EntityToDtoMapper
             Itemnm = i.ItemName ?? "",
             Std = addInfo?.Std,
             Uni0 = unit0?.UnitCode,
-            Nwei = addInfo?.Nwei,
+            // Nwei = addInfo?.Nwei,
             Jouni = i.ShortName,
             Strtemp = addInfo?.SterItemPrange?.ToString(),
             Kikunip = addInfo?.Car0,

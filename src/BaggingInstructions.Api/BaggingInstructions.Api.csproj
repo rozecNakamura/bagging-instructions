@@ -9,7 +9,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- 汁仕分表 PDF 用フォント（.ttf を Fonts に置くと出力にコピーされ、かつ埋め込みリソースになる） -->
+    <None Include="Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Fonts\*.ttf" Link="Fonts\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

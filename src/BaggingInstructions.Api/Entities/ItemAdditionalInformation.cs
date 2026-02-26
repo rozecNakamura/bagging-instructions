@@ -32,8 +32,8 @@ public class ItemAdditionalInformation
     [Column("steritime")]
     public decimal? SteriTime { get; set; }
 
-    [Column("nwei")]
-    public decimal? Nwei { get; set; }
+    // [Column("n_wei")]
+    // public decimal? Nwei { get; set; }
 
     public virtual Item Item { get; set; } = null!;
 }

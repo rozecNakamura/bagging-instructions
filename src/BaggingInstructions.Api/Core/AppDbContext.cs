@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using BaggingInstructions.Api.Entities;
 
 namespace BaggingInstructions.Api.Core;
@@ -25,6 +26,22 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // DB が timestamp without time zone の列を DateOnly で読めるように変換
+        var dateOnlyNullableConverter = new ValueConverter<DateOnly?, DateTime?>(
+            v => v.HasValue ? new DateTime(v.Value.Year, v.Value.Month, v.Value.Day, 0, 0, 0, DateTimeKind.Unspecified) : null,
+            v => v.HasValue ? DateOnly.FromDateTime(v.Value) : null);
+        var dateOnlyConverter = new ValueConverter<DateOnly, DateTime>(
+            v => new DateTime(v.Year, v.Month, v.Day, 0, 0, 0, DateTimeKind.Unspecified),
+            v => DateOnly.FromDateTime(v));
+        modelBuilder.Entity<SalesOrderLine>().Property(e => e.PlannedShipDate).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<SalesOrderLine>().Property(e => e.PlannedDeliveryDate).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<SalesOrderLine>().Property(e => e.ProductDate).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<SalesOrder>().Property(e => e.OrderDate).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<Item>().Property(e => e.EffectiveFrom).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<Item>().Property(e => e.EffectiveTo).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<Bom>().Property(e => e.StartDate).HasConversion(dateOnlyNullableConverter);
+        modelBuilder.Entity<Bom>().Property(e => e.EndDate).HasConversion(dateOnlyNullableConverter);
+
         // Unit
         modelBuilder.Entity<Unit>().HasIndex(u => u.UnitCode).IsUnique();
 
@@ -105,6 +122,9 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(s => s.WarehouseId);
 
+        // CustomerDeliveryLocation: 主キー明示（EF が DeliveryLocationId を自動認識しないため）
+        modelBuilder.Entity<CustomerDeliveryLocation>()
+            .HasKey(c => c.DeliveryLocationId);
         // CustomerDeliveryLocation -> Customer
         modelBuilder.Entity<CustomerDeliveryLocation>()
             .HasOne(c => c.Customer)

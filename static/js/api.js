@@ -23,12 +23,78 @@ export async function searchOrders(productionDate, productCode) {
         const response = await fetch(`${API_BASE_URL}/search?${params}`);
         
         if (!response.ok) {
-            throw new Error(`検索エラー: ${response.status}`);
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* body が JSON でない場合は無視 */ }
+            throw new Error(`検索エラー: ${response.status}${detail}`);
         }
         
         return await response.json();
     } catch (error) {
         console.error('検索APIエラー:', error);
+        throw error;
+    }
+}
+
+/**
+ * 汁仕分表 PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
+ * @param {Array<{ delvedt: string, shptmDisplay: string, jobordmernm: string, shpctrnm: string, jobordqun: number, addinfo02: string }>} rows
+ * @returns {Promise<Blob>}
+ */
+export async function generateJuicePdfBlob(rows) {
+    const response = await fetch(`${API_BASE_URL}/juice/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            rows: rows.map(r => ({
+                delvedt: r.delvedt,
+                shptmDisplay: r.shptmDisplay,
+                jobordmernm: r.jobordmernm,
+                shpctrnm: r.shpctrnm,
+                jobordqun: r.jobordqun,
+                addinfo02: r.addinfo02
+            }))
+        })
+    });
+    if (!response.ok) {
+        const t = await response.text();
+        let msg = `PDF生成エラー: ${response.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await response.blob();
+}
+
+/**
+ * 汁仕分表用：喫食日・品目コードで検索
+ */
+export async function searchJuice(delvedt, itemcd) {
+    try {
+        let delvedtStr = delvedt;
+        if (delvedt && delvedt.includes('-')) {
+            delvedtStr = delvedt.replace(/-/g, '');
+        }
+        const params = new URLSearchParams({
+            delvedt: delvedtStr,
+            itemcd: itemcd || ''
+        });
+        const response = await fetch(`${API_BASE_URL}/search/juice?${params}`);
+        if (!response.ok) {
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* ignore */ }
+            throw new Error(`検索エラー: ${response.status}${detail}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('汁仕分表検索APIエラー:', error);
         throw error;
     }
 }
@@ -75,7 +141,12 @@ export async function calculateBagging(jobordPrkeys, printType) {
         });
         
         if (!response.ok) {
-            throw new Error(`計算エラー: ${response.status}`);
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* body が JSON でない場合は無視 */ }
+            throw new Error(`計算エラー: ${response.status}${detail}`);
         }
         
         const data = await response.json();

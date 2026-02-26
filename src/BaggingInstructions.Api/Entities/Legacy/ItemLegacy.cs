@@ -41,4 +41,8 @@ public class ItemLegacy
 
     [Column("nwei")]
     public decimal Nwei { get; set; }
+
+    /// <summary>工程（rout）。現行DBで item と rout を結合する場合は別途設定。EF ではマッピングしない。</summary>
+    [NotMapped]
+    public virtual ICollection<Rout> Routs { get; set; } = new List<Rout>();
 }

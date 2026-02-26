@@ -16,6 +16,10 @@ public class JobordItemDto
     [JsonPropertyName("shptm")]
     public string? Shptm { get; set; }
 
+    /// <summary>喫食時間表示用（addinfo01name）。汁仕分表で使用。</summary>
+    [JsonPropertyName("shptm_name")]
+    public string? ShptmName { get; set; }
+
     [JsonPropertyName("cuscd")]
     public string? Cuscd { get; set; }
 
@@ -30,6 +34,14 @@ public class JobordItemDto
 
     [JsonPropertyName("jobordqun")]
     public decimal Jobordqun { get; set; }
+
+    /// <summary>納入場所名。汁仕分表テンプレート用。</summary>
+    [JsonPropertyName("shpctrnm")]
+    public string? Shpctrnm { get; set; }
+
+    /// <summary>食数計算用除数（addinfo02）。汁仕分表テンプレート用。</summary>
+    [JsonPropertyName("addinfo02")]
+    public string? Addinfo02 { get; set; }
 }
 
 public class SearchResponseDto

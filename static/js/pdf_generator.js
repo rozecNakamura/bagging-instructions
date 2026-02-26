@@ -3,6 +3,7 @@
  */
 
 import { loadTemplate, injectData, prepareBaggingInstructionData, prepareLabelData, injectLabelData } from './template_loader.js';
+import { generateJuicePdfBlob } from './api.js';
 
 /**
  * 印刷プレビューを表示
@@ -123,5 +124,40 @@ export async function generateLabelPDF(data) {
         labelData,
         injectLabelData
     );
+}
+
+/**
+ * 汁仕分表の PDF を表示し、ブラウザの印刷プレビュー（ポップアップ）を開く。
+ * 袋詰指示書と同様に、印刷ダイアログが前面に表示される。
+ * @param {{ delvedt: string, shptmDisplay: string, jobordmernm: string, shpctrnm: string, jobordqun: number, addinfo02: string }[]} rows - 選択された行データ
+ */
+export async function generateJuicePDF(rows) {
+    if (!rows || rows.length === 0) return;
+    const blob = await generateJuicePdfBlob(rows);
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+    iframe.title = '汁仕分表 PDF 印刷';
+    iframe.onload = () => {
+        try {
+            if (iframe.contentWindow) iframe.contentWindow.print();
+        } catch (_) {
+            // 同一オリジンでない場合は新しいタブで開く
+            window.open(url, '_blank', 'noopener');
+        }
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+        }, 60000);
+    };
+    iframe.src = url;
+    document.body.appendChild(iframe);
+}
+
+function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 

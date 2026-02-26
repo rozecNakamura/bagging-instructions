@@ -36,10 +36,10 @@ public class BaggingCalculatorService
 
             var currentStock = await _stockService.GetItemStockByItemIdAsync(first.ItemId, ct);
 
-            decimal adjustedQuantity;
-            int standardBags;
-            decimal irregularQuantity;
-            List<SeasoningAmountDto> seasoningAmounts;
+            decimal adjustedQuantity = totalOrder;
+            int standardBags = 0;
+            decimal irregularQuantity = 0;
+            List<SeasoningAmountDto> seasoningAmounts = new List<SeasoningAmountDto>();
 
             if (EnableRounding)
             {
@@ -50,20 +50,15 @@ public class BaggingCalculatorService
                 irregularQuantity = irregularCount;
                 seasoningAmounts = seasoningList;
             }
-            else
-            {
-                adjustedQuantity = totalOrder;
-                standardBags = 0;
-                irregularQuantity = 0;
-                seasoningAmounts = new List<SeasoningAmountDto>();
-            }
 
+#pragma warning disable CS0162 // 到達できないコード（EnableAllocation を true にした場合に使用）
             if (EnableAllocation)
             {
                 var kikunip = first.Car0;
                 standardBags = AllocationService.CalculateStandardBags(adjustedQuantity, kikunip);
                 irregularQuantity = AllocationService.CalculateIrregularQuantity(adjustedQuantity, kikunip);
             }
+#pragma warning restore CS0162
 
             string shpctrnm;
             string? shpctrcd;

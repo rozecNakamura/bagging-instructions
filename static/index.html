@@ -22,13 +22,26 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>袋詰指示書・ラベル管理システム</h1>
-        </header>
+    <div class="app-layout">
+        <!-- 左メニュー -->
+        <nav class="sidebar">
+            <h2 class="sidebar-title">メニュー</h2>
+            <ul class="sidebar-menu">
+                <li><button type="button" class="menu-btn active" data-screen="bagging">袋詰指示書・ラベル管理</button></li>
+                <li><button type="button" class="menu-btn" data-screen="juice">汁仕分表</button></li>
+            </ul>
+        </nav>
 
-        <!-- 検索エリア -->
-        <section class="search-section">
+        <div class="main-content">
+            <!-- 袋詰指示書・ラベル管理システム画面 -->
+            <div id="screen-bagging" class="screen active">
+                <div class="container">
+                    <header>
+                        <h1>袋詰指示書・ラベル管理システム</h1>
+                    </header>
+
+                    <!-- 検索エリア -->
+                    <section class="search-section">
             <h2>受注明細検索</h2>
             <div class="search-form">
                 <div class="form-group">
@@ -92,11 +105,69 @@
             </div>
             <button id="printBtn" class="btn btn-success">PDF印刷</button>
         </section>
+                </div>
+            </div>
+
+            <!-- 汁仕分表画面 -->
+            <div id="screen-juice" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>汁仕分表</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="juiceEatingDate">喫食日:</label>
+                                <input type="date" id="juiceEatingDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="juiceItemCode">品目コード:</label>
+                                <input type="text" id="juiceItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <button id="juiceSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="juiceResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="juiceResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="juiceSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="juiceDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="juiceResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="juiceHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="juiceResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="juicePrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="juicePrintBtn" class="btn btn-success">PDF印刷</button>
+                    </section>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- アプリケーションスクリプト -->
+    <script type="module" src="/static/js/navigation.js"></script>
     <script type="module" src="/static/js/api.js"></script>
     <script type="module" src="/static/js/search.js"></script>
+    <script type="module" src="/static/js/juice_search.js"></script>
+    <script type="module" src="/static/js/juice_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>
     <script type="module" src="/static/js/pdf_generator.js"></script>
 </body>

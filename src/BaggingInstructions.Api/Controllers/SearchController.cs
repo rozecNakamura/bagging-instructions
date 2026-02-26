@@ -27,6 +27,32 @@ public class SearchController : ControllerBase
             var items = await _searchService.SearchAsync(prddt, itemcd, ct);
             return Ok(new SearchResponseDto { Total = items.Count, Items = items });
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"検索エラー: {ex.Message}" });
+        }
+    }
+
+    /// <summary>汁仕分表用：喫食日・品目コードで検索。</summary>
+    [HttpGet("search/juice")]
+    public async Task<ActionResult<SearchResponseDto>> SearchJuice(
+        [FromQuery] string delvedt,
+        [FromQuery] string? itemcd,
+        CancellationToken ct)
+    {
+        try
+        {
+            var items = await _searchService.SearchByDeliveryDateAsync(delvedt, itemcd, ct);
+            return Ok(new SearchResponseDto { Total = items.Count, Items = items });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
         catch (Exception ex)
         {
             return StatusCode(500, new { detail = $"検索エラー: {ex.Message}" });

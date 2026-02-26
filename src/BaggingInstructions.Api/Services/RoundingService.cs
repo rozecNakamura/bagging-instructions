@@ -14,6 +14,8 @@ public static class RoundingService
     {
         if (seasoningBoms == null || seasoningBoms.Count == 0)
             return (jobordqun, 0, new List<SeasoningAmountDto>());
+        if (divisor <= 0)
+            return (jobordqun, 0, new List<SeasoningAmountDto>());
 
         var integerPart = (decimal)(long)(jobordqun / divisor);
         var actualRemainder = jobordqun % divisor;

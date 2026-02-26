@@ -25,11 +25,11 @@ public static class LabelGeneratorService
                 LabelType = "standard",
                 Delvedt = delvedt,
                 Shptm = shptm,
-                Itemcd = item.Itemcd ?? "",
-                Itemnm = item.Itemnm ?? "",
+                Itemcd = item.ItemCd ?? "",
+                Itemnm = item.ItemName ?? "",
                 ExpiryDate = CalculateExpiryDate(delvedt),
-                Strtemp = item.Strtemp,
-                Kikunip = item.Kikunip,
+                Strtemp = null,
+                Kikunip = null,
                 Count = standardBags
             }
         };
@@ -45,10 +45,10 @@ public static class LabelGeneratorService
                 LabelType = "irregular",
                 Delvedt = delvedt,
                 Shptm = shptm,
-                Itemcd = item.Itemcd ?? "",
-                Itemnm = item.Itemnm ?? "",
+                Itemcd = item.ItemCd ?? "",
+                Itemnm = item.ItemName ?? "",
                 ExpiryDate = CalculateExpiryDate(delvedt),
-                Strtemp = item.Strtemp,
+                Strtemp = null,
                 Shpctrnm = shpctrnm,
                 IrregularQuantity = irregularQuantity,
                 Count = 1
