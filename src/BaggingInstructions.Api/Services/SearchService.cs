@@ -91,6 +91,116 @@ public class SearchService
         return list;
     }
 
+    /// <summary>汁仕分表用：喫食日・品目コードで検索し、喫食日・喫食時間・品目でグループ化して返す。</summary>
+    public async Task<List<JuiceSearchGroupDto>> SearchByDeliveryDateGroupedAsync(string delvedt, string? itemcd, CancellationToken ct = default)
+    {
+        var items = await SearchByDeliveryDateAsync(delvedt, itemcd, ct);
+        var keySelector = (JobordItemDto x) => (
+            Delvedt: x.Delvedt ?? "",
+            ShptmDisplay: x.ShptmName ?? x.Shptm ?? "",
+            Itemcd: x.Itemcd ?? "",
+            Jobordmernm: x.Jobordmernm ?? ""
+        );
+        var grouped = items
+            .GroupBy(keySelector)
+            .Select(g => new JuiceSearchGroupDto
+            {
+                Delvedt = g.Key.Delvedt,
+                ShptmDisplay = g.Key.ShptmDisplay,
+                Itemcd = g.Key.Itemcd,
+                Jobordmernm = g.Key.Jobordmernm,
+                Locations = g.Select(x => new JuiceSearchLocationDto
+                {
+                    Shpctrnm = x.Shpctrnm,
+                    Jobordqun = x.Jobordqun,
+                    Addinfo02 = x.Addinfo02
+                }).ToList()
+            })
+            .OrderBy(x => x.Delvedt).ThenBy(x => x.ShptmDisplay).ThenBy(x => x.Itemcd)
+            .ToList();
+        return grouped;
+    }
+
+    /// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。itemadditionalinformation.addinfo01 が "1" の品目のみ検索結果に表示。</summary>
+    public async Task<List<JobordItemDto>> SearchByDeliveryDateForBentoAsync(string delvedt, string? itemcd, CancellationToken ct = default)
+    {
+        var delvedtDate = ParseProductDate(delvedt);
+        if (!delvedtDate.HasValue)
+            throw new ArgumentException("喫食日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
+        var query = _db.SalesOrderLines.AsNoTracking()
+            .Include(l => l.SalesOrder!)
+                .ThenInclude(so => so!.Customer)
+            .Include(l => l.SalesOrder!)
+                .ThenInclude(so => so!.CustomerDeliveryLocation)
+            .Include(l => l.Addinfo)
+            .Include(l => l.OrderTable)
+            .Include(l => l.Item!)
+                .ThenInclude(i => i!.AdditionalInformation)
+            .Where(l => l.PlannedDeliveryDate == delvedtDate)
+            .Where(l => l.Item != null
+                && l.Item.AdditionalInformation != null
+                && l.Item.AdditionalInformation.Addinfo01 == "1");
+
+        if (!string.IsNullOrEmpty(itemcd))
+            query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
+
+        var list = await query
+            .OrderBy(l => l.SalesOrderLineId)
+            .Select(l => new JobordItemDto
+            {
+                Prkey = l.SalesOrderLineId,
+                Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
+                Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
+                Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
+                ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+                Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
+                Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
+                Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
+                Itemcd = l.Item != null ? l.Item.ItemCd : null,
+                Jobordmernm = l.Item != null ? l.Item.ItemName : null,
+                // PACK用: ordertable.qty があればそれ、なければ salesorderline.quantity
+                Jobordqun = l.OrderTable != null ? l.OrderTable.Qty : l.Quantity,
+                Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null,
+                Addinfo01Item = l.Item != null && l.Item.AdditionalInformation != null ? l.Item.AdditionalInformation.Addinfo01 : null,
+                // GRAM用: salesorderline.quantity / salesorderlineaddinfo.addinfo02
+                Quantity = l.Quantity
+            })
+            .ToListAsync(ct);
+
+        return list;
+    }
+
+    /// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索し、喫食日・喫食時間・品目でグループ化して返す。</summary>
+    public async Task<List<BentoSearchGroupDto>> SearchByDeliveryDateForBentoGroupedAsync(string delvedt, string? itemcd, CancellationToken ct = default)
+    {
+        var items = await SearchByDeliveryDateForBentoAsync(delvedt, itemcd, ct);
+        var keySelector = (JobordItemDto x) => (
+            Delvedt: x.Delvedt ?? "",
+            ShptmDisplay: x.ShptmName ?? x.Shptm ?? "",
+            Itemcd: x.Itemcd ?? "",
+            Jobordmernm: x.Jobordmernm ?? ""
+        );
+        var grouped = items
+            .GroupBy(keySelector)
+            .Select(g => new BentoSearchGroupDto
+            {
+                Delvedt = g.Key.Delvedt,
+                ShptmDisplay = g.Key.ShptmDisplay,
+                Itemcd = g.Key.Itemcd,
+                Jobordmernm = g.Key.Jobordmernm,
+                Locations = g.Select(x => new BentoSearchLocationDto
+                {
+                    Shpctrnm = x.Shpctrnm,
+                    Jobordqun = x.Jobordqun,
+                    Quantity = x.Quantity,
+                    Addinfo02 = x.Addinfo02
+                }).ToList()
+            })
+            .OrderBy(x => x.Delvedt).ThenBy(x => x.ShptmDisplay).ThenBy(x => x.Itemcd)
+            .ToList();
+        return grouped;
+    }
+
     /// <summary>salesorderlineid で受注明細を取得（全リレーション付き）。Bom は parentitemcd で別取得。</summary>
     public async Task<List<BaggingDetailRow>> SearchDetailByPrkeysAsync(IReadOnlyList<long> prkeys, CancellationToken ct = default)
     {

@@ -39,8 +39,7 @@ public class JuiceController : ControllerBase
             Addinfo02 = r.Addinfo02
         }).ToList();
 
-        var tagValues = JuicePdfService.BuildTagValues(rows);
-        var pdfBytes = _juicePdfService.GeneratePdf(fullPath, tagValues);
+        var pdfBytes = _juicePdfService.GeneratePdfFromRows(fullPath, rows);
 
         await Task.CompletedTask; // 同期処理のため
         return File(pdfBytes, "application/pdf", "汁仕分表.pdf");

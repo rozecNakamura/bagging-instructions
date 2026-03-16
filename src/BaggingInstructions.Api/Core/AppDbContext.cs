@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
     public DbSet<SalesOrderLine> SalesOrderLines => Set<SalesOrderLine>();
     public DbSet<SalesOrderLineAddinfo> SalesOrderLineAddinfos => Set<SalesOrderLineAddinfo>();
+    public DbSet<OrderTable> OrderTables => Set<OrderTable>();
     public DbSet<Item> Items => Set<Item>();
     public DbSet<ItemAdditionalInformation> ItemAdditionalInformations => Set<ItemAdditionalInformation>();
     public DbSet<Bom> Boms => Set<Bom>();
@@ -21,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<Workcenter> Workcenters => Set<Workcenter>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<CustomerDeliveryLocation> CustomerDeliveryLocations => Set<CustomerDeliveryLocation>();
+    public DbSet<CustomerDeliveryLocationAddinfo> CustomerDeliveryLocationAddinfos => Set<CustomerDeliveryLocationAddinfo>();
     public DbSet<CustomerItem> CustomerItems => Set<CustomerItem>();
     public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
 
@@ -78,6 +80,13 @@ public class AppDbContext : DbContext
             .WithOne(a => a.SalesOrderLine)
             .HasForeignKey<SalesOrderLineAddinfo>(a => a.SalesOrderLineId)
             .IsRequired(false);
+        modelBuilder.Entity<SalesOrderLine>()
+            .HasOne(l => l.OrderTable)
+            .WithOne(o => o.SalesOrderLine)
+            .HasForeignKey<OrderTable>(o => o.SalesOrderLineId)
+            .IsRequired(false);
+        modelBuilder.Entity<OrderTable>()
+            .HasKey(o => o.SalesOrderLineId);
 
         // Item -> Unit, ItemAdditionalInformation
         modelBuilder.Entity<Item>()
@@ -130,6 +139,12 @@ public class AppDbContext : DbContext
             .HasOne(c => c.Customer)
             .WithMany(c => c.DeliveryLocations)
             .HasForeignKey(c => c.CustomerId);
+        // CustomerDeliveryLocation -> CustomerDeliveryLocationAddinfo (1:1)
+        modelBuilder.Entity<CustomerDeliveryLocation>()
+            .HasOne(c => c.Addinfo)
+            .WithOne(a => a.CustomerDeliveryLocation)
+            .HasForeignKey<CustomerDeliveryLocationAddinfo>(a => a.DeliveryLocationId)
+            .IsRequired(false);
 
         // CustomerItem -> Customer, Item
         modelBuilder.Entity<CustomerItem>()

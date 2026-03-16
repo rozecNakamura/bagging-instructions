@@ -29,6 +29,9 @@
             <ul class="sidebar-menu">
                 <li><button type="button" class="menu-btn active" data-screen="bagging">袋詰指示書・ラベル管理</button></li>
                 <li><button type="button" class="menu-btn" data-screen="juice">汁仕分表</button></li>
+                <li><button type="button" class="menu-btn" data-screen="bento">弁当箱盛り付け指示書（ご飯）</button></li>
+                <li><button type="button" class="menu-btn" data-screen="delivery-note">納品書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="personal-delivery">個人配送指示書・個人配送指示書（集計）</button></li>
             </ul>
         </nav>
 
@@ -146,6 +149,7 @@
                                         <th>喫食時間</th>
                                         <th>品目コード</th>
                                         <th>品目名</th>
+                                        <th>施設数</th>
                                     </tr>
                                 </thead>
                                 <tbody id="juiceResultsBody">
@@ -159,6 +163,153 @@
                     </section>
                 </div>
             </div>
+
+            <!-- 弁当箱盛り付け指示書（ご飯）画面 -->
+            <div id="screen-bento" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>弁当箱盛り付け指示書（ご飯）</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="bentoEatingDate">喫食日:</label>
+                                <input type="date" id="bentoEatingDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="bentoItemCode">品目コード:</label>
+                                <input type="text" id="bentoItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <button type="button" id="bentoSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="bentoResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="bentoResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="bentoSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="bentoDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="bentoResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="bentoHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>施設数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bentoResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="bentoPrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="bentoPrintBtn" class="btn btn-success">PDF印刷</button>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 納品書画面 -->
+            <div id="screen-delivery-note" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>納品書</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="deliveryNoteEatingDate">喫食日:</label>
+                                <input type="date" id="deliveryNoteEatingDate">
+                            </div>
+                            <button type="button" id="deliveryNoteSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="deliveryNoteResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="deliveryNoteResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="deliveryNoteSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="deliveryNoteDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="deliveryNoteResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="deliveryNoteHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>納入場所名</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deliveryNoteResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="deliveryNotePrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="deliveryNotePrintBtn" class="btn btn-success">PDF印刷</button>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 個人配送指示書・個人配送指示書（集計）画面 -->
+            <div id="screen-personal-delivery" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>個人配送指示書・個人配送指示書（集計）</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="personalDeliveryDate">配送日:</label>
+                                <input type="date" id="personalDeliveryDate">
+                            </div>
+                            <button type="button" id="personalDeliverySearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="personalDeliveryResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="personalDeliveryResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="personalDeliverySelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="personalDeliveryDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="personalDeliveryResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="personalDeliveryHeaderCheckbox"></th>
+                                        <th>配送日</th>
+                                        <th>喫食時間</th>
+                                        <th>配送エリア</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="personalDeliveryResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="personalDeliveryPrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="personalDeliveryDetailPrintBtn" class="btn btn-success">個人配送指示書出力</button>
+                        <button type="button" id="personalDeliverySummaryPrintBtn" class="btn btn-success">個人配送指示書（集計）出力</button>
+                    </section>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -168,6 +319,12 @@
     <script type="module" src="/static/js/search.js"></script>
     <script type="module" src="/static/js/juice_search.js"></script>
     <script type="module" src="/static/js/juice_print.js"></script>
+    <script type="module" src="/static/js/bento_search.js"></script>
+    <script type="module" src="/static/js/bento_print.js"></script>
+    <script type="module" src="/static/js/delivery_note_search.js"></script>
+    <script type="module" src="/static/js/delivery_note_print.js"></script>
+    <script type="module" src="/static/js/personal_delivery_search.js"></script>
+    <script type="module" src="/static/js/personal_delivery_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>
     <script type="module" src="/static/js/pdf_generator.js"></script>
 </body>

@@ -45,4 +45,5 @@ public class CustomerDeliveryLocation
     public int SortOrder { get; set; }
 
     public virtual Customer Customer { get; set; } = null!;
+    public virtual CustomerDeliveryLocationAddinfo? Addinfo { get; set; }
 }

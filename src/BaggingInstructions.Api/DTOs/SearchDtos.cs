@@ -35,6 +35,10 @@ public class JobordItemDto
     [JsonPropertyName("jobordqun")]
     public decimal Jobordqun { get; set; }
 
+    /// <summary>受注数量（SalesOrderLine.Quantity）。弁当箱盛り付け指示書（ご飯）の GRAM＝quantity/addinfo02 用。</summary>
+    [JsonPropertyName("quantity")]
+    public decimal Quantity { get; set; }
+
     /// <summary>納入場所名。汁仕分表テンプレート用。</summary>
     [JsonPropertyName("shpctrnm")]
     public string? Shpctrnm { get; set; }
@@ -42,6 +46,10 @@ public class JobordItemDto
     /// <summary>食数計算用除数（addinfo02）。汁仕分表テンプレート用。</summary>
     [JsonPropertyName("addinfo02")]
     public string? Addinfo02 { get; set; }
+
+    /// <summary>品目付加情報 addinfo01（ご飯量等）。弁当箱盛り付け指示書（ご飯）の GRAM 用。</summary>
+    [JsonPropertyName("addinfo01_item")]
+    public string? Addinfo01Item { get; set; }
 }
 
 public class SearchResponseDto
@@ -490,4 +498,140 @@ public class SearchDetailResponseDto
 
     [JsonPropertyName("items")]
     public List<JobordDetailItemDto> Items { get; set; } = new();
+}
+
+/// <summary>納品書検索結果1件（喫食日・納入場所名）</summary>
+public class DeliveryNoteSearchResultDto
+{
+    [JsonPropertyName("eating_date")]
+    public string? EatingDate { get; set; }
+
+    [JsonPropertyName("location_name")]
+    public string? LocationName { get; set; }
+
+    [JsonPropertyName("location_code")]
+    public string? LocationCode { get; set; }
+
+    [JsonPropertyName("customer_code")]
+    public string? CustomerCode { get; set; }
+}
+
+/// <summary>納品書検索APIレスポンス</summary>
+public class DeliveryNoteSearchResponseDto
+{
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("items")]
+    public List<DeliveryNoteSearchResultDto> Items { get; set; } = new();
+}
+
+/// <summary>個人配送指示書検索結果1件（配送日・喫食時間・配送エリア）</summary>
+public class PersonalDeliverySearchResultDto
+{
+    [JsonPropertyName("delivery_date")]
+    public string? DeliveryDate { get; set; }
+
+    [JsonPropertyName("time_name")]
+    public string? TimeName { get; set; }
+
+    [JsonPropertyName("area")]
+    public string? Area { get; set; }
+}
+
+/// <summary>個人配送指示書検索APIレスポンス</summary>
+public class PersonalDeliverySearchResponseDto
+{
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("items")]
+    public List<PersonalDeliverySearchResultDto> Items { get; set; } = new();
+}
+
+/// <summary>汁仕分表用：同一喫食日・喫食時間・品目の1納入場所分</summary>
+public class JuiceSearchLocationDto
+{
+    [JsonPropertyName("shpctrnm")]
+    public string? Shpctrnm { get; set; }
+
+    [JsonPropertyName("jobordqun")]
+    public decimal Jobordqun { get; set; }
+
+    [JsonPropertyName("addinfo02")]
+    public string? Addinfo02 { get; set; }
+}
+
+/// <summary>汁仕分表用：喫食日・喫食時間・品目でまとめた1グループ</summary>
+public class JuiceSearchGroupDto
+{
+    [JsonPropertyName("delvedt")]
+    public string? Delvedt { get; set; }
+
+    [JsonPropertyName("shptm_display")]
+    public string? ShptmDisplay { get; set; }
+
+    [JsonPropertyName("itemcd")]
+    public string? Itemcd { get; set; }
+
+    [JsonPropertyName("jobordmernm")]
+    public string? Jobordmernm { get; set; }
+
+    [JsonPropertyName("locations")]
+    public List<JuiceSearchLocationDto> Locations { get; set; } = new();
+}
+
+/// <summary>汁仕分表検索APIレスポンス（グループ単位）</summary>
+public class JuiceSearchGroupResponseDto
+{
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("groups")]
+    public List<JuiceSearchGroupDto> Groups { get; set; } = new();
+}
+
+/// <summary>弁当箱盛り付け指示書（ご飯）用：同一喫食日・喫食時間・品目の1納入場所分</summary>
+public class BentoSearchLocationDto
+{
+    [JsonPropertyName("shpctrnm")]
+    public string? Shpctrnm { get; set; }
+
+    [JsonPropertyName("jobordqun")]
+    public decimal Jobordqun { get; set; }
+
+    [JsonPropertyName("quantity")]
+    public decimal Quantity { get; set; }
+
+    [JsonPropertyName("addinfo02")]
+    public string? Addinfo02 { get; set; }
+}
+
+/// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・喫食時間・品目でまとめた1グループ</summary>
+public class BentoSearchGroupDto
+{
+    [JsonPropertyName("delvedt")]
+    public string? Delvedt { get; set; }
+
+    [JsonPropertyName("shptm_display")]
+    public string? ShptmDisplay { get; set; }
+
+    [JsonPropertyName("itemcd")]
+    public string? Itemcd { get; set; }
+
+    [JsonPropertyName("jobordmernm")]
+    public string? Jobordmernm { get; set; }
+
+    [JsonPropertyName("locations")]
+    public List<BentoSearchLocationDto> Locations { get; set; } = new();
+}
+
+/// <summary>弁当箱盛り付け指示書（ご飯）検索APIレスポンス（グループ単位）</summary>
+public class BentoSearchGroupResponseDto
+{
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("groups")]
+    public List<BentoSearchGroupDto> Groups { get; set; } = new();
 }

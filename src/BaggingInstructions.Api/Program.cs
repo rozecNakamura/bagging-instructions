@@ -26,10 +26,20 @@ var conn = builder.Configuration.GetConnectionString("DefaultConnection")
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(conn));
 
+var connOther = builder.Configuration.GetConnectionString("CraftlineaxOther")
+    ?? Environment.GetEnvironmentVariable("ConnectionStrings__CraftlineaxOther")
+    ?? "Host=localhost;Port=5432;Database=craftlineaxother;Username=rozec;Password=***";
+builder.Services.AddDbContext<CstmeatDbContext>(options =>
+    options.UseNpgsql(connOther));
+
 builder.Services.AddScoped<SearchService>();
 builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<BaggingCalculatorService>();
 builder.Services.AddScoped<JuicePdfService>();
+builder.Services.AddScoped<DeliveryNoteService>();
+builder.Services.AddScoped<DeliveryNotePdfService>();
+builder.Services.AddScoped<PersonalDeliveryService>();
+builder.Services.AddScoped<PersonalDeliveryPdfService>();
 
 builder.Services.AddCors(options =>
 {

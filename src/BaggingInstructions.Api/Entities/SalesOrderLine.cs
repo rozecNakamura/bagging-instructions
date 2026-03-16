@@ -44,7 +44,7 @@ public class SalesOrderLine
     [Column("productdate")]
     public DateOnly? ProductDate { get; set; }
 
-    [Column("cusitemid")]
+    [Column("customeritemid")]
     public long? CustomerItemId { get; set; }
 
     [Column("status")]
@@ -60,4 +60,5 @@ public class SalesOrderLine
     public virtual Item? Item { get; set; }
     public virtual CustomerItem? CustomerItem { get; set; }
     public virtual SalesOrderLineAddinfo? Addinfo { get; set; }
+    public virtual OrderTable? OrderTable { get; set; }
 }

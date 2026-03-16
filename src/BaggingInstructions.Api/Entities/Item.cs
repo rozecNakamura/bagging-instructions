@@ -44,6 +44,9 @@ public class Item
     [Column("isstockmanaged")]
     public bool IsStockManaged { get; set; } = true;
 
+    [Column("salesprice0")]
+    public decimal? SalesPrice0 { get; set; }
+
     public virtual Unit? Unit0 { get; set; }
     public virtual ItemAdditionalInformation? AdditionalInformation { get; set; }
     public virtual ICollection<ItemWorkCenterMapping> WorkCenterMappings { get; set; } = new List<ItemWorkCenterMapping>();

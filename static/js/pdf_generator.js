@@ -3,7 +3,7 @@
  */
 
 import { loadTemplate, injectData, prepareBaggingInstructionData, prepareLabelData, injectLabelData } from './template_loader.js';
-import { generateJuicePdfBlob } from './api.js';
+import { generateJuicePdfBlob, generateBentoPdfBlob, generateDeliveryNotePdfBlob, generatePersonalDeliveryPdfBlob } from './api.js';
 
 /**
  * 印刷プレビューを表示
@@ -143,6 +143,100 @@ export async function generateJuicePDF(rows) {
             if (iframe.contentWindow) iframe.contentWindow.print();
         } catch (_) {
             // 同一オリジンでない場合は新しいタブで開く
+            window.open(url, '_blank', 'noopener');
+        }
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+        }, 60000);
+    };
+    iframe.src = url;
+    document.body.appendChild(iframe);
+}
+
+/**
+ * 弁当箱盛り付け指示書（ご飯）の PDF を表示し、ブラウザの印刷プレビューを開く。
+ * 汁仕分表と同様に rxz テンプレート（弁当箱盛り付け指示書（ご飯）.rxz）でサーバー側 PDF 生成。
+ * @param {{ delvedt: string, shptmDisplay: string, jobordmernm: string, shpctrnm: string, jobordqun: number, addinfo02: string }[]} rows - 選択された行データ
+ */
+export async function generateBentoPDF(rows) {
+    if (!rows || rows.length === 0) return;
+    const blob = await generateBentoPdfBlob(rows);
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+    iframe.title = '弁当箱盛り付け指示書（ご飯） PDF 印刷';
+    iframe.onload = () => {
+        try {
+            if (iframe.contentWindow) iframe.contentWindow.print();
+        } catch (_) {
+            window.open(url, '_blank', 'noopener');
+        }
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+        }, 60000);
+    };
+    iframe.src = url;
+    document.body.appendChild(iframe);
+}
+
+/**
+ * 納品書の PDF を表示し、ブラウザの印刷プレビューを開く。
+ * 納品書.rxz テンプレートでサーバー側 PDF 生成。
+ * @param {{ eating_date: string, location_code: string, customer_code: string }[]} rows - 選択された行データ
+ */
+export async function generateDeliveryNotePDF(rows) {
+    if (!rows || rows.length === 0) return;
+    const blob = await generateDeliveryNotePdfBlob(rows);
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+    iframe.title = '納品書 PDF 印刷';
+    iframe.onload = () => {
+        try {
+            if (iframe.contentWindow) iframe.contentWindow.print();
+        } catch (_) {
+            window.open(url, '_blank', 'noopener');
+        }
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+        }, 60000);
+    };
+    iframe.src = url;
+    document.body.appendChild(iframe);
+}
+
+/**
+ * 個人配送指示書（明細）の PDF を表示し、ブラウザの印刷プレビューを開く。個人配送指示書.rxz のみ。
+ * @param {{ delivery_date: string, time_name: string, area: string }[]} rows - 選択された行データ
+ */
+export async function generatePersonalDeliveryDetailPDF(rows) {
+    if (!rows || rows.length === 0) return;
+    const blob = await generatePersonalDeliveryPdfBlob(rows, 'detail');
+    openPersonalDeliveryPdfInIframe(blob, '個人配送指示書 PDF 印刷');
+}
+
+/**
+ * 個人配送指示書（集計）の PDF を表示し、ブラウザの印刷プレビューを開く。個人配送指示書（集計）.rxz のみ。
+ * @param {{ delivery_date: string, time_name: string, area: string }[]} rows - 選択された行データ
+ */
+export async function generatePersonalDeliverySummaryPDF(rows) {
+    if (!rows || rows.length === 0) return;
+    const blob = await generatePersonalDeliveryPdfBlob(rows, 'summary');
+    openPersonalDeliveryPdfInIframe(blob, '個人配送指示書（集計） PDF 印刷');
+}
+
+function openPersonalDeliveryPdfInIframe(blob, title) {
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+    iframe.title = title;
+    iframe.onload = () => {
+        try {
+            if (iframe.contentWindow) iframe.contentWindow.print();
+        } catch (_) {
             window.open(url, '_blank', 'noopener');
         }
         setTimeout(() => {

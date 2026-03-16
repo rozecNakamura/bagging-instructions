@@ -37,17 +37,39 @@ public class SearchController : ControllerBase
         }
     }
 
-    /// <summary>汁仕分表用：喫食日・品目コードで検索。</summary>
+    /// <summary>汁仕分表用：喫食日・品目コードで検索。喫食日・喫食時間・品目でグループ化して返す。</summary>
     [HttpGet("search/juice")]
-    public async Task<ActionResult<SearchResponseDto>> SearchJuice(
+    public async Task<ActionResult<JuiceSearchGroupResponseDto>> SearchJuice(
         [FromQuery] string delvedt,
         [FromQuery] string? itemcd,
         CancellationToken ct)
     {
         try
         {
-            var items = await _searchService.SearchByDeliveryDateAsync(delvedt, itemcd, ct);
-            return Ok(new SearchResponseDto { Total = items.Count, Items = items });
+            var groups = await _searchService.SearchByDeliveryDateGroupedAsync(delvedt, itemcd, ct);
+            return Ok(new JuiceSearchGroupResponseDto { Total = groups.Count, Groups = groups });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"検索エラー: {ex.Message}" });
+        }
+    }
+
+    /// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。喫食日・喫食時間・品目でグループ化して返す。</summary>
+    [HttpGet("search/bento")]
+    public async Task<ActionResult<BentoSearchGroupResponseDto>> SearchBento(
+        [FromQuery] string delvedt,
+        [FromQuery] string? itemcd,
+        CancellationToken ct)
+    {
+        try
+        {
+            var groups = await _searchService.SearchByDeliveryDateForBentoGroupedAsync(delvedt, itemcd, ct);
+            return Ok(new BentoSearchGroupResponseDto { Total = groups.Count, Groups = groups });
         }
         catch (ArgumentException ex)
         {

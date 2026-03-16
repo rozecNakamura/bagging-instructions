@@ -32,6 +32,12 @@ public class ItemAdditionalInformation
     [Column("steritime")]
     public decimal? SteriTime { get; set; }
 
+    [Column("addinfo01")]
+    public string? Addinfo01 { get; set; }
+
+    [Column("addinfo02")]
+    public string? Addinfo02 { get; set; }
+
     // [Column("n_wei")]
     // public decimal? Nwei { get; set; }
 

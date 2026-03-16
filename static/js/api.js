@@ -71,6 +71,39 @@ export async function generateJuicePdfBlob(rows) {
 }
 
 /**
+ * 弁当箱盛り付け指示書（ご飯）PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
+ * GRAM=quantity/addinfo02, PACK=jobordqun, LOCATIONNM=なし
+ * @param {Array<{ delvedt: string, shptmDisplay: string, jobordmernm: string, jobordqun: number, quantity: number, addinfo02: string }>} rows
+ * @returns {Promise<Blob>}
+ */
+export async function generateBentoPdfBlob(rows) {
+    const response = await fetch(`${API_BASE_URL}/bento/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            rows: rows.map(r => ({
+                delvedt: r.delvedt,
+                shptmDisplay: r.shptmDisplay,
+                jobordmernm: r.jobordmernm,
+                jobordqun: r.jobordqun,
+                quantity: r.quantity ?? 0,
+                addinfo02: r.addinfo02 ?? ''
+            }))
+        })
+    });
+    if (!response.ok) {
+        const t = await response.text();
+        let msg = `PDF生成エラー: ${response.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await response.blob();
+}
+
+/**
  * 汁仕分表用：喫食日・品目コードで検索
  */
 export async function searchJuice(delvedt, itemcd) {
@@ -97,6 +130,147 @@ export async function searchJuice(delvedt, itemcd) {
         console.error('汁仕分表検索APIエラー:', error);
         throw error;
     }
+}
+
+/**
+ * 納品書用：喫食日で検索（喫食日・納入場所名）
+ */
+export async function searchDeliveryNote(delvedt) {
+    try {
+        let delvedtStr = delvedt;
+        if (delvedt && delvedt.includes('-')) {
+            delvedtStr = delvedt.replace(/-/g, '');
+        }
+        const params = new URLSearchParams({ delvedt: delvedtStr });
+        const response = await fetch(`${API_BASE_URL}/delivery-note/search?${params}`);
+        if (!response.ok) {
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* ignore */ }
+            throw new Error(`検索エラー: ${response.status}${detail}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('納品書検索APIエラー:', error);
+        throw error;
+    }
+}
+
+/**
+ * 納品書 PDF 生成（納品書.rxz テンプレート・サーバー側で PDF 生成）
+ * @param {Array<{ eating_date: string, location_code: string, customer_code: string }>} rows
+ * @returns {Promise<Blob>}
+ */
+export async function generateDeliveryNotePdfBlob(rows) {
+    const response = await fetch(`${API_BASE_URL}/delivery-note/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            rows: rows.map(r => ({
+                eating_date: r.eating_date,
+                location_code: r.location_code,
+                customer_code: r.customer_code ?? ''
+            }))
+        })
+    });
+    if (!response.ok) {
+        const t = await response.text();
+        let msg = `PDF生成エラー: ${response.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await response.blob();
+}
+
+/**
+ * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。itemadditionalinformation.addinfo01 が存在する品目のみ。
+ */
+export async function searchBento(delvedt, itemcd) {
+    try {
+        let delvedtStr = delvedt;
+        if (delvedt && delvedt.includes('-')) {
+            delvedtStr = delvedt.replace(/-/g, '');
+        }
+        const params = new URLSearchParams({
+            delvedt: delvedtStr,
+            itemcd: itemcd || ''
+        });
+        const response = await fetch(`${API_BASE_URL}/search/bento?${params}`);
+        if (!response.ok) {
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* ignore */ }
+            throw new Error(`検索エラー: ${response.status}${detail}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('弁当箱盛り付け指示書検索APIエラー:', error);
+        throw error;
+    }
+}
+
+/**
+ * 個人配送指示書用：配送日で検索（配送日・喫食時間・配送エリア）
+ */
+export async function searchPersonalDelivery(delvedt) {
+    try {
+        let delvedtStr = delvedt;
+        if (delvedt && delvedt.includes('-')) {
+            delvedtStr = delvedt.replace(/-/g, '');
+        }
+        const params = new URLSearchParams({ delvedt: delvedtStr });
+        const response = await fetch(`${API_BASE_URL}/personal-delivery/search?${params}`);
+        if (!response.ok) {
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* ignore */ }
+            throw new Error(`検索エラー: ${response.status}${detail}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('個人配送指示書検索APIエラー:', error);
+        throw error;
+    }
+}
+
+/**
+ * 個人配送指示書 PDF 生成
+ * @param {Array<{ delivery_date: string, time_name: string, area: string }>} rows
+ * @param {'detail'|'summary'} variant - 'detail'=個人配送指示書.rxz のみ / 'summary'=個人配送指示書（集計）.rxz のみ
+ * @returns {Promise<Blob>}
+ */
+export async function generatePersonalDeliveryPdfBlob(rows, variant) {
+    const response = await fetch(`${API_BASE_URL}/personal-delivery/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            rows: rows.map(r => ({
+                delivery_date: r.delivery_date,
+                time_name: r.time_name ?? '',
+                area: r.area ?? ''
+            })),
+            variant: variant
+        })
+    });
+    if (!response.ok) {
+        const t = await response.text();
+        let msg = `PDF生成エラー: ${response.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await response.blob();
 }
 
 /**

@@ -8,8 +8,9 @@ public class SalesOrder
     [Column("salesorderid")]
     public long SalesOrderId { get; set; }
 
-    [Column("salesorderno")]
-    public long SalesOrderNo { get; set; }
+    /// <summary>受注番号。DB に salesorderno 列が無いため、salesorderid の値を返す。</summary>
+    [NotMapped]
+    public long SalesOrderNo => SalesOrderId;
 
     [Column("customerid")]
     public long? CustomerId { get; set; }
