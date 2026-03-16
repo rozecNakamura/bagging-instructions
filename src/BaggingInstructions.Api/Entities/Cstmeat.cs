@@ -8,8 +8,8 @@ namespace BaggingInstructions.Api.Entities;
 public class Cstmeat
 {
     [Key]
-    [Column("prkey")]
-    public int Prkey { get; set; }
+    [Column("cstmeatid")]
+    public int CstmeatId { get; set; }
 
     [Column("info00")]
     public string? Info00 { get; set; }

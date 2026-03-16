@@ -48,9 +48,14 @@ public class PersonalDeliveryPdfService
             if (isDetail)
             {
                 // 22行ごとにページ分割し、23行目以降は2ページ目以降に表示
+                var totalPages = (lines.Count + RowsPerPage - 1) / RowsPerPage;
+                if (totalPages < 1) totalPages = 1;
+                var printNow = DateTime.Now;
+
                 for (int pageIndex = 0; pageIndex * RowsPerPage < lines.Count; pageIndex++)
                 {
                     var tagDetail = BuildDetailTagValuesForPage(lines, pageIndex);
+                    JuicePdfService.AddPrintTags(tagDetail, printNow, pageIndex + 1, totalPages);
                     var pdfPage = _juicePdfService.GeneratePdf(templateDetailPath, tagDetail);
                     AppendPdf(outputDoc, pdfPage);
                 }
@@ -58,6 +63,7 @@ public class PersonalDeliveryPdfService
             else if (isSummary)
             {
                 var tagSummary = BuildSummaryTagValues(lines);
+                JuicePdfService.AddPrintTags(tagSummary, DateTime.Now, 1, 1);
                 var pdf2 = _juicePdfService.GeneratePdf(templateSummaryPath, tagSummary);
                 AppendPdf(outputDoc, pdf2);
             }
@@ -166,7 +172,7 @@ public class PersonalDeliveryPdfService
             tagValues[$"CUSTOMERLOC{nn}"] = customerLoc;
             tagValues[$"FOODTYPE{nn}"] = row?.FoodType ?? "";
             tagValues[$"RICETYPE{nn}"] = row?.RiceType ?? "";
-            tagValues[$"GRAM{nn}"] = row != null ? row.Quantity.ToString(CultureInfo.InvariantCulture) : "";
+            tagValues[$"GRAM{nn}"] = row != null ? row.Quantity.ToString("0", CultureInfo.InvariantCulture) : "";
             tagValues[$"NOTE{nn}"] = row?.Remarks ?? "";
             tagValues[$"ORDER{nn}"] = row != null ? "0" : "";
         }
@@ -206,8 +212,8 @@ public class PersonalDeliveryPdfService
             var nn = i.ToString("D2");
             var row = i < grouped.Count ? grouped[i] : null;
             tagValues[$"FOODTYPE{nn}"] = row?.FoodType ?? "";
-            tagValues[$"GRAM{nn}"] = row != null ? row.Gram.ToString(CultureInfo.InvariantCulture) : "";
-            tagValues[$"COUNT{nn}"] = row != null ? row.Count.ToString(CultureInfo.InvariantCulture) : "";
+            tagValues[$"GRAM{nn}"] = row != null ? row.Gram.ToString("0", CultureInfo.InvariantCulture) : "";
+            tagValues[$"COUNT{nn}"] = row != null ? row.Count.ToString("0", CultureInfo.InvariantCulture) : "";
             tagValues[$"NOTE{nn}"] = row?.Note ?? "";
         }
 

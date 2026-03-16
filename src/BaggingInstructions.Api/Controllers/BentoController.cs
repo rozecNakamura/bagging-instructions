@@ -40,10 +40,16 @@ public class BentoController : ControllerBase
         }).ToList();
 
         var pagesTagValues = new List<Dictionary<string, string>>();
-        for (int offset = 0; offset < rows.Count; offset += BentoPdfService.RowsPerPage)
+        var totalPages = (rows.Count + BentoPdfService.RowsPerPage - 1) / BentoPdfService.RowsPerPage;
+        if (totalPages < 1) totalPages = 1;
+        var printNow = DateTime.Now;
+
+        for (int offset = 0, pageIndex = 0; offset < rows.Count; offset += BentoPdfService.RowsPerPage, pageIndex++)
         {
             var chunk = rows.Skip(offset).Take(BentoPdfService.RowsPerPage).ToList();
-            pagesTagValues.Add(BentoPdfService.BuildTagValues(chunk));
+            var tagValues = BentoPdfService.BuildTagValues(chunk);
+            JuicePdfService.AddPrintTags(tagValues, printNow, pageIndex + 1, totalPages);
+            pagesTagValues.Add(tagValues);
         }
         var pdfBytes = _juicePdfService.GeneratePdfMultiPage(fullPath, pagesTagValues);
 

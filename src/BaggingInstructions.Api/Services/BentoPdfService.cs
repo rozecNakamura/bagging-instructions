@@ -4,7 +4,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 弁当箱盛り付け指示書（ご飯）.rxz 用のタグ値を構築する。
-/// GRAM＝salesorderline.quantity / salesorderlineaddinfo.addinfo02, PACK＝ordertable.qty（受注数量）, LOCATIONNM＝なし。
+/// PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo02, GRAM＝ordertable.qty（受注数量）, LOCATIONNM＝なし。
 /// </summary>
 public class BentoPdfService
 {
@@ -13,7 +13,7 @@ public class BentoPdfService
 
     /// <summary>
     /// 選択行から弁当箱盛り付け指示書用タグ値を構築する。
-    /// Date=喫食日, Time=喫食時間, ITEMNM=品目名, LOCATIONNM=なし, GRAM=quantity/addinfo02, PACK=qty。
+    /// Date=喫食日, Time=喫食時間, ITEMNM=品目名, LOCATIONNM=なし, GRAM=qty, PACK=quantity/addinfo02。
     /// </summary>
     public static Dictionary<string, string> BuildTagValues(IReadOnlyList<BentoPrintRowDto> rows)
     {
@@ -29,10 +29,10 @@ public class BentoPdfService
             var r = i < rows.Count ? rows[i] : null;
             tagValues[$"ITEMNM{nn}"] = r?.Jobordmernm ?? "";
             tagValues[$"LOCATIONNM{nn}"] = ""; // なし
-            // GRAM＝salesorderline.quantity / salesorderlineaddinfo.addinfo02
-            tagValues[$"GRAM{nn}"] = r != null ? ComputeGram(r.Quantity, r.Addinfo02) : "";
-            // PACK＝ordertable.qty（受注数量）。InvariantCulture で小数点表記を統一
-            tagValues[$"PACK{nn}"] = r != null ? r.Jobordqun.ToString(CultureInfo.InvariantCulture) : "";
+            // GRAM＝ordertable.qty（受注数量）。InvariantCulture で小数点表記を統一
+            tagValues[$"GRAM{nn}"] = r != null ? r.Jobordqun.ToString(CultureInfo.InvariantCulture) : "";
+            // PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo02
+            tagValues[$"PACK{nn}"] = r != null ? ComputeGram(r.Quantity, r.Addinfo02) : "";
         }
 
         return tagValues;

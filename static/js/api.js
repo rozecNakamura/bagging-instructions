@@ -72,7 +72,7 @@ export async function generateJuicePdfBlob(rows) {
 
 /**
  * 弁当箱盛り付け指示書（ご飯）PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
- * GRAM=quantity/addinfo02, PACK=jobordqun, LOCATIONNM=なし
+ * GRAM=jobordqun, PACK=quantity/addinfo02, LOCATIONNM=なし
  * @param {Array<{ delvedt: string, shptmDisplay: string, jobordmernm: string, jobordqun: number, quantity: number, addinfo02: string }>} rows
  * @returns {Promise<Blob>}
  */

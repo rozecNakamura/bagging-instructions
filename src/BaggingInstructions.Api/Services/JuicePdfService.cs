@@ -16,7 +16,7 @@ public class JuicePdfService
     /// <summary>1ページあたりの最大表示行数。これを超える行は2ページ目以降に出力する。</summary>
     private const int RowsPerPage = 23;
 
-    /// <summary>rxz の Data（TextField）1要素を表す</summary>
+    /// <summary>rxz の Data（TextField）／Text 1要素を表す。CoReportsXMLText / RozecCrPrintClass に合わせて Margin を保持。</summary>
     private class RxzTextItem
     {
         public string Name { get; set; } = "";
@@ -36,6 +36,23 @@ public class JuicePdfService
         public int LineWidth { get; set; } = 14173;
         /// <summary>枠線色（rxz の LineColor、AARRGGBB 16進）</summary>
         public string LineColor { get; set; } = "ff000000";
+        /// <summary>テキスト／Data 内側余白（rxz の Text > Margin）。描画時はこの内側に文字を描く。</summary>
+        public int MarginLeft { get; set; }
+        public int MarginTop { get; set; }
+        public int MarginRight { get; set; }
+        public int MarginBottom { get; set; }
+        /// <summary>縮小して表示（rxz の ShrinkToFit）。true のとき枠に収まるまでフォントを縮小する。</summary>
+        public bool ShrinkToFit { get; set; }
+    }
+
+    /// <summary>
+    /// 出力日・出力時刻・ページ数をタグに追加する。PRINTDATE=yyyy/MM/dd, PRINTTIME=HH:mm, PAGECOUNT=Page: N/M
+    /// </summary>
+    public static void AddPrintTags(Dictionary<string, string> tagValues, DateTime printNow, int currentPage, int totalPages)
+    {
+        tagValues["PRINTDATE"] = printNow.ToString("yyyy/MM/dd");
+        tagValues["PRINTTIME"] = printNow.ToString("HH:mm");
+        tagValues["PAGECOUNT"] = $"Page: {currentPage}/{totalPages}";
     }
 
     /// <summary>
@@ -200,6 +217,17 @@ public class JuicePdfService
         int lineWidth = (int?)text.Element("LineWidth") ?? 14173;
         string lineColor = (string?)text.Element("LineColor") ?? "ff000000";
 
+        int marginLeft = 0, marginTop = 0, marginRight = 0, marginBottom = 0;
+        var marginEl = text.Element("Margin");
+        if (marginEl != null)
+        {
+            marginLeft = (int?)marginEl.Attribute("Left") ?? 0;
+            marginTop = (int?)marginEl.Attribute("Top") ?? 0;
+            marginRight = (int?)marginEl.Attribute("Right") ?? 0;
+            marginBottom = (int?)marginEl.Attribute("Bottom") ?? 0;
+        }
+        bool shrinkToFit = (bool?)text.Element("ShrinkToFit") ?? false;
+
         item = new RxzTextItem
         {
             Name = name,
@@ -215,7 +243,12 @@ public class JuicePdfService
             Visible = visible,
             Frame = frame,
             LineWidth = lineWidth,
-            LineColor = lineColor ?? "ff000000"
+            LineColor = lineColor ?? "ff000000",
+            MarginLeft = marginLeft,
+            MarginTop = marginTop,
+            MarginRight = marginRight,
+            MarginBottom = marginBottom,
+            ShrinkToFit = shrinkToFit
         };
         return true;
     }
@@ -235,21 +268,24 @@ public class JuicePdfService
     }
 
     /// <summary>
-    /// 1ページを追加し、現在の items の TextData を描画する。
+    /// 1ページを追加し、現在の items の TextData を描画する。rxz の Page Margin をオフセットとして反映する。
     /// </summary>
-    private static void AddPageAndDraw(PdfDocument doc, List<RxzTextItem> items, int pageWidth, int pageHeight)
+    private static void AddPageAndDraw(PdfDocument doc, List<RxzTextItem> items, int pageWidth, int pageHeight, int marginLeft = 0, int marginTop = 0)
     {
         var page = doc.AddPage();
         page.Width = XUnit.FromPoint(pageWidth / Twip);
         page.Height = XUnit.FromPoint(pageHeight / Twip);
+
+        double offsetX = marginLeft / Twip;
+        double offsetY = marginTop / Twip;
 
         using var gfx = XGraphics.FromPdfPage(page);
         foreach (var item in items)
         {
             if (!item.Visible) continue;
 
-            double x = item.StartX / Twip;
-            double y = item.StartY / Twip;
+            double x = item.StartX / Twip + offsetX;
+            double y = item.StartY / Twip + offsetY;
             double w = item.SizeWidth / Twip;
             double h = item.SizeHeight / Twip;
             var rect = new XRect(x, y, w, h);
@@ -265,8 +301,55 @@ public class JuicePdfService
 
             if (string.IsNullOrEmpty(item.TextData)) continue;
 
+            // Text/Data の Margin を反映（RozecCrPrintClass と同様：外枠の内側にテキスト描画領域を取る）
+            double textMarginLeft = item.MarginLeft / Twip;
+            double textMarginTop = item.MarginTop / Twip;
+            double textMarginRight = item.MarginRight / Twip;
+            double textMarginBottom = item.MarginBottom / Twip;
+            double textX = x + textMarginLeft;
+            double textY = y + textMarginTop;
+            double textW = w - textMarginLeft - textMarginRight;
+            double textH = h - textMarginTop - textMarginBottom;
+            if (textW <= 0 || textH <= 0) continue;
+            var textRect = new XRect(textX, textY, textW, textH);
+
+            var lines = item.TextData.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            if (lines.Length == 0) continue;
+
             double fontSize = item.FontHeight / 100.0;
             if (fontSize < 1) fontSize = 11;
+            const double minFontSize = 1;
+
+            // 縮小して表示: 枠に収まるまでフォントサイズを小さくする（RozecCrPrintClass と同様）
+            if (item.ShrinkToFit)
+            {
+                double trySize = fontSize;
+                while (trySize >= minFontSize)
+                {
+                    var tryFont = new XFont(JuicePdfFontResolver.JapaneseFaceName, trySize, XFontStyleEx.Regular);
+                    double maxLineWidth = 0;
+                    double totalMeasuredHeight = 0;
+                    foreach (var line in lines)
+                    {
+                        if (string.IsNullOrEmpty(line))
+                        {
+                            totalMeasuredHeight += tryFont.GetHeight();
+                            continue;
+                        }
+                        var sz = gfx.MeasureString(line, tryFont);
+                        if (sz.Width > maxLineWidth) maxLineWidth = sz.Width;
+                        totalMeasuredHeight += tryFont.GetHeight();
+                    }
+                    if (maxLineWidth <= textRect.Width && totalMeasuredHeight <= textRect.Height)
+                    {
+                        fontSize = trySize;
+                        break;
+                    }
+                    trySize -= 0.5;
+                }
+                if (trySize < minFontSize) fontSize = minFontSize;
+            }
+
             var font = new XFont(JuicePdfFontResolver.JapaneseFaceName, fontSize, XFontStyleEx.Regular);
 
             var format = new XStringFormat();
@@ -275,38 +358,63 @@ public class JuicePdfService
             else format.Alignment = XStringAlignment.Near;
             format.LineAlignment = XLineAlignment.Near;
 
-            var lines = item.TextData.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-            if (lines.Length == 0) continue;
             double lineHeight = font.GetHeight();
             double totalHeight = lineHeight * lines.Length;
-            double startY = rect.Y + (rect.Height - totalHeight) / 2.0;
+            double startY = textRect.Y + (textRect.Height - totalHeight) / 2.0;
+
+            // 枠からはみ出した文字は表示しない（テキスト描画領域でクリップ）
+            gfx.Save();
+            gfx.IntersectClip(textRect);
             for (int li = 0; li < lines.Length; li++)
             {
-                var lineRect = new XRect(rect.X, startY + li * lineHeight, rect.Width, lineHeight);
+                var lineRect = new XRect(textRect.X, startY + li * lineHeight, textRect.Width, lineHeight);
                 gfx.DrawString(lines[li], font, XBrushes.Black, lineRect, format);
             }
+            gfx.Restore();
         }
     }
 
     /// <summary>
-    /// 用紙サイズを rxz から取得する。
+    /// 用紙サイズとページマージンを rxz から取得する。Margin は Page 直下の Margin 要素（Left, Top, Right, Bottom）。
     /// </summary>
-    private static (int Width, int Height) GetPageSizeFromRxz(string rxzTemplatePath)
+    private static (int Width, int Height, int MarginLeft, int MarginTop, int MarginRight, int MarginBottom) GetPageInfoFromRxz(string rxzTemplatePath)
     {
         int pageWidth = 11905511;
         int pageHeight = 16837795;
+        int marginLeft = 0, marginTop = 0, marginRight = 0, marginBottom = 0;
         try
         {
             var doc2 = XDocument.Load(rxzTemplatePath);
-            var sizeEl = doc2.Root?.Element("Pages")?.Element("Page")?.Element("Size");
-            if (sizeEl != null)
+            var pageEl = doc2.Root?.Element("Pages")?.Element("Page");
+            if (pageEl != null)
             {
-                pageWidth = (int?)sizeEl.Attribute("Width") ?? pageWidth;
-                pageHeight = (int?)sizeEl.Attribute("Height") ?? pageHeight;
+                var sizeEl = pageEl.Element("Size");
+                if (sizeEl != null)
+                {
+                    pageWidth = (int?)sizeEl.Attribute("Width") ?? pageWidth;
+                    pageHeight = (int?)sizeEl.Attribute("Height") ?? pageHeight;
+                }
+                var marginEl = pageEl.Element("Margin");
+                if (marginEl != null)
+                {
+                    marginLeft = (int?)marginEl.Attribute("Left") ?? 0;
+                    marginTop = (int?)marginEl.Attribute("Top") ?? 0;
+                    marginRight = (int?)marginEl.Attribute("Right") ?? 0;
+                    marginBottom = (int?)marginEl.Attribute("Bottom") ?? 0;
+                }
             }
         }
         catch { /* use default */ }
-        return (pageWidth, pageHeight);
+        return (pageWidth, pageHeight, marginLeft, marginTop, marginRight, marginBottom);
+    }
+
+    /// <summary>
+    /// 用紙サイズを rxz から取得する（後方互換）。
+    /// </summary>
+    private static (int Width, int Height) GetPageSizeFromRxz(string rxzTemplatePath)
+    {
+        var (w, h, _, _, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
+        return (w, h);
     }
 
     /// <summary>
@@ -318,17 +426,22 @@ public class JuicePdfService
             return Array.Empty<byte>();
 
         var items = ParseRxzDataElements(rxzTemplatePath);
-        var (pageWidth, pageHeight) = GetPageSizeFromRxz(rxzTemplatePath);
+        var (pageWidth, pageHeight, marginLeft, marginTop, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
 
         var doc = new PdfDocument();
         doc.Info.Title = "汁仕分表";
 
-        for (int offset = 0; offset < rows.Count; offset += RowsPerPage)
+        var printNow = DateTime.Now;
+        var totalPages = (rows.Count + RowsPerPage - 1) / RowsPerPage;
+        if (totalPages < 1) totalPages = 1;
+
+        for (int offset = 0, pageIndex = 0; offset < rows.Count; offset += RowsPerPage, pageIndex++)
         {
             var chunk = rows.Skip(offset).Take(RowsPerPage).ToList();
             var tagValues = BuildTagValues(chunk);
+            AddPrintTags(tagValues, printNow, pageIndex + 1, totalPages);
             ApplyTagValuesToItems(items, tagValues);
-            AddPageAndDraw(doc, items, pageWidth, pageHeight);
+            AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop);
         }
 
         using var ms = new MemoryStream();
@@ -345,7 +458,7 @@ public class JuicePdfService
             return Array.Empty<byte>();
 
         var items = ParseRxzDataElements(rxzTemplatePath);
-        var (pageWidth, pageHeight) = GetPageSizeFromRxz(rxzTemplatePath);
+        var (pageWidth, pageHeight, marginLeft, marginTop, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
 
         var doc = new PdfDocument();
         doc.Info.Title = "弁当箱盛り付け指示書";
@@ -353,7 +466,7 @@ public class JuicePdfService
         foreach (var tagValues in pagesTagValues)
         {
             ApplyTagValuesToItems(items, tagValues);
-            AddPageAndDraw(doc, items, pageWidth, pageHeight);
+            AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop);
         }
 
         using var ms = new MemoryStream();
@@ -371,8 +484,8 @@ public class JuicePdfService
 
         var doc = new PdfDocument();
         doc.Info.Title = "汁仕分表";
-        var (pageWidth, pageHeight) = GetPageSizeFromRxz(rxzTemplatePath);
-        AddPageAndDraw(doc, items, pageWidth, pageHeight);
+        var (pageWidth, pageHeight, marginLeft, marginTop, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
+        AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop);
 
         using var ms = new MemoryStream();
         doc.Save(ms, false);
