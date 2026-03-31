@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { SearchForm } from './components/SearchForm';
 import { ResultTable } from './components/ResultTable';
 import { PrintSection } from './components/PrintSection';
@@ -63,6 +64,9 @@ export default function App() {
     <div className="container">
       <header>
         <h1>袋詰指示書・ラベル管理システム</h1>
+        <p>
+          <Link to="/preparation-work">作業前準備書</Link>
+        </p>
       </header>
 
       <SearchForm

@@ -43,6 +43,11 @@ public class JuicePdfService
         public int MarginBottom { get; set; }
         /// <summary>縮小して表示（rxz の ShrinkToFit）。true のとき枠に収まるまでフォントを縮小する。</summary>
         public bool ShrinkToFit { get; set; }
+        /// <summary>rxz の Box（枠）。true のとき Data/Text ではなく矩形のみ描画する。</summary>
+        public bool IsBox { get; set; }
+        public int FillPattern { get; set; }
+        /// <summary>Box の塗り（FillPattern≠0 のとき）。AARRGGBB。</summary>
+        public string BoxFillColor { get; set; } = "ff000000";
     }
 
     /// <summary>
@@ -180,6 +185,13 @@ public class JuicePdfService
                     if (!TryParseTextItem(obj, text, fontNames, out var item)) continue;
                     list.Add(item);
                 }
+
+                // 3) Box（枠線・パネル）。作業前準備書などでレイアウト枠として使用。
+                foreach (var box in objectsEl.Elements("Box"))
+                {
+                    if (!TryParseBoxItem(box, out var boxItem)) continue;
+                    list.Add(boxItem);
+                }
             }
         }
 
@@ -253,6 +265,61 @@ public class JuicePdfService
         return true;
     }
 
+    /// <summary>rxz の Box（Graphic + Size）をパースする。</summary>
+    private static bool TryParseBoxItem(XElement box, out RxzTextItem item)
+    {
+        item = null!;
+        var graphic = box.Element("Graphic");
+        var obj = graphic?.Element("Object");
+        var size = box.Element("Size");
+        if (obj == null || size == null) return false;
+
+        var name = (string?)obj.Element("Name");
+        if (string.IsNullOrEmpty(name)) return false;
+
+        var start = obj.Element("Start");
+        int startX = (int?)start?.Attribute("X") ?? 0;
+        int startY = (int?)start?.Attribute("Y") ?? 0;
+        int drawSeq = (int?)obj.Element("DrawSeq") ?? 0;
+        bool visible = (bool?)obj.Element("Visible") ?? true;
+
+        int sizeW = (int?)size.Attribute("Width") ?? 0;
+        int sizeH = (int?)size.Attribute("Height") ?? 0;
+
+        int lineWidth = (int?)graphic?.Element("LineWidth") ?? 14173;
+        string lineColor = (string?)graphic?.Element("LineColor") ?? "ff000000";
+        int fillPattern = (int?)graphic?.Element("FillPattern") ?? 0;
+        string fillColorHex = (string?)graphic?.Element("FillColor") ?? "ff000000";
+        bool frame = (bool?)box.Element("Frame") ?? true;
+
+        item = new RxzTextItem
+        {
+            Name = name,
+            StartX = startX,
+            StartY = startY,
+            SizeWidth = sizeW,
+            SizeHeight = sizeH,
+            TextData = "",
+            Alignment = 1,
+            FontHeight = 1100,
+            FontName = "ＭＳ ゴシック",
+            DrawSeq = drawSeq,
+            Visible = visible,
+            Frame = frame,
+            LineWidth = lineWidth,
+            LineColor = lineColor ?? "ff000000",
+            MarginLeft = 0,
+            MarginTop = 0,
+            MarginRight = 0,
+            MarginBottom = 0,
+            ShrinkToFit = false,
+            IsBox = true,
+            FillPattern = fillPattern,
+            BoxFillColor = fillColorHex ?? "ff000000"
+        };
+        return true;
+    }
+
     /// <summary>
     /// タグ値をパース済みアイテム一覧に反映する。
     /// </summary>
@@ -289,6 +356,24 @@ public class JuicePdfService
             double w = item.SizeWidth / Twip;
             double h = item.SizeHeight / Twip;
             var rect = new XRect(x, y, w, h);
+
+            if (item.IsBox)
+            {
+                if (item.FillPattern != 0)
+                {
+                    var fill = ParseLineColor(item.BoxFillColor);
+                    gfx.DrawRectangle(new XSolidBrush(fill), rect);
+                }
+                if (item.Frame)
+                {
+                    var lineWidthPt = item.LineWidth / Twip;
+                    if (lineWidthPt <= 0) lineWidthPt = 0.5;
+                    var penColor = ParseLineColor(item.LineColor);
+                    var pen = new XPen(penColor, lineWidthPt);
+                    gfx.DrawRectangle(pen, rect);
+                }
+                continue;
+            }
 
             if (item.Frame)
             {
@@ -376,6 +461,7 @@ public class JuicePdfService
 
     /// <summary>
     /// 用紙サイズとページマージンを rxz から取得する。Margin は Page 直下の Margin 要素（Left, Top, Right, Bottom）。
+    /// Orientation が 2（横）のときは Size の幅・高さを入れ替えて PDF の向きと一致させる（オブジェクト座標は横レイアウト用）。
     /// </summary>
     private static (int Width, int Height, int MarginLeft, int MarginTop, int MarginRight, int MarginBottom) GetPageInfoFromRxz(string rxzTemplatePath)
     {
@@ -393,6 +479,13 @@ public class JuicePdfService
                 {
                     pageWidth = (int?)sizeEl.Attribute("Width") ?? pageWidth;
                     pageHeight = (int?)sizeEl.Attribute("Height") ?? pageHeight;
+                }
+                var orientEl = pageEl.Element("Orientation");
+                int orientation = (int?)orientEl ?? 1;
+                // 2 = 横（長辺が左右）。テンプレの Size は縦置き寸法のままのため入れ替える。
+                if (orientation == 2)
+                {
+                    (pageWidth, pageHeight) = (pageHeight, pageWidth);
                 }
                 var marginEl = pageEl.Element("Margin");
                 if (marginEl != null)
@@ -452,7 +545,7 @@ public class JuicePdfService
     /// <summary>
     /// 複数ページ分のタグ値を受け取り、1 ページずつ描画して PDF を生成する（弁当箱盛り付け指示書などで使用）。
     /// </summary>
-    public byte[] GeneratePdfMultiPage(string rxzTemplatePath, IReadOnlyList<Dictionary<string, string>> pagesTagValues)
+    public byte[] GeneratePdfMultiPage(string rxzTemplatePath, IReadOnlyList<Dictionary<string, string>> pagesTagValues, string? documentTitle = null)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
@@ -461,7 +554,7 @@ public class JuicePdfService
         var (pageWidth, pageHeight, marginLeft, marginTop, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
 
         var doc = new PdfDocument();
-        doc.Info.Title = "弁当箱盛り付け指示書";
+        doc.Info.Title = documentTitle ?? "弁当箱盛り付け指示書";
 
         foreach (var tagValues in pagesTagValues)
         {

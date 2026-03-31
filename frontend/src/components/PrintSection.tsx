@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BaggingInstructionResponse, LabelResponse } from '../types/api';
+import type { BaggingInstructionItem, BaggingInstructionResponse, LabelResponse } from '../types/api';
 
 interface PrintSectionProps {
   selectedPrkeys: number[];
@@ -32,7 +32,10 @@ export function PrintSection({ selectedPrkeys, onCalculate }: PrintSectionProps)
     }
   };
 
-  const items = printData && 'items' in printData ? printData.items : [];
+  const baggingPreviewItems: BaggingInstructionItem[] =
+    printData && printType === 'instruction' && 'items' in printData
+      ? (printData as BaggingInstructionResponse).items
+      : [];
 
   return (
     <section className="print-section">
@@ -71,7 +74,7 @@ export function PrintSection({ selectedPrkeys, onCalculate }: PrintSectionProps)
       >
         {loading ? '取得中...' : '印刷'}
       </button>
-      {items.length > 0 && printType === 'instruction' && (
+      {baggingPreviewItems.length > 0 && (
         <div id="print-preview-container" className="print-preview" style={{ marginTop: 16 }}>
           <h3>袋詰指示書プレビュー</h3>
           <table>
@@ -86,14 +89,14 @@ export function PrintSection({ selectedPrkeys, onCalculate }: PrintSectionProps)
               </tr>
             </thead>
             <tbody>
-              {items.map((item: Record<string, unknown>, i: number) => (
+              {baggingPreviewItems.map((item, i) => (
                 <tr key={i}>
-                  <td>{String(item.shpctrnm ?? '')}</td>
-                  <td>{String(item.itemnm ?? '')}</td>
-                  <td>{String(item.delvedt ?? '')}</td>
-                  <td>{Number(item.planned_quantity ?? 0)}</td>
-                  <td>{Number(item.standard_bags ?? 0)}</td>
-                  <td>{Number(item.irregular_quantity ?? 0)}</td>
+                  <td>{item.shpctrnm}</td>
+                  <td>{item.itemnm}</td>
+                  <td>{item.delvedt}</td>
+                  <td>{item.planned_quantity}</td>
+                  <td>{item.standard_bags}</td>
+                  <td>{item.irregular_quantity}</td>
                 </tr>
               ))}
             </tbody>

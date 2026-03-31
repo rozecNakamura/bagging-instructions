@@ -36,6 +36,8 @@ builder.Services.AddScoped<SearchService>();
 builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<BaggingCalculatorService>();
 builder.Services.AddScoped<JuicePdfService>();
+builder.Services.AddScoped<PreparationWorkService>();
+builder.Services.AddScoped<PreparationWorkPdfService>();
 builder.Services.AddScoped<DeliveryNoteService>();
 builder.Services.AddScoped<DeliveryNotePdfService>();
 builder.Services.AddScoped<PersonalDeliveryService>();
@@ -71,6 +73,15 @@ app.MapGet("/api/templates/juice", (IWebHostEnvironment env) =>
     if (!File.Exists(fullPath))
         return Results.NotFound();
     return Results.File(fullPath, "application/xml", "汁仕分表.rxz");
+});
+
+app.MapGet("/api/templates/preparation-work", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "..", "..", "static", "templates", "作業前準備書.rxz");
+    var fullPath = Path.GetFullPath(path);
+    if (!File.Exists(fullPath))
+        return Results.NotFound();
+    return Results.File(fullPath, "application/xml", "作業前準備書.rxz");
 });
 
 // ルート "/" はフロントの index へリダイレクト（/static/index.html を参照するため）

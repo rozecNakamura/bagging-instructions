@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<CustomerItem> CustomerItems => Set<CustomerItem>();
     public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
     public DbSet<MajorClassification> MajorClassifications => Set<MajorClassification>();
+    public DbSet<MiddleClassification> MiddleClassifications => Set<MiddleClassification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -161,5 +162,8 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<MajorClassification>()
             .HasKey(m => m.MajorClassificationId);
+
+        modelBuilder.Entity<MiddleClassification>()
+            .HasKey(m => m.MiddleClassificationId);
     }
 }

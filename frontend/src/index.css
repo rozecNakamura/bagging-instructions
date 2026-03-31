@@ -55,11 +55,33 @@ header h1 {
   font-weight: 500;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
   padding: 8px 12px;
   border: 1px solid #ccc;
   border-radius: 4px;
   min-width: 160px;
+}
+
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table .col-check {
+  width: 40px;
+}
+
+.data-table .col-num {
+  text-align: right;
+  width: 72px;
 }
 
 .btn {
