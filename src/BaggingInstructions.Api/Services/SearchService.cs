@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.Entities;
 using BaggingInstructions.Api.DTOs;
+using BaggingInstructions.Api.QueryResults;
 
 namespace BaggingInstructions.Api.Services;
 
@@ -306,6 +307,62 @@ public class SearchService
         }
 
         return rows;
+    }
+
+    /// <summary>現品票：ordertable を納期で検索し、同一納期・品目で数量を合算。大分類が指定されていれば絞り込み。</summary>
+    public async Task<List<ProductLabelRowDto>> SearchProductLabelAsync(string needdateYyyymmdd, long? majorClassificationId, CancellationToken ct = default)
+    {
+        var date = ParseProductDate(needdateYyyymmdd);
+        if (!date.HasValue)
+            throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needdateYyyymmdd));
+
+        List<ProductLabelSqlRow> raw;
+        if (majorClassificationId is long mid and > 0)
+        {
+            raw = await _db.Database
+                .SqlQuery<ProductLabelSqlRow>($@"
+            SELECT o.needdate AS ""NeedDate"", i.itemcd AS ""ItemCd"", COALESCE(i.itemname, '') AS ""ItemName"", SUM(COALESCE(o.qty, 0)) AS ""Qty""
+            FROM ordertable AS o
+            INNER JOIN item AS i ON o.itemcd = i.itemcd
+            WHERE o.needdate = {date.Value} AND i.majorclassficationid = {mid}
+            GROUP BY o.needdate, i.itemcd, i.itemname
+            ORDER BY i.itemcd")
+                .ToListAsync(ct);
+        }
+        else
+        {
+            raw = await _db.Database
+                .SqlQuery<ProductLabelSqlRow>($@"
+            SELECT o.needdate AS ""NeedDate"", i.itemcd AS ""ItemCd"", COALESCE(i.itemname, '') AS ""ItemName"", SUM(COALESCE(o.qty, 0)) AS ""Qty""
+            FROM ordertable AS o
+            INNER JOIN item AS i ON o.itemcd = i.itemcd
+            WHERE o.needdate = {date.Value}
+            GROUP BY o.needdate, i.itemcd, i.itemname
+            ORDER BY i.itemcd")
+                .ToListAsync(ct);
+        }
+
+        return raw.Select(r => new ProductLabelRowDto
+        {
+            NeedDate = r.NeedDate.ToString("yyyyMMdd"),
+            ItemDisplay = string.IsNullOrEmpty(r.ItemCd)
+                ? r.ItemName
+                : $"{r.ItemName}（{r.ItemCd}）",
+            Qty = r.Qty
+        }).ToList();
+    }
+
+    public async Task<List<MajorClassificationOptionDto>> ListMajorClassificationsAsync(CancellationToken ct = default)
+    {
+        return await _db.MajorClassifications.AsNoTracking()
+            .OrderBy(m => m.MajorClassificationCode ?? "")
+            .Select(m => new MajorClassificationOptionDto
+            {
+                Id = m.MajorClassificationId,
+                Code = m.MajorClassificationCode ?? "",
+                Name = m.MajorClassificationName ?? ""
+            })
+            .ToListAsync(ct);
     }
 
     private static DateOnly? ParseProductDate(string? prddt)

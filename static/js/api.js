@@ -277,6 +277,49 @@ export async function generatePersonalDeliveryPdfBlob(rows, variant) {
  * 受注明細詳細を取得（全リレーションデータ含む）
  * 印刷処理の前に呼び出す
  */
+/**
+ * 現品票：大分類一覧
+ * @returns {Promise<{ id: number, code: string, name: string }[]>}
+ */
+export async function fetchMajorClassifications() {
+    const response = await fetch(`${API_BASE_URL}/product-label/major-classifications`);
+    if (!response.ok) {
+        let detail = '';
+        try {
+            const body = await response.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`取得エラー: ${response.status}${detail}`);
+    }
+    return await response.json();
+}
+
+/**
+ * 現品票：ordertable 検索（納期＋任意の大分類）
+ * @param {string} needDate - YYYY-MM-DD または YYYYMMDD
+ * @param {number|string|null|undefined} majorClassificationId - 未指定・空なら大分類で絞り込まない
+ */
+export async function searchProductLabel(needDate, majorClassificationId) {
+    let needdateStr = needDate;
+    if (needDate && needDate.includes('-')) {
+        needdateStr = needDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ needdate: needdateStr });
+    if (majorClassificationId != null && String(majorClassificationId).trim() !== '') {
+        params.set('majorclassificationid', String(majorClassificationId));
+    }
+    const response = await fetch(`${API_BASE_URL}/product-label/search?${params}`);
+    if (!response.ok) {
+        let detail = '';
+        try {
+            const body = await response.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${response.status}${detail}`);
+    }
+    return await response.json();
+}
+
 export async function searchOrdersDetail(prkeys) {
     try {
         const response = await fetch(`${API_BASE_URL}/search/detail`, {

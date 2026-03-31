@@ -9,14 +9,40 @@
     <!-- 印刷用スタイル -->
     <style>
         @media print {
-            /* 印刷時は通常のページコンテンツを非表示 */
-            body > *:not(#print-preview-container) {
+            /* 袋詰PDF等：印刷プレビューコンテナ優先 */
+            body:not(.product-label-printing) > *:not(#print-preview-container) {
                 display: none !important;
             }
-            
-            /* 印刷プレビューコンテナのみ表示 */
             #print-preview-container {
                 display: block !important;
+            }
+            body.product-label-printing #print-preview-container {
+                display: none !important;
+            }
+
+            /* 現品票：ブラウザ印刷（サイドバー・検索フォームを除く） */
+            body.product-label-printing > *:not(.app-layout) {
+                display: none !important;
+            }
+            body.product-label-printing .app-layout .sidebar,
+            body.product-label-printing .search-section,
+            body.product-label-printing .print-section,
+            body.product-label-printing .results-section > h2,
+            body.product-label-printing .results-header {
+                display: none !important;
+            }
+            body.product-label-printing .main-content {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            body.product-label-printing #screen-product-label .container {
+                max-width: none !important;
+            }
+            body.product-label-printing #screen-product-label {
+                display: block !important;
+            }
+            body.product-label-printing .screen:not(#screen-product-label) {
+                display: none !important;
             }
         }
     </style>
@@ -32,6 +58,7 @@
                 <li><button type="button" class="menu-btn" data-screen="bento">弁当箱盛り付け指示書（ご飯）</button></li>
                 <li><button type="button" class="menu-btn" data-screen="delivery-note">納品書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="personal-delivery">個人配送指示書・個人配送指示書（集計）</button></li>
+                <li><button type="button" class="menu-btn" data-screen="product-label">現品票印刷</button></li>
             </ul>
         </nav>
 
@@ -310,6 +337,54 @@
                     </section>
                 </div>
             </div>
+
+            <!-- 現品票印刷画面 -->
+            <div id="screen-product-label" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>現品票印刷</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="productLabelNeedDate">納期:</label>
+                                <input type="date" id="productLabelNeedDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="productLabelMajorClass">大分類（任意）:</label>
+                                <select id="productLabelMajorClass">
+                                    <option value="">読み込み中…</option>
+                                </select>
+                            </div>
+                            <button type="button" id="productLabelSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="productLabelResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="productLabelResultCount">0件</span>
+                        </div>
+                        <div id="productLabelPrintArea" class="table-container">
+                            <table id="productLabelResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th>納期</th>
+                                        <th>品目</th>
+                                        <th>数量</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productLabelResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="productLabelPrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="productLabelPrintBtn" class="btn btn-success">印刷</button>
+                    </section>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -325,6 +400,8 @@
     <script type="module" src="/static/js/delivery_note_print.js"></script>
     <script type="module" src="/static/js/personal_delivery_search.js"></script>
     <script type="module" src="/static/js/personal_delivery_print.js"></script>
+    <script type="module" src="/static/js/product_label_search.js"></script>
+    <script type="module" src="/static/js/product_label_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>
     <script type="module" src="/static/js/pdf_generator.js"></script>
 </body>

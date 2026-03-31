@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<CustomerDeliveryLocationAddinfo> CustomerDeliveryLocationAddinfos => Set<CustomerDeliveryLocationAddinfo>();
     public DbSet<CustomerItem> CustomerItems => Set<CustomerItem>();
     public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
+    public DbSet<MajorClassification> MajorClassifications => Set<MajorClassification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -157,5 +158,8 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(ci => ci.ItemId)
             .IsRequired(false);
+
+        modelBuilder.Entity<MajorClassification>()
+            .HasKey(m => m.MajorClassificationId);
     }
 }
