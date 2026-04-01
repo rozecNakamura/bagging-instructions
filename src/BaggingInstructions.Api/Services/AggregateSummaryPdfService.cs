@@ -55,30 +55,38 @@ public sealed class AggregateSummaryPdfService
         string warehouseName,
         string shipDateDisplay)
     {
-        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Header tags: used for page top-left (warehouse + date)
+            ["WarehouseName"] = warehouseName ?? string.Empty,
+            ["ShipDateDisplay"] = shipDateDisplay ?? string.Empty
+        };
 
-        tags["WAREHOUSE"] = warehouseName;
-        tags["SHIPDATE"] = shipDateDisplay;
-
+        // Clear all item-name rows (品目列用: ITEMNM00〜ITEMNM13) and numeric columns (OTHER00〜OTHER13, OTHERUNIT00〜OTHER13)
         for (var i = 0; i < TemplateRowCount; i++)
         {
             var nn = i.ToString("D2");
-            tags[$"ITEMNAME{nn}"] = "";
-            tags[$"REPORTNAME{nn}"] = "";
-            tags[$"QUANTITY{nn}"] = "";
-            tags[$"UNIT{nn}"] = "";
+            tags[$"ITEMNM{nn}"] = "";
+            tags[$"OTHER{nn}"] = "";
+            tags[$"OTHERUNIT{nn}"] = "";
         }
 
+        // Map each line in the page chunk to a row:
+        // - ITEMNMxx   → child item name (or code + name)
+        // - OTHERxx    → quantity
+        // - OTHERUNITxx→ unit
         for (var i = 0; i < chunk.Count && i < RowsPerPage; i++)
         {
             var r = chunk[i];
             var nn = i.ToString("D2");
-            tags[$"REPORTNAME{nn}"] = r.ReportItemName;
-            tags[$"ITEMNAME{nn}"] = string.IsNullOrEmpty(r.ChildItemCode)
+
+            var itemText = string.IsNullOrEmpty(r.ChildItemCode)
                 ? r.ChildItemName
-                : $"{r.ChildItemCode}\n{r.ChildItemName}";
-            tags[$"QUANTITY{nn}"] = r.Quantity;
-            tags[$"UNIT{nn}"] = r.Unit;
+                : $"{r.ChildItemCode} {r.ChildItemName}";
+
+            tags[$"ITEMNM{nn}"] = itemText ?? string.Empty;
+            tags[$"OTHER{nn}"] = r.Quantity ?? string.Empty;
+            tags[$"OTHERUNIT{nn}"] = r.Unit ?? string.Empty;
         }
 
         return tags;

@@ -398,24 +398,32 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="aggFromDate">出庫日From:</label>
-                                <input type="date" id="aggFromDate">
-                            </div>
-                            <div class="form-group">
-                                <label for="aggToDate">出庫日To:</label>
-                                <input type="date" id="aggToDate">
+                                <label for="aggShipDate">出庫日:</label>
+                                <input type="date" id="aggShipDate">
                             </div>
                             <div class="form-group">
                                 <label for="aggItemCode">品目コード:</label>
                                 <input type="text" id="aggItemCode" placeholder="品目コードを入力">
                             </div>
                             <div class="form-group">
-                                <label for="aggMajorClass">大分類:</label>
-                                <input type="text" id="aggMajorClass" placeholder="大分類コードを入力">
+                                <label>大分類:</label>
+                                <div class="multi-select-dropdown" id="aggMajorDropdown">
+                                    <div class="multi-select-display" id="aggMajorDisplay">
+                                        <span id="aggMajorSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="aggMajorOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="aggMiddleClass">中分類:</label>
-                                <input type="text" id="aggMiddleClass" placeholder="中分類コードを入力">
+                                <label>中分類:</label>
+                                <div class="multi-select-dropdown" id="aggMiddleDropdown">
+                                    <div class="multi-select-display" id="aggMiddleDisplay">
+                                        <span id="aggMiddleSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="aggMiddleOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <button type="button" id="aggSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -474,16 +482,24 @@
                                 <input type="text" id="prepItemCode" placeholder="品目コードを入力">
                             </div>
                             <div class="form-group">
-                                <label for="prepMajorClass">大分類:</label>
-                                <select id="prepMajorClass">
-                                    <option value="">読み込み中…</option>
-                                </select>
+                                <label>大分類:</label>
+                                <div class="multi-select-dropdown" id="prepMajorDropdown">
+                                    <div class="multi-select-display" id="prepMajorDisplay">
+                                        <span id="prepMajorSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepMajorOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="prepMiddleClass">中分類:</label>
-                                <select id="prepMiddleClass" disabled>
-                                    <option value="">（大分類を選択してください）</option>
-                                </select>
+                                <label>中分類:</label>
+                                <div class="multi-select-dropdown" id="prepMiddleDropdown">
+                                    <div class="multi-select-display" id="prepMiddleDisplay">
+                                        <span id="prepMiddleSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepMiddleOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <button type="button" id="prepSearchBtn" class="btn btn-primary">検索</button>
                         </div>

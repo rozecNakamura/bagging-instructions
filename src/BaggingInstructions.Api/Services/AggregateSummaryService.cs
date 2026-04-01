@@ -22,8 +22,8 @@ public sealed class AggregateSummaryService
         string fromDate,
         string? toDate,
         string? itemCode,
-        string? majorClass,
-        string? middleClass,
+        IReadOnlyList<string>? majorClasses,
+        IReadOnlyList<string>? middleClasses,
         CancellationToken ct = default)
     {
         var from = ParseYyyymmdd(fromDate);
@@ -46,8 +46,9 @@ public sealed class AggregateSummaryService
         }
 
         var itemF = itemCode?.Trim() ?? "";
-        var majorF = majorClass?.Trim() ?? "";
-        var middleF = middleClass?.Trim() ?? "";
+
+        var majorList = (majorClasses ?? Array.Empty<string>()).Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToArray();
+        var middleList = (middleClasses ?? Array.Empty<string>()).Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToArray();
 
         var rows = await _db.Database
             .SqlQuery<AggregateSummarySqlRow>($@"
@@ -76,8 +77,8 @@ LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclass
 LEFT JOIN bom b ON b.parentitemcode = base.parent_itemcode
 WHERE base.need_date BETWEEN {from.Value} AND {to}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
-  AND ({majorF} = '' OR mc.majorclassificationcode = {majorF})
-  AND ({middleF} = '' OR mid.middleclassificationcode = {middleF})
+  AND ({majorList.Length} = 0 OR mc.majorclassificationcode = ANY ({majorList}))
+  AND ({middleList.Length} = 0 OR mid.middleclassificationcode = ANY ({middleList}))
 GROUP BY
   TO_CHAR(need_date, 'YYYYMMDD'),
   mc.majorclassificationcode,
@@ -162,8 +163,8 @@ WHERE
     'YYYYMMDD'
   ) = {key.ShipDate}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
-  AND ({maj} = '' OR COALESCE(mc.majorclassificationcode, '') = {maj})
-  AND ({mid} = '' OR COALESCE(midt.middleclassificationcode, '') = {mid})
+  AND COALESCE(mc.majorclassificationcode, '') = {maj}
+  AND COALESCE(midt.middleclassificationcode, '') = {mid}
 ")
                 .ToListAsync(ct);
 
@@ -184,7 +185,14 @@ WHERE
             return new List<AggregateSummaryPdfLineModel>();
 
         var baseLines = await _preparationWorkService.BuildPdfLineModelsAsync(lineIds, ct);
-        return baseLines.Select(l => new AggregateSummaryPdfLineModel
+        var ordered = baseLines
+            .OrderBy(l => l.WarehouseName, StringComparer.Ordinal)
+            .ThenBy(l => l.DateDisplay, StringComparer.Ordinal)
+            .ThenBy(l => l.ChildItemcode, StringComparer.Ordinal)
+            .ThenBy(l => l.ChildItemname, StringComparer.Ordinal)
+            .ToList();
+
+        return ordered.Select(l => new AggregateSummaryPdfLineModel
         {
             WarehouseName = l.WarehouseName,
             ShipDateDisplay = l.DateDisplay,
@@ -193,6 +201,53 @@ WHERE
             ChildItemName = l.ChildItemname,
             Quantity = l.Quantity,
             Unit = l.Unit
+        }).ToList();
+    }
+
+    public async Task<List<MiddleClassificationOptionDto>> ListAllMiddleClassificationsAsync(
+        CancellationToken ct = default)
+    {
+        var rows = await _db.MiddleClassifications.AsNoTracking()
+            .OrderBy(m => m.MajorClassificationCode ?? "")
+            .ThenBy(m => m.MiddleClassificationCode ?? "")
+            .Select(m => new MiddleClassificationOptionDto
+            {
+                Id = m.MiddleClassificationId,
+                Code = m.MiddleClassificationCode ?? string.Empty,
+                Name = m.MiddleClassificationName ?? string.Empty,
+                MajorCode = m.MajorClassificationCode ?? string.Empty
+            })
+            .ToListAsync(ct);
+
+        return rows;
+    }
+
+    public async Task<List<MiddleClassificationOptionDto>> ListMiddleClassificationsByMajorCodeAsync(
+        string majorCode,
+        CancellationToken ct = default)
+    {
+        var code = (majorCode ?? "").Trim();
+        if (code.Length == 0)
+            return new List<MiddleClassificationOptionDto>();
+
+        var rows = await _db.Database
+            .SqlQuery<MiddleClassificationOptionRow>($@"
+SELECT
+  middleclassificationcode AS ""Code"",
+  middleclassificationname AS ""Name"",
+  majorclassificationcode AS ""MajorCode""
+FROM middleclassification
+WHERE majorclassificationcode = {code}
+ORDER BY middleclassificationcode
+")
+            .ToListAsync(ct);
+
+        return rows.Select(r => new MiddleClassificationOptionDto
+        {
+            Id = 0, // not used on 集計表画面
+            Code = r.Code ?? string.Empty,
+            Name = r.Name ?? string.Empty,
+            MajorCode = r.MajorCode ?? string.Empty
         }).ToList();
     }
 
@@ -226,5 +281,12 @@ internal sealed class AggregateSummarySqlRow
 internal sealed class AggregateSummaryLineIdRow
 {
     public long SalesOrderLineId { get; set; }
+}
+
+internal sealed class MiddleClassificationOptionRow
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string MajorCode { get; set; } = "";
 }
 

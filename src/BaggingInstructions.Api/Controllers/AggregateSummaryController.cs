@@ -22,18 +22,42 @@ public class AggregateSummaryController : ControllerBase
         _env = env;
     }
 
+    /// <summary>大分類コードに紐づく中分類マスタ（集計表画面用）。</summary>
+    [HttpGet("middle-classifications")]
+    public async Task<ActionResult<List<MiddleClassificationOptionDto>>> ListMiddleClassificationsByMajorCode(
+        [FromQuery(Name = "major_code")] string? majorCode,
+        CancellationToken ct)
+    {
+        List<MiddleClassificationOptionDto> list;
+
+        if (string.IsNullOrWhiteSpace(majorCode))
+        {
+            // major_code 未指定時は全中分類を返す
+            list = await _service.ListAllMiddleClassificationsAsync(ct);
+        }
+        else
+        {
+            list = await _service.ListMiddleClassificationsByMajorCodeAsync(majorCode, ct);
+        }
+
+        return Ok(list);
+    }
+
     [HttpGet]
     public async Task<ActionResult<AggregateSummarySearchResponseDto>> Search(
         [FromQuery(Name = "from_date")] string fromDate,
         [FromQuery(Name = "to_date")] string? toDate,
         [FromQuery(Name = "item_code")] string? itemCode,
-        [FromQuery(Name = "major_class")] string? majorClass,
-        [FromQuery(Name = "middle_class")] string? middleClass,
+        [FromQuery(Name = "major_class")] string[]? majorClass,
+        [FromQuery(Name = "middle_class")] string[]? middleClass,
         CancellationToken ct)
     {
         try
         {
-            var rows = await _service.SearchSummaryAsync(fromDate, toDate, itemCode, majorClass, middleClass, ct);
+            var majorList = (majorClass ?? Array.Empty<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+            var middleList = (middleClass ?? Array.Empty<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+
+            var rows = await _service.SearchSummaryAsync(fromDate, toDate, itemCode, majorList, middleList, ct);
             return Ok(new AggregateSummarySearchResponseDto
             {
                 Total = rows.Count,
@@ -56,10 +80,10 @@ public class AggregateSummaryController : ControllerBase
         if (body == null || body.SummaryKeys == null || body.SummaryKeys.Count == 0)
             return BadRequest(new { detail = "印刷するグループを選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "集計表.rxz");
+        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "冷凍野菜集計表.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
-            return NotFound(new { detail = "集計表テンプレートが見つかりません" });
+            return NotFound(new { detail = "冷凍野菜集計表テンプレートが見つかりません" });
 
         try
         {
@@ -71,7 +95,7 @@ public class AggregateSummaryController : ControllerBase
             if (pdfBytes.Length == 0)
                 return BadRequest(new { detail = "印刷する行がありません" });
 
-            return File(pdfBytes, "application/pdf", "集計表.pdf");
+            return File(pdfBytes, "application/pdf", "冷凍野菜集計表.pdf");
         }
         catch (ArgumentException ex)
         {

@@ -57,6 +57,12 @@ public sealed class AggregateSummaryReportFilterDto
 
     [JsonPropertyName("middle_class")]
     public string? MiddleClass { get; set; }
+
+    [JsonPropertyName("major_classes")]
+    public List<string>? MajorClasses { get; set; }
+
+    [JsonPropertyName("middle_classes")]
+    public List<string>? MiddleClasses { get; set; }
 }
 
 public sealed class AggregateSummaryReportRequestDto

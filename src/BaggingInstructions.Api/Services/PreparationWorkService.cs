@@ -33,7 +33,8 @@ public class PreparationWorkService
             {
                 Id = m.MiddleClassificationId,
                 Code = m.MiddleClassificationCode ?? "",
-                Name = m.MiddleClassificationName ?? ""
+                Name = m.MiddleClassificationName ?? "",
+                MajorCode = m.MajorClassificationCode ?? ""
             })
             .ToListAsync(ct);
     }

@@ -11,6 +11,10 @@ import {
 import { openPdfInIframe } from './pdf_generator.js';
 
 let prepGroups = [];
+let prepMajorList = [];
+let prepMiddleList = [];
+let prepSelectedMajors = new Set();
+let prepSelectedMiddles = new Set();
 
 function formatYyyymmdd(yyyymmdd) {
     if (!yyyymmdd || yyyymmdd.length !== 8) return yyyymmdd || '-';
@@ -18,78 +22,165 @@ function formatYyyymmdd(yyyymmdd) {
 }
 
 async function loadPrepMajors() {
-    const sel = document.getElementById('prepMajorClass');
     try {
         const list = await fetchMajorClassifications();
-        sel.innerHTML = '';
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '指定なし（すべて）';
-        sel.appendChild(empty);
-        for (const m of list) {
-            const opt = document.createElement('option');
-            opt.value = String(m.id);
-            const code = m.code ? `${m.code} ` : '';
-            opt.textContent = `${code}${m.name || ''}`.trim() || String(m.id);
-            sel.appendChild(opt);
-        }
+        prepMajorList = list || [];
+        buildPrepMajorPanel();
     } catch (e) {
-        sel.innerHTML = '';
-        const err = document.createElement('option');
-        err.value = '';
-        err.textContent = '大分類の取得に失敗しました';
-        sel.appendChild(err);
         console.error(e);
     }
 }
 
 async function loadPrepMiddles() {
-    const majorSel = document.getElementById('prepMajorClass');
-    const middleSel = document.getElementById('prepMiddleClass');
-    const val = majorSel.value;
-    middleSel.innerHTML = '';
-    middleSel.disabled = true;
-    if (!val) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = '（大分類を選択してください）';
-        middleSel.appendChild(opt);
+    const majorIds = Array.from(prepSelectedMajors.values());
+    if (!majorIds.length) {
+        prepMiddleList = [];
+        buildPrepMiddlePanel();
         return;
     }
     try {
-        const list = await fetchMiddleClassifications(Number(val));
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '指定なし（すべて）';
-        middleSel.appendChild(empty);
-        for (const m of list) {
-            const opt = document.createElement('option');
-            opt.value = String(m.id);
-            const code = m.code ? `${m.code} ` : '';
-            opt.textContent = `${code}${m.name || ''}`.trim() || String(m.id);
-            middleSel.appendChild(opt);
-        }
-        middleSel.disabled = false;
+        // 代表として先頭の大分類IDで中分類を取得（必要に応じて拡張）
+        const firstId = Number(majorIds[0]);
+        const list = await fetchMiddleClassifications(firstId);
+        prepMiddleList = list || [];
+        buildPrepMiddlePanel();
     } catch (e) {
-        const err = document.createElement('option');
-        err.value = '';
-        err.textContent = '中分類の取得に失敗しました';
-        middleSel.appendChild(err);
         console.error(e);
     }
 }
 
+function updatePrepSelectedSummary() {
+    const majorLabel = document.getElementById('prepMajorSelectedLabel');
+    const middleLabel = document.getElementById('prepMiddleSelectedLabel');
+
+    if (majorLabel) {
+        if (prepSelectedMajors.size === 0) {
+            majorLabel.textContent = '未選択';
+        } else if (prepSelectedMajors.size === prepMajorList.length) {
+            majorLabel.textContent = 'すべて選択';
+        } else {
+            majorLabel.textContent = `${prepSelectedMajors.size}件選択`;
+        }
+    }
+
+    if (middleLabel) {
+        if (prepSelectedMiddles.size === 0) {
+            middleLabel.textContent = '未選択';
+        } else if (prepSelectedMiddles.size === prepMiddleList.length) {
+            middleLabel.textContent = 'すべて選択';
+        } else {
+            middleLabel.textContent = `${prepSelectedMiddles.size}件選択`;
+        }
+    }
+}
+
+function buildPrepMajorPanel() {
+    const container = document.getElementById('prepMajorOptions');
+    if (!container) return;
+    container.innerHTML = '';
+    prepMajorList.forEach(m => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = String(m.id);
+        if (prepSelectedMajors.has(cb.value)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                prepSelectedMajors.add(cb.value);
+            } else {
+                prepSelectedMajors.delete(cb.value);
+            }
+            updatePrepSelectedSummary();
+            // 大分類が変わったら中分類も更新
+            loadPrepMiddles();
+        });
+        const text = document.createElement('span');
+        // ドロップダウンには名称のみ表示（コードは表示しない）
+        text.textContent = m.name || '';
+        label.appendChild(cb);
+        label.appendChild(text);
+        container.appendChild(label);
+    });
+    updatePrepSelectedSummary();
+}
+
+function buildPrepMiddlePanel() {
+    const container = document.getElementById('prepMiddleOptions');
+    if (!container) return;
+    container.innerHTML = '';
+    prepMiddleList.forEach(m => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = String(m.id);
+        if (prepSelectedMiddles.has(cb.value)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                prepSelectedMiddles.add(cb.value);
+            } else {
+                prepSelectedMiddles.delete(cb.value);
+            }
+            updatePrepSelectedSummary();
+        });
+        const text = document.createElement('span');
+        // ドロップダウンには名称のみ表示（コードは表示しない）
+        text.textContent = m.name || '';
+        label.appendChild(cb);
+        label.appendChild(text);
+        container.appendChild(label);
+    });
+    updatePrepSelectedSummary();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadPrepMajors();
-    document.getElementById('prepMajorClass').addEventListener('change', loadPrepMiddles);
+    const majorDisplay = document.getElementById('prepMajorDisplay');
+    const middleDisplay = document.getElementById('prepMiddleDisplay');
+
+    function closeAllPrepPanels() {
+        const majorPanel = document.getElementById('prepMajorOptions');
+        const middlePanel = document.getElementById('prepMiddleOptions');
+        if (majorPanel) majorPanel.style.display = 'none';
+        if (middlePanel) middlePanel.style.display = 'none';
+    }
+
+    if (majorDisplay) {
+        majorDisplay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('prepMajorOptions');
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none' || panel.style.display === '';
+            closeAllPrepPanels();
+            panel.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+    if (middleDisplay) {
+        middleDisplay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('prepMiddleOptions');
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none' || panel.style.display === '';
+            closeAllPrepPanels();
+            panel.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        const dropdown = (e.target instanceof HTMLElement)
+            ? e.target.closest('#screen-preparation-work .multi-select-dropdown')
+            : null;
+        if (!dropdown) {
+            closeAllPrepPanels();
+        }
+    });
 });
 
 document.getElementById('prepSearchBtn').addEventListener('click', async () => {
     const needDate = document.getElementById('prepNeedDate').value;
     const slot = document.getElementById('prepSlot').value || '';
     const itemcd = document.getElementById('prepItemCode').value || '';
-    const majorIdStr = document.getElementById('prepMajorClass').value;
-    const middleIdStr = document.getElementById('prepMiddleClass').value;
+    const majorIds = Array.from(prepSelectedMajors.values());
+    const middleIds = Array.from(prepSelectedMiddles.values());
 
     if (!needDate) {
         alert('納期を入力してください');
@@ -101,8 +192,8 @@ document.getElementById('prepSearchBtn').addEventListener('click', async () => {
             needDate,
             slot,
             itemcd,
-            majorIdStr || undefined,
-            middleIdStr || undefined
+            majorIds.length ? majorIds[0] : undefined,
+            middleIds.length ? middleIds[0] : undefined
         );
         prepGroups = res.groups || [];
         displayPrepResults(prepGroups);
@@ -191,8 +282,8 @@ document.getElementById('prepCsvBtn').addEventListener('click', async () => {
     const needDate = document.getElementById('prepNeedDate').value;
     const slot = document.getElementById('prepSlot').value || '';
     const itemcd = document.getElementById('prepItemCode').value || '';
-    const majorIdStr = document.getElementById('prepMajorClass').value;
-    const middleIdStr = document.getElementById('prepMiddleClass').value;
+    const majorIds = Array.from(prepSelectedMajors.values());
+    const middleIds = Array.from(prepSelectedMiddles.values());
     const keys = getSelectedGroupKeys();
     if (keys.length === 0) {
         alert('出力するグループを選択してください');
@@ -206,8 +297,8 @@ document.getElementById('prepCsvBtn').addEventListener('click', async () => {
                 delvedt,
                 slot,
                 itemcd,
-                majorId: majorIdStr || null,
-                middleId: middleIdStr || null
+                majorId: majorIds.length ? majorIds[0] : null,
+                middleId: middleIds.length ? middleIds[0] : null
             },
             keys
         );
@@ -222,8 +313,8 @@ document.getElementById('prepPdfBtn').addEventListener('click', async () => {
     const needDate = document.getElementById('prepNeedDate').value;
     const slot = document.getElementById('prepSlot').value || '';
     const itemcd = document.getElementById('prepItemCode').value || '';
-    const majorIdStr = document.getElementById('prepMajorClass').value;
-    const middleIdStr = document.getElementById('prepMiddleClass').value;
+    const majorIds = Array.from(prepSelectedMajors.values());
+    const middleIds = Array.from(prepSelectedMiddles.values());
     const keys = getSelectedGroupKeys();
     if (keys.length === 0) {
         alert('印刷するグループを選択してください');
@@ -237,8 +328,8 @@ document.getElementById('prepPdfBtn').addEventListener('click', async () => {
                 delvedt,
                 slot,
                 itemcd,
-                majorId: majorIdStr || null,
-                middleId: middleIdStr || null
+                majorId: majorIds.length ? majorIds[0] : null,
+                middleId: middleIds.length ? middleIds[0] : null
             },
             keys
         );

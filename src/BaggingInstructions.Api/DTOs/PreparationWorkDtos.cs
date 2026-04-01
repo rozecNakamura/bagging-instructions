@@ -51,6 +51,10 @@ public class MiddleClassificationOptionDto
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
+
+    /// <summary>紐づく大分類コード（集計表画面などで連動制御に使用）。</summary>
+    [JsonPropertyName("majorCode")]
+    public string MajorCode { get; set; } = "";
 }
 
 public class PreparationWorkFilterRequestDto

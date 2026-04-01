@@ -382,8 +382,17 @@ export async function searchAggregateSummary(fromDate, toDate, itemCode, majorCl
     if (fromDate) params.set('from_date', fromDate);
     if (toDate) params.set('to_date', toDate);
     if (itemCode && itemCode.trim()) params.set('item_code', itemCode.trim());
-    if (majorClass && majorClass.trim()) params.set('major_class', majorClass.trim());
-    if (middleClass && middleClass.trim()) params.set('middle_class', middleClass.trim());
+    // majorClass / middleClass は文字列または配列を許容
+    const majors = Array.isArray(majorClass) ? majorClass : (majorClass ? [majorClass] : []);
+    const middles = Array.isArray(middleClass) ? middleClass : (middleClass ? [middleClass] : []);
+    majors
+        .map(s => String(s).trim())
+        .filter(s => s)
+        .forEach(code => params.append('major_class', code));
+    middles
+        .map(s => String(s).trim())
+        .filter(s => s)
+        .forEach(code => params.append('middle_class', code));
 
     const res = await fetch(`${API_BASE_URL}/aggregate-summary?${params}`);
     if (!res.ok) {
@@ -407,8 +416,15 @@ export async function exportAggregateSummaryPdf(filter, summaryKeys) {
                 ? filter.toDate.replace(/-/g, '')
                 : (filter.toDate || null),
             item_code: filter.itemCode || null,
-            major_class: filter.majorClass || null,
-            middle_class: filter.middleClass || null
+            // majorClass / middleClass は配列または単一値を許容
+            major_class: null,
+            middle_class: null,
+            major_classes: Array.isArray(filter.majorClass)
+                ? filter.majorClass
+                : (filter.majorClass ? [filter.majorClass] : []),
+            middle_classes: Array.isArray(filter.middleClass)
+                ? filter.middleClass
+                : (filter.middleClass ? [filter.middleClass] : [])
         },
         summaryKeys: summaryKeys || []
     };
@@ -440,6 +456,28 @@ export async function exportAggregateSummaryPdf(filter, summaryKeys) {
  */
 export async function fetchMajorClassifications() {
     const response = await fetch(`${API_BASE_URL}/product-label/major-classifications`);
+    if (!response.ok) {
+        let detail = '';
+        try {
+            const body = await response.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`取得エラー: ${response.status}${detail}`);
+    }
+    return await response.json();
+}
+
+/**
+ * 集計表用：中分類マスタ一覧（大分類コード指定）
+ * @param {string} majorCode
+ * @returns {Promise<{ code: string, name: string }[]>}
+ */
+export async function fetchAggregateMiddleClassifications(majorCode) {
+    const params = new URLSearchParams();
+    if (majorCode && majorCode.trim()) {
+        params.set('major_code', majorCode.trim());
+    }
+    const response = await fetch(`${API_BASE_URL}/aggregate-summary/middle-classifications?${params.toString()}`);
     if (!response.ok) {
         let detail = '';
         try {
