@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\BaggingInstructions.Api.props" />
-</Project>

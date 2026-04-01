@@ -76,3 +76,12 @@ Thumbs.db
 .env.production.local
 
 docs/*
+# Trailing /* only ignores one path segment; use / to ignore the whole tree.
+frontend/node_modules/
+
+# .NET build output (match anywhere under repo)
+[Bb]in/
+[Oo]bj/
+
+# TypeScript incremental
+*.tsbuildinfo

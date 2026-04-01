@@ -188,6 +188,110 @@ export async function generateDeliveryNotePdfBlob(rows) {
 }
 
 /**
+ * 作業前準備書：中分類マスタ一覧（大分類ID指定）
+ */
+export async function fetchMiddleClassifications(majorId) {
+    const params = new URLSearchParams({ majorclassificationid: String(majorId) });
+    const res = await fetch(`${API_BASE_URL}/preparation-work/middle-classifications?${params}`);
+    if (!res.ok) {
+        throw new Error(`中分類取得エラー: ${res.status}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 作業前準備書：検索（納期・便・品目・大分類・中分類 → グループ行）
+ */
+export async function searchPreparationWork(delvedt, slot, itemcd, majorId, middleId) {
+    let delvedtStr = delvedt;
+    if (delvedt && delvedt.includes('-')) {
+        delvedtStr = delvedt.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ delvedt: delvedtStr });
+    if (slot && slot.trim()) params.set('slot', slot.trim());
+    if (itemcd && itemcd.trim()) params.set('itemcd', itemcd.trim());
+    if (majorId) params.set('majorclassificationid', String(majorId));
+    if (middleId) params.set('middleclassificationid', String(middleId));
+
+    const res = await fetch(`${API_BASE_URL}/preparation-work/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 作業前準備書：CSV 出力
+ */
+export async function exportPreparationCsv(filter, groupKeys) {
+    const body = {
+        delvedt: filter.delvedt,
+        slot: filter.slot || null,
+        itemcd: filter.itemcd || null,
+        majorclassificationid: filter.majorId || null,
+        middleclassificationid: filter.middleId || null,
+        groupKeys: (groupKeys || []).map(k => ({
+            delvedt: k.delvedt,
+            majorClassificationCode: k.majorClassificationCode ?? null,
+            middleClassificationCode: k.middleClassificationCode ?? null
+        }))
+    };
+    const res = await fetch(`${API_BASE_URL}/preparation-work/csv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `CSV出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
+/**
+ * 作業前準備書：PDF 出力
+ */
+export async function exportPreparationPdf(filter, groupKeys) {
+    const body = {
+        delvedt: filter.delvedt,
+        slot: filter.slot || null,
+        itemcd: filter.itemcd || null,
+        majorclassificationid: filter.majorId || null,
+        middleclassificationid: filter.middleId || null,
+        groupKeys: (groupKeys || []).map(k => ({
+            delvedt: k.delvedt,
+            majorClassificationCode: k.majorClassificationCode ?? null,
+            middleClassificationCode: k.middleClassificationCode ?? null
+        }))
+    };
+    const res = await fetch(`${API_BASE_URL}/preparation-work/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `PDF出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
+/**
  * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。itemadditionalinformation.addinfo01 が存在する品目のみ。
  */
 export async function searchBento(delvedt, itemcd) {
