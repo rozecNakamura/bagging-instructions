@@ -242,6 +242,7 @@ WHERE sol.planneddeliverydate = {date.Value}
                 }
 
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
                 rows.Add(new PreparationCsvRow
                 {
                     WorkplaceName = h.WorkplaceNames,
@@ -253,7 +254,7 @@ WHERE sol.planneddeliverydate = {date.Value}
                     ParentItemname = h.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
-                    Quantity = qty.ToString(CultureInfo.InvariantCulture),
+                    Quantity = qtyDisplay,
                     Unit = b.ChildUnitname ?? ""
                 });
             }
@@ -309,6 +310,7 @@ WHERE sol.planneddeliverydate = {date.Value}
                 }
 
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
                 lines.Add(new PreparationPdfLineModel
                 {
                     MiddleClassificationName = h.MiddleClassName,
@@ -319,7 +321,7 @@ WHERE sol.planneddeliverydate = {date.Value}
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
                     Standard = b.ChildStd ?? "",
-                    Quantity = qty.ToString(CultureInfo.InvariantCulture),
+                    Quantity = qtyDisplay,
                     Unit = b.ChildUnitname ?? "",
                     WarehouseName = wh
                 });

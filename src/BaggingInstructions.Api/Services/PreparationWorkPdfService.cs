@@ -79,10 +79,18 @@ public class PreparationWorkPdfService
         {
             var r = chunk[i];
             var nn = i.ToString("D2");
-            tags[$"ITEMPALNUM{nn}"] = r.ParentItemcode;
-            tags[$"ITEMPALNM{nn}"] = r.ParentItemname;
-            tags[$"ITEMCHINUM{nn}"] = r.ChildItemcode;
-            tags[$"ITEMCHINM{nn}"] = r.ChildItemname;
+            var parentCell = string.IsNullOrEmpty(r.ParentItemcode)
+                ? r.ParentItemname
+                : $"{r.ParentItemcode}\n{r.ParentItemname}";
+            var childCell = string.IsNullOrEmpty(r.ChildItemcode)
+                ? r.ChildItemname
+                : $"{r.ChildItemcode}\n{r.ChildItemname}";
+
+            // 親品目・子品目セルは「コード\n名称」の2行表示にする
+            tags[$"ITEMPALNUM{nn}"] = parentCell;
+            tags[$"ITEMPALNM{nn}"] = "";
+            tags[$"ITEMCHINUM{nn}"] = childCell;
+            tags[$"ITEMCHINM{nn}"] = "";
             tags[$"ORDERNO{nn}"] = r.OrderNo;
             tags[$"ORDER{nn}"] = (i + 1).ToString();
             tags[$"STANDARD{nn}"] = r.Standard;
