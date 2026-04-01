@@ -377,6 +377,59 @@ export async function generatePersonalDeliveryPdfBlob(rows, variant) {
     return await response.blob();
 }
 
+export async function searchAggregateSummary(fromDate, toDate, itemCode, majorClass, middleClass) {
+    const params = new URLSearchParams();
+    if (fromDate) params.set('from_date', fromDate);
+    if (toDate) params.set('to_date', toDate);
+    if (itemCode && itemCode.trim()) params.set('item_code', itemCode.trim());
+    if (majorClass && majorClass.trim()) params.set('major_class', majorClass.trim());
+    if (middleClass && middleClass.trim()) params.set('middle_class', middleClass.trim());
+
+    const res = await fetch(`${API_BASE_URL}/aggregate-summary?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+export async function exportAggregateSummaryPdf(filter, summaryKeys) {
+    const body = {
+        filter: {
+            from_date: (filter.fromDate && filter.fromDate.includes('-'))
+                ? filter.fromDate.replace(/-/g, '')
+                : (filter.fromDate || null),
+            to_date: (filter.toDate && filter.toDate.includes('-'))
+                ? filter.toDate.replace(/-/g, '')
+                : (filter.toDate || null),
+            item_code: filter.itemCode || null,
+            major_class: filter.majorClass || null,
+            middle_class: filter.middleClass || null
+        },
+        summaryKeys: summaryKeys || []
+    };
+
+    const res = await fetch(`${API_BASE_URL}/aggregate-summary/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `PDF出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
 /**
  * 受注明細詳細を取得（全リレーションデータ含む）
  * 印刷処理の前に呼び出す

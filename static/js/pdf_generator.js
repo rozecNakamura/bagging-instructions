@@ -215,7 +215,7 @@ export async function generateDeliveryNotePDF(rows) {
 export async function generatePersonalDeliveryDetailPDF(rows) {
     if (!rows || rows.length === 0) return;
     const blob = await generatePersonalDeliveryPdfBlob(rows, 'detail');
-    openPersonalDeliveryPdfInIframe(blob, '個人配送指示書 PDF 印刷');
+    openPdfInIframe(blob, '個人配送指示書 PDF 印刷');
 }
 
 /**
@@ -225,10 +225,10 @@ export async function generatePersonalDeliveryDetailPDF(rows) {
 export async function generatePersonalDeliverySummaryPDF(rows) {
     if (!rows || rows.length === 0) return;
     const blob = await generatePersonalDeliveryPdfBlob(rows, 'summary');
-    openPersonalDeliveryPdfInIframe(blob, '個人配送指示書（集計） PDF 印刷');
+    openPdfInIframe(blob, '個人配送指示書（集計） PDF 印刷');
 }
 
-function openPersonalDeliveryPdfInIframe(blob, title) {
+export function openPdfInIframe(blob, title) {
     const url = URL.createObjectURL(blob);
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';

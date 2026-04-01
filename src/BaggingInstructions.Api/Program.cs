@@ -38,6 +38,8 @@ builder.Services.AddScoped<BaggingCalculatorService>();
 builder.Services.AddScoped<JuicePdfService>();
 builder.Services.AddScoped<PreparationWorkService>();
 builder.Services.AddScoped<PreparationWorkPdfService>();
+builder.Services.AddScoped<AggregateSummaryService>();
+builder.Services.AddScoped<AggregateSummaryPdfService>();
 builder.Services.AddScoped<DeliveryNoteService>();
 builder.Services.AddScoped<DeliveryNotePdfService>();
 builder.Services.AddScoped<PersonalDeliveryService>();

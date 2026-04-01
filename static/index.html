@@ -59,6 +59,7 @@
                 <li><button type="button" class="menu-btn" data-screen="delivery-note">納品書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="personal-delivery">個人配送指示書・個人配送指示書（集計）</button></li>
                 <li><button type="button" class="menu-btn" data-screen="product-label">現品票印刷</button></li>
+                <li><button type="button" class="menu-btn" data-screen="aggregate-summary">集計表</button></li>
                 <li><button type="button" class="menu-btn" data-screen="preparation-work">作業前準備書</button></li>
             </ul>
         </nav>
@@ -387,6 +388,70 @@
                 </div>
             </div>
 
+            <!-- 集計表画面 -->
+            <div id="screen-aggregate-summary" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>集計表</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="aggFromDate">出庫日From:</label>
+                                <input type="date" id="aggFromDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="aggToDate">出庫日To:</label>
+                                <input type="date" id="aggToDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="aggItemCode">品目コード:</label>
+                                <input type="text" id="aggItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label for="aggMajorClass">大分類:</label>
+                                <input type="text" id="aggMajorClass" placeholder="大分類コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label for="aggMiddleClass">中分類:</label>
+                                <input type="text" id="aggMiddleClass" placeholder="中分類コードを入力">
+                            </div>
+                            <button type="button" id="aggSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="aggResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="aggResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="aggSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="aggDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="aggResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="aggHeaderCheckbox"></th>
+                                        <th>日付</th>
+                                        <th>大分類</th>
+                                        <th>中分類</th>
+                                        <th>子品目の件数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aggResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="aggPrintSection" style="display: none;">
+                        <h2>帳票出力</h2>
+                        <button type="button" id="aggPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                    </section>
+                </div>
+            </div>
+
             <!-- 作業前準備書画面（static版） -->
             <div id="screen-preparation-work" class="screen">
                 <div class="container">
@@ -472,6 +537,7 @@
     <script type="module" src="/static/js/personal_delivery_print.js"></script>
     <script type="module" src="/static/js/product_label_search.js"></script>
     <script type="module" src="/static/js/product_label_print.js"></script>
+    <script type="module" src="/static/js/aggregate_summary.js"></script>
     <script type="module" src="/static/js/preparation_work_search.js"></script>
     <script type="module" src="/static/js/preparation_work_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>

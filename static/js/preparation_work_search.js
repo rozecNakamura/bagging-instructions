@@ -8,6 +8,7 @@ import {
     exportPreparationCsv,
     exportPreparationPdf
 } from './api.js';
+import { openPdfInIframe } from './pdf_generator.js';
 
 let prepGroups = [];
 
@@ -241,7 +242,7 @@ document.getElementById('prepPdfBtn').addEventListener('click', async () => {
             },
             keys
         );
-        await downloadBlob(blob, '作業前準備書.pdf');
+        openPdfInIframe(blob, '作業前準備書 PDF 印刷');
     } catch (e) {
         alert('PDF出力に失敗しました: ' + e.message);
         console.error(e);
