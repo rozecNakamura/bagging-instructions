@@ -44,6 +44,8 @@ builder.Services.AddScoped<DeliveryNoteService>();
 builder.Services.AddScoped<DeliveryNotePdfService>();
 builder.Services.AddScoped<PersonalDeliveryService>();
 builder.Services.AddScoped<PersonalDeliveryPdfService>();
+builder.Services.AddScoped<CookingInstructionService>();
+builder.Services.AddScoped<CookingInstructionPdfService>();
 
 builder.Services.AddCors(options =>
 {

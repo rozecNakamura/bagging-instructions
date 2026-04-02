@@ -570,3 +570,57 @@ export async function calculateBagging(jobordPrkeys, printType) {
     }
 }
 
+/**
+ * 調理指示書：検索（納期・作業区・便）
+ */
+export async function searchCookingInstruction(needDate, workplace, slot) {
+    let needdateStr = needDate;
+    if (needDate && needDate.includes('-')) {
+        needdateStr = needDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ needdate: needdateStr });
+    if (workplace && workplace.trim()) params.set('workplace', workplace.trim());
+    if (slot && slot.trim()) params.set('slot', slot.trim());
+
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 調理指示書：PDF 出力
+ */
+export async function exportCookingInstructionPdf(filter, lineIds) {
+    const body = {
+        needdate: (filter.needDate && filter.needDate.includes('-'))
+            ? filter.needDate.replace(/-/g, '')
+            : (filter.needDate || null),
+        workplace: filter.workplace || null,
+        slot: filter.slot || null,
+        lineIds: lineIds || []
+    };
+
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `PDF出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+

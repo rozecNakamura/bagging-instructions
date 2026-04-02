@@ -61,6 +61,7 @@
                 <li><button type="button" class="menu-btn" data-screen="product-label">現品票印刷</button></li>
                 <li><button type="button" class="menu-btn" data-screen="aggregate-summary">集計表</button></li>
                 <li><button type="button" class="menu-btn" data-screen="preparation-work">作業前準備書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="cooking-instruction">調理指示書</button></li>
             </ul>
         </nav>
 
@@ -460,6 +461,62 @@
                 </div>
             </div>
 
+            <!-- 調理指示書画面 -->
+            <div id="screen-cooking-instruction" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>調理指示書</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="cookNeedDate">納期:</label>
+                                <input type="date" id="cookNeedDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="cookWorkplace">作業区:</label>
+                                <input type="text" id="cookWorkplace" placeholder="作業区名の一部">
+                            </div>
+                            <div class="form-group">
+                                <label for="cookSlot">便:</label>
+                                <input type="text" id="cookSlot" placeholder="便コード / 名称の一部">
+                            </div>
+                            <button type="button" id="cookSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="cookResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="cookResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="cookSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="cookDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="cookResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="cookHeaderCheckbox"></th>
+                                        <th>作業区</th>
+                                        <th>納期</th>
+                                        <th>便</th>
+                                        <th>品目名</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cookResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="cookPrintSection" style="display: none;">
+                        <h2>帳票出力</h2>
+                        <button type="button" id="cookPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                    </section>
+                </div>
+            </div>
+
             <!-- 作業前準備書画面（static版） -->
             <div id="screen-preparation-work" class="screen">
                 <div class="container">
@@ -556,6 +613,8 @@
     <script type="module" src="/static/js/aggregate_summary.js"></script>
     <script type="module" src="/static/js/preparation_work_search.js"></script>
     <script type="module" src="/static/js/preparation_work_print.js"></script>
+    <script type="module" src="/static/js/cooking_instruction_search.js"></script>
+    <script type="module" src="/static/js/cooking_instruction_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>
     <script type="module" src="/static/js/pdf_generator.js"></script>
 </body>

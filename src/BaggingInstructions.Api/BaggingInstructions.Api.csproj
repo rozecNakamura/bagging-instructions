@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>BaggingInstructions.Api.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 汁仕分表 PDF 用フォント（.ttf を Fonts に置くと出力にコピーされ、かつ埋め込みリソースになる） -->
     <None Include="Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
     <EmbeddedResource Include="Fonts\*.ttf" Link="Fonts\%(Filename)%(Extension)" />
