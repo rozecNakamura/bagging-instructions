@@ -8,7 +8,7 @@ public class Item
     [Column("itemid")]
     public long ItemId { get; set; }
 
-    [Column("itemcd")]
+    [Column("itemcode")]
     public string? ItemCd { get; set; }
 
     [Column("itemname")]
@@ -29,8 +29,8 @@ public class Item
     [Column("unitid0")]
     public long? UnitId0 { get; set; }
 
-    [Column("unitid1")]
-    public long? UnitId1 { get; set; }
+    [Column("unitcode1")]
+    public string? UnitCode1 { get; set; }
 
     [Column("unitid2")]
     public long? UnitId2 { get; set; }

@@ -8,8 +8,9 @@ public class CustomerDeliveryLocation
     [Column("deliverylocationid")]
     public long DeliveryLocationId { get; set; }
 
-    [Column("customerid")]
-    public long CustomerId { get; set; }
+    /// <summary>得意先コード（DB 列 customercode）。</summary>
+    [Column("customercode")]
+    public string? CustomerCode { get; set; }
 
     [Column("locationcode")]
     public string? LocationCode { get; set; }

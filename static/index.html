@@ -45,6 +45,13 @@
                 display: none !important;
             }
         }
+
+        /* 必須項目のラベル用（検索フォームなど） */
+        .field-required-mark {
+            color: #c62828;
+            font-weight: bold;
+            margin-left: 0.15em;
+        }
     </style>
 </head>
 <body>
@@ -62,7 +69,9 @@
                 <li><button type="button" class="menu-btn" data-screen="aggregate-summary">集計表</button></li>
                 <li><button type="button" class="menu-btn" data-screen="preparation-work">作業前準備書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="cooking-instruction">調理指示書</button></li>
-                <li><button type="button" class="menu-btn" data-screen="production-instruction">製造指示書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="production-instruction">調味液配合表仕様</button></li>
+                <li><button type="button" class="menu-btn" data-screen="inspection-record">検品記録簿</button></li>
+                <li><button type="button" class="menu-btn" data-screen="acceptance-record">検収の記録簿</button></li>
             </ul>
         </nav>
 
@@ -79,8 +88,8 @@
             <h2>受注明細検索</h2>
             <div class="search-form">
                 <div class="form-group">
-                    <label for="productionDate">製造日:</label>
-                    <input type="date" id="productionDate">
+                    <label for="productionDate">製造日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                    <input type="date" id="productionDate" required aria-required="true">
                 </div>
                 <div class="form-group">
                     <label for="productCode">品目コード:</label>
@@ -152,8 +161,8 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="juiceEatingDate">喫食日:</label>
-                                <input type="date" id="juiceEatingDate">
+                                <label for="juiceEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="juiceEatingDate" required aria-required="true">
                             </div>
                             <div class="form-group">
                                 <label for="juiceItemCode">品目コード:</label>
@@ -205,8 +214,8 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="bentoEatingDate">喫食日:</label>
-                                <input type="date" id="bentoEatingDate">
+                                <label for="bentoEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="bentoEatingDate" required aria-required="true">
                             </div>
                             <div class="form-group">
                                 <label for="bentoItemCode">品目コード:</label>
@@ -258,8 +267,8 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="deliveryNoteEatingDate">喫食日:</label>
-                                <input type="date" id="deliveryNoteEatingDate">
+                                <label for="deliveryNoteEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="deliveryNoteEatingDate" required aria-required="true">
                             </div>
                             <button type="button" id="deliveryNoteSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -294,6 +303,131 @@
                 </div>
             </div>
 
+            <!-- 検品記録簿画面 -->
+            <div id="screen-inspection-record" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>検品記録簿</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="inspectionNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="inspectionNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>仕入先（任意）:</label>
+                                <div class="multi-select-dropdown" id="inspectionSupplierDropdown">
+                                    <div class="multi-select-display" id="inspectionSupplierDisplay">
+                                        <span id="inspectionSupplierSelectedLabel" class="multi-select-summary">すべて</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="inspectionSupplierOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="inspectionSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="inspectionResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="inspectionResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="inspectionSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="inspectionDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="inspectionResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="inspectionHeaderCheckbox"></th>
+                                        <th>注番</th>
+                                        <th>仕入先</th>
+                                        <th>納期</th>
+                                        <th>品目コード</th>
+                                        <th>品目名称</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inspectionResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="inspectionPrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="inspectionPrintBtn" class="btn btn-success">PDF印刷</button>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 検収の記録簿画面 -->
+            <div id="screen-acceptance-record" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>検収の記録簿</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="acceptanceDelvDate">納品日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="acceptanceDelvDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="acceptanceShipDate">出荷日:</label>
+                                <input type="date" id="acceptanceShipDate">
+                            </div>
+                            <div class="form-group">
+                                <label>店舗（納入場所）:</label>
+                                <div class="multi-select-dropdown" id="acceptanceStoreDropdown">
+                                    <div class="multi-select-display" id="acceptanceStoreDisplay">
+                                        <span id="acceptanceStoreSelectedLabel" class="multi-select-summary">すべて</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="acceptanceStoreOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="acceptanceSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="acceptanceResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="acceptanceResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="acceptanceSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="acceptanceDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="acceptanceResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="acceptanceHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
+                                        <th>子品目</th>
+                                        <th>食数</th>
+                                        <th>総量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="acceptanceResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="acceptancePrintSection" style="display: none;">
+                        <h2>印刷</h2>
+                        <button type="button" id="acceptancePrintBtn" class="btn btn-success">PDF印刷</button>
+                    </section>
+                </div>
+            </div>
+
             <!-- 個人配送指示書・個人配送指示書（集計）画面 -->
             <div id="screen-personal-delivery" class="screen">
                 <div class="container">
@@ -304,8 +438,8 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="personalDeliveryDate">配送日:</label>
-                                <input type="date" id="personalDeliveryDate">
+                                <label for="personalDeliveryDate">配送日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="personalDeliveryDate" required aria-required="true">
                             </div>
                             <button type="button" id="personalDeliverySearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -352,8 +486,8 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="productLabelNeedDate">納期:</label>
-                                <input type="date" id="productLabelNeedDate">
+                                <label for="productLabelNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="productLabelNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
                                 <label for="productLabelMajorClass">大分類（任意）:</label>
@@ -472,16 +606,28 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="cookNeedDate">納期:</label>
-                                <input type="date" id="cookNeedDate">
+                                <label for="cookNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="cookNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label for="cookWorkplace">作業区:</label>
-                                <input type="text" id="cookWorkplace" placeholder="作業区名の一部">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="cookWorkcenterDropdown">
+                                    <div class="multi-select-display" id="cookWorkcenterDisplay">
+                                        <span id="cookWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cookWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="cookSlot">便:</label>
-                                <input type="text" id="cookSlot" placeholder="便コード / 名称の一部">
+                                <label>便:</label>
+                                <div class="multi-select-dropdown" id="cookSlotDropdown">
+                                    <div class="multi-select-display" id="cookSlotDisplay">
+                                        <span id="cookSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cookSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <button type="button" id="cookSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -500,10 +646,9 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="cookHeaderCheckbox"></th>
-                                        <th>作業区</th>
+                                        <th>品目名</th>
                                         <th>納期</th>
                                         <th>便</th>
-                                        <th>品目名</th>
                                     </tr>
                                 </thead>
                                 <tbody id="cookResultsBody">
@@ -518,26 +663,38 @@
                 </div>
             </div>
 
-            <!-- 製造指示書画面 -->
+            <!-- 調味液配合表仕様画面 -->
             <div id="screen-production-instruction" class="screen">
                 <div class="container">
                     <header>
-                        <h1>製造指示書</h1>
+                        <h1>調味液配合表仕様</h1>
                     </header>
                     <section class="search-section">
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="prodNeedDate">納期:</label>
-                                <input type="date" id="prodNeedDate">
+                                <label for="prodNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="prodNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label for="prodWorkcenter">作業区:</label>
-                                <input type="text" id="prodWorkcenter" placeholder="作業区名の一部">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="prodWorkcenterDropdown">
+                                    <div class="multi-select-display" id="prodWorkcenterDisplay">
+                                        <span id="prodWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prodWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="prodSlot">便:</label>
-                                <input type="text" id="prodSlot" placeholder="便コード / 名称の一部">
+                                <label>便:</label>
+                                <div class="multi-select-dropdown" id="prodSlotDropdown">
+                                    <div class="multi-select-display" id="prodSlotDisplay">
+                                        <span id="prodSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prodSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
                             </div>
                             <button type="button" id="prodSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -583,8 +740,8 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="prepNeedDate">納期:</label>
-                                <input type="date" id="prepNeedDate">
+                                <label for="prepNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="prepNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
                                 <label for="prepSlot">便:</label>
@@ -673,6 +830,10 @@
     <script type="module" src="/static/js/cooking_instruction_print.js"></script>
     <script type="module" src="/static/js/production_instruction_search.js"></script>
     <script type="module" src="/static/js/production_instruction_print.js"></script>
+    <script type="module" src="/static/js/inspection_record_search.js"></script>
+    <script type="module" src="/static/js/inspection_record_print.js"></script>
+    <script type="module" src="/static/js/acceptance_record_search.js"></script>
+    <script type="module" src="/static/js/acceptance_record_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>
     <script type="module" src="/static/js/pdf_generator.js"></script>
 </body>

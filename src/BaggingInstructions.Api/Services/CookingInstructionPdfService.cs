@@ -17,7 +17,7 @@ public sealed class CookingInstructionPdfService
         _juicePdf = juicePdf;
     }
 
-    public byte[] GeneratePdf(string rxzTemplatePath, IReadOnlyList<CookingInstructionPdfLineModel> lines)
+    public byte[] GeneratePdf(string rxzTemplatePath, IReadOnlyList<CookingInstructionPdfLineModel> lines, string? documentTitle = null)
     {
         if (lines == null || lines.Count == 0)
             return Array.Empty<byte>();
@@ -47,7 +47,8 @@ public sealed class CookingInstructionPdfService
             }
         }
 
-        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "調理指示書");
+        var title = string.IsNullOrWhiteSpace(documentTitle) ? "調理指示書" : documentTitle.Trim();
+        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, title);
     }
 
     internal static Dictionary<string, string> BuildPageTagValues(
@@ -80,11 +81,8 @@ public sealed class CookingInstructionPdfService
             var r = chunk[i];
             var nn = i.ToString("D2");
 
-            // Template layout has a dedicated row index column at the far left;
-            // using codes here causes visual overlap with that "00/01..." column,
-            // so we only render item names in these cells.
-            var parentText = r.ParentItemName;
-            var childText = r.ChildItemName;
+            var parentText = FormatItemCodeName(r.ParentItemCode, r.ParentItemName);
+            var childText = FormatItemCodeName(r.ChildItemCode, r.ChildItemName);
 
             static string ShortenUnit(string? unit)
             {
@@ -102,6 +100,15 @@ public sealed class CookingInstructionPdfService
         }
 
         return tags;
+    }
+
+    internal static string FormatItemCodeName(string? code, string? name)
+    {
+        var c = (code ?? "").Trim();
+        var n = (name ?? "").Trim();
+        if (c.Length == 0) return n;
+        if (n.Length == 0) return c;
+        return $"{c} {n}";
     }
 }
 

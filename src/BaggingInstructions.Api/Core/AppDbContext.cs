@@ -13,6 +13,8 @@ public class AppDbContext : DbContext
     public DbSet<SalesOrderLine> SalesOrderLines => Set<SalesOrderLine>();
     public DbSet<SalesOrderLineAddinfo> SalesOrderLineAddinfos => Set<SalesOrderLineAddinfo>();
     public DbSet<OrderTable> OrderTables => Set<OrderTable>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<ReportOutputSetting> ReportOutputSettings => Set<ReportOutputSetting>();
     public DbSet<Item> Items => Set<Item>();
     public DbSet<ItemAdditionalInformation> ItemAdditionalInformations => Set<ItemAdditionalInformation>();
     public DbSet<Bom> Boms => Set<Bom>();
@@ -49,17 +51,18 @@ public class AppDbContext : DbContext
         // Unit
         modelBuilder.Entity<Unit>().HasIndex(u => u.UnitCode).IsUnique();
 
-        // SalesOrder -> Customer, CustomerDeliveryLocation
+        // SalesOrder -> Customer（customercode）, CustomerDeliveryLocation（customercode + locationcode）
         modelBuilder.Entity<SalesOrder>()
             .HasOne(so => so.Customer)
             .WithMany()
-            .HasForeignKey(so => so.CustomerId)
+            .HasForeignKey(so => so.CustomerCode)
+            .HasPrincipalKey(c => c.CustomerCode)
             .IsRequired(false);
         modelBuilder.Entity<SalesOrder>()
             .HasOne(so => so.CustomerDeliveryLocation)
             .WithMany()
-            .HasForeignKey(so => so.CustomerDeliveryLocationId)
-            .HasPrincipalKey(c => c.DeliveryLocationId)
+            .HasForeignKey(so => new { so.CustomerCode, so.CustomerDeliveryLocationCode })
+            .HasPrincipalKey(cdl => new { cdl.CustomerCode, cdl.LocationCode })
             .IsRequired(false);
 
         // SalesOrderLine -> SalesOrder, Item, CustomerItem, SalesOrderLineAddinfo
@@ -101,19 +104,24 @@ public class AppDbContext : DbContext
             .WithOne(ai => ai.Item)
             .HasForeignKey<ItemAdditionalInformation>(ai => ai.ItemId);
 
-        // Item -> ItemWorkCenterMapping (ItemCd)
+        // Item -> ItemWorkCenterMapping (FK: item.itemcode = mapping.itemcode; property ItemCd)
         modelBuilder.Entity<Item>()
             .HasMany(i => i.WorkCenterMappings)
             .WithOne()
             .HasForeignKey(m => m.ItemCd)
             .HasPrincipalKey(i => i.ItemCd)
             .IsRequired(false);
+        modelBuilder.Entity<Workcenter>()
+            .HasIndex(w => w.WorkcenterCode)
+            .IsUnique();
+
         modelBuilder.Entity<ItemWorkCenterMapping>()
-            .HasKey(m => new { m.ItemCd, m.WorkcenterId });
+            .HasKey(m => new { m.ItemCd, m.WorkcenterCode });
         modelBuilder.Entity<ItemWorkCenterMapping>()
             .HasOne(m => m.Workcenter)
             .WithMany()
-            .HasForeignKey(m => m.WorkcenterId);
+            .HasForeignKey(m => m.WorkcenterCode)
+            .HasPrincipalKey(w => w.WorkcenterCode);
 
         // Bom -> ChildItem (ChildItemCd -> Item.ItemCd)
         modelBuilder.Entity<Bom>()
@@ -136,11 +144,12 @@ public class AppDbContext : DbContext
         // CustomerDeliveryLocation: 主キー明示（EF が DeliveryLocationId を自動認識しないため）
         modelBuilder.Entity<CustomerDeliveryLocation>()
             .HasKey(c => c.DeliveryLocationId);
-        // CustomerDeliveryLocation -> Customer
+        // CustomerDeliveryLocation -> Customer（customerdeliverylocation.customercode = customer.customercode）
         modelBuilder.Entity<CustomerDeliveryLocation>()
-            .HasOne(c => c.Customer)
+            .HasOne(l => l.Customer)
             .WithMany(c => c.DeliveryLocations)
-            .HasForeignKey(c => c.CustomerId);
+            .HasForeignKey(l => l.CustomerCode)
+            .HasPrincipalKey(c => c.CustomerCode);
         // CustomerDeliveryLocation -> CustomerDeliveryLocationAddinfo (1:1)
         modelBuilder.Entity<CustomerDeliveryLocation>()
             .HasOne(c => c.Addinfo)
@@ -165,5 +174,11 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<MiddleClassification>()
             .HasKey(m => m.MiddleClassificationId);
+
+        modelBuilder.Entity<Supplier>()
+            .HasKey(s => s.SupplierCode);
+
+        modelBuilder.Entity<ReportOutputSetting>()
+            .HasKey(r => r.ReportCode);
     }
 }

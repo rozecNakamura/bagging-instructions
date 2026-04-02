@@ -408,7 +408,10 @@ WHERE sol.planneddeliverydate = {date.Value}
                   COALESCE(mid.middleclassificationname, '') AS middle_class_name,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
                   COALESCE((
-                    {SqlFragments.WorkplaceNamesByItemcode("i.itemcode")}
+                    SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
+                    FROM itemworkcentermapping m2
+                    INNER JOIN workcenter wc ON wc.workcentercode = m2.workcentercode
+                    WHERE m2.itemcode = i.itemcode
                   ), '') AS workplace_names,
                   sol.planneddeliverydate,
                   COALESCE(

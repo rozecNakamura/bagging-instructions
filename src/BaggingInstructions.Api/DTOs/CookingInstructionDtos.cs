@@ -4,8 +4,12 @@ namespace BaggingInstructions.Api.DTOs;
 
 public sealed class CookingInstructionSearchRowDto
 {
-    [JsonPropertyName("salesOrderLineId")]
-    public long SalesOrderLineId { get; set; }
+    [JsonPropertyName("orderTableId")]
+    public long OrderTableId { get; set; }
+
+    /// <summary>品目名（ordertable の item に紐づく）。</summary>
+    [JsonPropertyName("itemName")]
+    public string ItemName { get; set; } = "";
 
     /// <summary>表示用 YYYY-MM-DD 形式の納期。</summary>
     [JsonPropertyName("needDate")]
@@ -14,16 +18,6 @@ public sealed class CookingInstructionSearchRowDto
     /// <summary>便表示（slot 名称またはコード）。</summary>
     [JsonPropertyName("slotDisplay")]
     public string SlotDisplay { get; set; } = "";
-
-    /// <summary>作業区名の連結文字列。</summary>
-    [JsonPropertyName("workplaceNames")]
-    public string WorkplaceNames { get; set; } = "";
-
-    [JsonPropertyName("parentItemCode")]
-    public string ParentItemCode { get; set; } = "";
-
-    [JsonPropertyName("parentItemName")]
-    public string ParentItemName { get; set; } = "";
 }
 
 public sealed class CookingInstructionSearchResponseDto
@@ -33,6 +27,26 @@ public sealed class CookingInstructionSearchResponseDto
 
     [JsonPropertyName("rows")]
     public List<CookingInstructionSearchRowDto> Rows { get; set; } = new();
+}
+
+/// <summary>作業区マスタ（調理指示書プルダウン用）。</summary>
+public sealed class CookingInstructionWorkcenterOptionDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
+/// <summary>便マスタ（調理指示書プルダウン用）。</summary>
+public sealed class CookingInstructionSlotOptionDto
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
 }
 
 /// <summary>調理指示書 PDF 1 行分のモデル。</summary>
@@ -55,4 +69,3 @@ public sealed class CookingInstructionPdfLineModel
     /// <summary>Workplace names used as 作業名 on the report header.</summary>
     public string WorkplaceNames { get; set; } = "";
 }
-

@@ -571,16 +571,60 @@ export async function calculateBagging(jobordPrkeys, printType) {
 }
 
 /**
- * 調理指示書：検索（納期・作業区・便）
+ * 調理指示書：作業区マスタ
+ * @returns {Promise<{ id: number, name: string }[]>}
  */
-export async function searchCookingInstruction(needDate, workplace, slot) {
+export async function fetchCookingWorkcenters() {
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/workcenters`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`作業区マスタ取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 調理指示書：便マスタ
+ * @returns {Promise<{ code: string, name: string }[]>}
+ */
+export async function fetchCookingSlots() {
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/slots`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`便マスタ取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 調理指示書：検索（納期・作業区 ID 複数・便コード複数）
+ * @param {string} needDate
+ * @param {number[]} workcenterIds
+ * @param {string[]} slotCodes
+ */
+export async function searchCookingInstruction(needDate, workcenterIds, slotCodes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
     }
     const params = new URLSearchParams({ needdate: needdateStr });
-    if (workplace && workplace.trim()) params.set('workplace', workplace.trim());
-    if (slot && slot.trim()) params.set('slot', slot.trim());
+    (workcenterIds || []).forEach(id => {
+        if (id != null && id !== '' && !Number.isNaN(Number(id))) {
+            params.append('workcenter_id', String(id));
+        }
+    });
+    (slotCodes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('slot_code', c);
+    });
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/search?${params}`);
     if (!res.ok) {
@@ -597,14 +641,12 @@ export async function searchCookingInstruction(needDate, workplace, slot) {
 /**
  * 調理指示書：PDF 出力
  */
-export async function exportCookingInstructionPdf(filter, lineIds) {
+export async function exportCookingInstructionPdf(filter, orderTableIds) {
     const body = {
         needdate: (filter.needDate && filter.needDate.includes('-'))
             ? filter.needDate.replace(/-/g, '')
             : (filter.needDate || null),
-        workplace: filter.workplace || null,
-        slot: filter.slot || null,
-        lineIds: lineIds || []
+        orderTableIds: orderTableIds || []
     };
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/report`, {
@@ -625,16 +667,61 @@ export async function exportCookingInstructionPdf(filter, lineIds) {
 }
 
 /**
- * 製造指示書：検索（納期・作業区・便）
+ * 調味液配合表仕様：作業区マスタ
+ * @returns {Promise<{ id: number, name: string }[]>}
  */
-export async function searchProductionInstruction(needDate, workcenter, slot) {
+export async function fetchProductionInstructionWorkcenters() {
+    const res = await fetch(`${API_BASE_URL}/production-instruction/workcenters`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 調味液配合表仕様：便マスタ
+ * @returns {Promise<{ code: string, name: string }[]>}
+ */
+export async function fetchProductionInstructionSlots() {
+    const res = await fetch(`${API_BASE_URL}/production-instruction/slots`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 調味液配合表仕様：検索（納期・作業区 ID 複数・便コード複数）
+ * @param {string} needDate
+ * @param {number[]|number|null|undefined} workcenterIds
+ * @param {string[]|string|null|undefined} slotCodes
+ */
+export async function searchProductionInstruction(needDate, workcenterIds, slotCodes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
     }
     const params = new URLSearchParams({ needdate: needdateStr });
-    if (workcenter && workcenter.trim()) params.set('workcenter', workcenter.trim());
-    if (slot && slot.trim()) params.set('slot', slot.trim());
+    const wcs = Array.isArray(workcenterIds) ? workcenterIds : (workcenterIds != null ? [workcenterIds] : []);
+    const slots = Array.isArray(slotCodes) ? slotCodes : (slotCodes ? [slotCodes] : []);
+    wcs
+        .map(id => Number(id))
+        .filter(id => Number.isFinite(id) && id > 0)
+        .forEach(id => params.append('workcenter_id', String(id)));
+    slots
+        .map(s => String(s).trim())
+        .filter(s => s)
+        .forEach(code => params.append('slot_code', code));
 
     const res = await fetch(`${API_BASE_URL}/production-instruction/search?${params}`);
     if (!res.ok) {
@@ -649,19 +736,176 @@ export async function searchProductionInstruction(needDate, workcenter, slot) {
 }
 
 /**
- * 製造指示書：PDF 出力
+ * 調味液配合表仕様：PDF 出力
  */
 export async function exportProductionInstructionPdf(filter, orderIds) {
+    const wcIds = Array.isArray(filter.workcenterIds) ? filter.workcenterIds : [];
+    const slotCodes = Array.isArray(filter.slotCodes) ? filter.slotCodes : [];
     const body = {
         needdate: (filter.needDate && filter.needDate.includes('-'))
             ? filter.needDate.replace(/-/g, '')
             : (filter.needDate || null),
-        workcenter: filter.workcenter || null,
-        slot: filter.slot || null,
+        workcenter_id: wcIds.length ? wcIds : null,
+        slot_code: slotCodes.length ? slotCodes : null,
         orderIds: orderIds || []
     };
 
     const res = await fetch(`${API_BASE_URL}/production-instruction/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `PDF出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
+/**
+ * 検品記録簿：仕入先マスタ一覧（マルチセレクト用）
+ * @returns {Promise<Array<{ supplierCode: string, supplierName: string }>>}
+ */
+export async function fetchInspectionSuppliers() {
+    const res = await fetch(`${API_BASE_URL}/inspection-record/suppliers`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`仕入先一覧取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 検品記録簿：検索（納期必須、仕入先コードは任意の複数）
+ * @param {string} needDate
+ * @param {string[]} supplierCodes 空配列のとき仕入先で絞り込まない
+ */
+export async function searchInspectionRecord(needDate, supplierCodes) {
+    let needdateStr = needDate;
+    if (needDate && needDate.includes('-')) {
+        needdateStr = needDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ needdate: needdateStr });
+    (supplierCodes || []).forEach((c) => {
+        const v = (c || '').trim();
+        if (v) params.append('supplierCodes', v);
+    });
+
+    const res = await fetch(`${API_BASE_URL}/inspection-record/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 検品記録簿：PDF 出力
+ */
+export async function exportInspectionRecordPdf(filter, lineIds) {
+    const body = {
+        needdate: (filter.needDate && filter.needDate.includes('-'))
+            ? filter.needDate.replace(/-/g, '')
+            : (filter.needDate || null),
+        lineIds: lineIds || []
+    };
+
+    const res = await fetch(`${API_BASE_URL}/inspection-record/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `PDF出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
+/**
+ * 検収の記録簿：納入場所マスタ（マルチセレクト用）
+ * @returns {Promise<Array<{ customerCode: string, locationCode: string, displayLabel: string }>>}
+ */
+export async function fetchAcceptanceDeliveryLocations() {
+    const res = await fetch(`${API_BASE_URL}/acceptance-record/delivery-locations`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`納入場所一覧取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 検収の記録簿：検索（納品日必須、出荷日・店舗は任意）
+ * @param {string[]} storePairs customerCode と locationCode をタブで連結した文字列。空配列のとき店舗で絞り込まない
+ */
+export async function searchAcceptanceRecord(deliveryDate, shipDate, storePairs) {
+    let delvStr = deliveryDate;
+    if (deliveryDate && deliveryDate.includes('-')) {
+        delvStr = deliveryDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ deliverydate: delvStr });
+    if (shipDate && shipDate.trim()) {
+        const s = shipDate.includes('-') ? shipDate.replace(/-/g, '') : shipDate.trim();
+        if (s.length === 8) params.set('shipdate', s);
+    }
+    (storePairs || []).forEach((pair) => {
+        const v = (pair || '').trim();
+        if (v) params.append('storePair', v);
+    });
+
+    const res = await fetch(`${API_BASE_URL}/acceptance-record/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 検収の記録簿：PDF 出力
+ */
+export async function exportAcceptanceRecordPdf(filter, lineIds) {
+    const toYyyymmdd = (v) => {
+        if (!v) return null;
+        return v.includes('-') ? v.replace(/-/g, '') : v;
+    };
+    const body = {
+        deliverydate: toYyyymmdd(filter.deliveryDate),
+        shipdate: filter.shipDate ? toYyyymmdd(filter.shipDate) : null,
+        lineIds: lineIds || [],
+        headerLocation: filter.headerLocation || null,
+        headerOutDate: filter.headerOutDate || null,
+        headerDelvDate: filter.headerDelvDate || null
+    };
+
+    const res = await fetch(`${API_BASE_URL}/acceptance-record/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

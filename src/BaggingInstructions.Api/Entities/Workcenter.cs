@@ -8,6 +8,9 @@ public class Workcenter
     [Column("workcenterid")]
     public long WorkcenterId { get; set; }
 
+    [Column("workcentercode")]
+    public string? WorkcenterCode { get; set; }
+
     [Column("workcentername")]
     public string? WorkcenterName { get; set; }
 

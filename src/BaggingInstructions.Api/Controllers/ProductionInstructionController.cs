@@ -23,16 +23,46 @@ public class ProductionInstructionController : ControllerBase
         _env = env;
     }
 
+    [HttpGet("workcenters")]
+    public async Task<ActionResult<List<ProductionInstructionWorkcenterOptionDto>>> ListWorkcenters(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _service.ListWorkcentersAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"マスタ取得エラー: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("slots")]
+    public async Task<ActionResult<List<ProductionInstructionSlotOptionDto>>> ListSlots(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _service.ListSlotsAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"マスタ取得エラー: {ex.Message}" });
+        }
+    }
+
     [HttpGet("search")]
     public async Task<ActionResult<ProductionInstructionSearchResponseDto>> Search(
         [FromQuery(Name = "needdate")] string needDate,
-        [FromQuery(Name = "workcenter")] string? workcenter,
-        [FromQuery(Name = "slot")] string? slot,
+        [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
+        [FromQuery(Name = "slot_code")] string[]? slotCode,
         CancellationToken ct)
     {
         try
         {
-            var rows = await _service.SearchAsync(needDate, workcenter, slot, ct);
+            var wc = workcenterId ?? Array.Empty<long>();
+            var sc = slotCode ?? Array.Empty<string>();
+            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
             return Ok(new ProductionInstructionSearchResponseDto
             {
                 Total = rows.Count,
@@ -54,11 +84,11 @@ public class ProductionInstructionController : ControllerBase
         [JsonPropertyName("needdate")]
         public string NeedDate { get; set; } = "";
 
-        [JsonPropertyName("workcenter")]
-        public string? Workcenter { get; set; }
+        [JsonPropertyName("workcenter_id")]
+        public List<long>? WorkcenterId { get; set; }
 
-        [JsonPropertyName("slot")]
-        public string? Slot { get; set; }
+        [JsonPropertyName("slot_code")]
+        public List<string>? SlotCode { get; set; }
 
         [JsonPropertyName("orderIds")]
         public List<long> OrderIds { get; set; } = new();

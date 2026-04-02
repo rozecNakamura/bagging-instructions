@@ -1,6 +1,14 @@
-import { searchProductionInstruction } from './api.js';
+import {
+    searchProductionInstruction,
+    fetchProductionInstructionWorkcenters,
+    fetchProductionInstructionSlots
+} from './api.js';
 
 let prodRows = [];
+let prodWorkcenterList = [];
+let prodSlotList = [];
+let prodSelectedWorkcenterIds = new Set();
+let prodSelectedSlotCodes = new Set();
 
 function displayProductionResults(rows) {
     const section = document.getElementById('prodResultsSection');
@@ -56,18 +64,160 @@ export function getSelectedOrderIds() {
     return ids;
 }
 
+/** @returns {{ needDate: string, workcenterIds: number[], slotCodes: string[] }} */
+export function getProductionInstructionReportFilter() {
+    const needDate = document.getElementById('prodNeedDate')?.value || '';
+    return {
+        needDate,
+        workcenterIds: Array.from(prodSelectedWorkcenterIds).map(id => Number(id)).filter(id => id > 0),
+        slotCodes: Array.from(prodSelectedSlotCodes).filter(s => s)
+    };
+}
+
+function updateProdWorkcenterSlotLabels() {
+    const wcLabel = document.getElementById('prodWorkcenterSelectedLabel');
+    const slotLabel = document.getElementById('prodSlotSelectedLabel');
+
+    if (wcLabel) {
+        if (prodSelectedWorkcenterIds.size === 0) {
+            wcLabel.textContent = '未選択';
+        } else if (prodSelectedWorkcenterIds.size === prodWorkcenterList.length && prodWorkcenterList.length > 0) {
+            wcLabel.textContent = 'すべて選択';
+        } else {
+            wcLabel.textContent = `${prodSelectedWorkcenterIds.size}件選択`;
+        }
+    }
+
+    if (slotLabel) {
+        if (prodSelectedSlotCodes.size === 0) {
+            slotLabel.textContent = '未選択';
+        } else if (prodSelectedSlotCodes.size === prodSlotList.length && prodSlotList.length > 0) {
+            slotLabel.textContent = 'すべて選択';
+        } else {
+            slotLabel.textContent = `${prodSelectedSlotCodes.size}件選択`;
+        }
+    }
+}
+
+function buildProdWorkcenterSlotPanels() {
+    const wcContainer = document.getElementById('prodWorkcenterOptions');
+    const slotContainer = document.getElementById('prodSlotOptions');
+    if (!wcContainer || !slotContainer) return;
+
+    wcContainer.innerHTML = '';
+    slotContainer.innerHTML = '';
+
+    prodWorkcenterList.forEach(w => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = String(w.id);
+        if (prodSelectedWorkcenterIds.has(w.id)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                prodSelectedWorkcenterIds.add(w.id);
+            } else {
+                prodSelectedWorkcenterIds.delete(w.id);
+            }
+            updateProdWorkcenterSlotLabels();
+        });
+        const text = document.createElement('span');
+        text.textContent = w.name || '';
+        label.appendChild(cb);
+        label.appendChild(text);
+        wcContainer.appendChild(label);
+    });
+
+    prodSlotList.forEach(s => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = s.code || '';
+        if (prodSelectedSlotCodes.has(s.code)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                if (s.code) prodSelectedSlotCodes.add(s.code);
+            } else {
+                prodSelectedSlotCodes.delete(s.code);
+            }
+            updateProdWorkcenterSlotLabels();
+        });
+        const text = document.createElement('span');
+        text.textContent = s.name || s.code || '';
+        label.appendChild(cb);
+        label.appendChild(text);
+        slotContainer.appendChild(label);
+    });
+
+    updateProdWorkcenterSlotLabels();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchBtn = document.getElementById('prodSearchBtn');
     const headerCheckbox = document.getElementById('prodHeaderCheckbox');
     const selectAllBtn = document.getElementById('prodSelectAllBtn');
     const deselectAllBtn = document.getElementById('prodDeselectAllBtn');
+    const wcDisplay = document.getElementById('prodWorkcenterDisplay');
+    const slotDisplay = document.getElementById('prodSlotDisplay');
 
     if (!searchBtn) return;
 
+    (async () => {
+        try {
+            const [wcs, slots] = await Promise.all([
+                fetchProductionInstructionWorkcenters(),
+                fetchProductionInstructionSlots()
+            ]);
+            prodWorkcenterList = wcs || [];
+            prodSlotList = slots || [];
+            buildProdWorkcenterSlotPanels();
+        } catch (e) {
+            console.error('調味液配合表仕様 マスタ取得エラー:', e);
+        }
+    })();
+
+    function closeAllProdPanels() {
+        const p1 = document.getElementById('prodWorkcenterOptions');
+        const p2 = document.getElementById('prodSlotOptions');
+        if (p1) p1.style.display = 'none';
+        if (p2) p2.style.display = 'none';
+    }
+
+    if (wcDisplay) {
+        wcDisplay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('prodWorkcenterOptions');
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none' || panel.style.display === '';
+            closeAllProdPanels();
+            panel.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    if (slotDisplay) {
+        slotDisplay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('prodSlotOptions');
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none' || panel.style.display === '';
+            closeAllProdPanels();
+            panel.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        const dropdown = (e.target instanceof HTMLElement)
+            ? e.target.closest('#screen-production-instruction .multi-select-dropdown')
+            : null;
+        if (!dropdown) {
+            closeAllProdPanels();
+        }
+    });
+
     searchBtn.addEventListener('click', async () => {
         const needDate = document.getElementById('prodNeedDate').value;
-        const workcenter = document.getElementById('prodWorkcenter').value || '';
-        const slot = document.getElementById('prodSlot').value || '';
+        const workcenterIds = Array.from(prodSelectedWorkcenterIds);
+        const slotCodes = Array.from(prodSelectedSlotCodes);
 
         if (!needDate) {
             alert('納期を入力してください');
@@ -75,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await searchProductionInstruction(needDate, workcenter, slot);
+            const res = await searchProductionInstruction(needDate, workcenterIds, slotCodes);
             prodRows = res.rows || [];
             displayProductionResults(prodRows);
         } catch (e) {
@@ -101,4 +251,3 @@ document.addEventListener('DOMContentLoaded', () => {
         if (headerCheckbox) headerCheckbox.checked = false;
     });
 });
-

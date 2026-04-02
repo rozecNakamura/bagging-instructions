@@ -12,11 +12,11 @@ public class SalesOrder
     [NotMapped]
     public long SalesOrderNo => SalesOrderId;
 
-    [Column("customerid")]
-    public long? CustomerId { get; set; }
+    [Column("customercode")]
+    public string? CustomerCode { get; set; }
 
-    [Column("customerdeliverylocationid")]
-    public long? CustomerDeliveryLocationId { get; set; }
+    [Column("customerdeliverylocationcode")]
+    public string? CustomerDeliveryLocationCode { get; set; }
 
     [Column("orderdate")]
     public DateOnly? OrderDate { get; set; }

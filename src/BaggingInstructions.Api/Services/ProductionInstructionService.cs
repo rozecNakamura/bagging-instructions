@@ -9,9 +9,9 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 製造指示書用の検索・PDF 行生成サービス。
-/// ordertable / salesorderline / item / bom / deliveryslot / workcenter を用いて、
-/// 行ヘッダと BOM 展開を行う。
+/// 調味液配合表仕様用の検索・PDF 行生成サービス。
+/// 主データは ordertable（ordertype=MO、ordertableid・itemcode・qty・needdate・releasedate）。
+/// item / bom / workcenter。便のみ salesorderline.slotcode 経由で deliveryslot（ordertable に slot が無い前提）。
 /// </summary>
 public sealed class ProductionInstructionService
 {
@@ -23,53 +23,104 @@ public sealed class ProductionInstructionService
     }
 
     /// <summary>
+    /// 作業区マスタ（複数選択プルダウン用）。調理指示書と同じ workcenter テーブル。
+    /// </summary>
+    public async Task<List<ProductionInstructionWorkcenterOptionDto>> ListWorkcentersAsync(CancellationToken ct = default)
+    {
+        return await _db.Workcenters.AsNoTracking()
+            .OrderBy(w => w.SortOrder ?? int.MaxValue)
+            .ThenBy(w => w.WorkcenterName ?? "")
+            .Select(w => new ProductionInstructionWorkcenterOptionDto
+            {
+                Id = w.WorkcenterId,
+                Name = w.WorkcenterName ?? ""
+            })
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// 便マスタ（複数選択プルダウン用）。
+    /// </summary>
+    public async Task<List<ProductionInstructionSlotOptionDto>> ListSlotsAsync(CancellationToken ct = default)
+    {
+        var rows = await _db.Database
+            .SqlQuery<ProductionInstructionSlotSqlRow>($@"
+SELECT COALESCE(slotcode, '') AS ""Code"", COALESCE(slotname, '') AS ""Name""
+FROM deliveryslot
+ORDER BY slotcode
+")
+            .ToListAsync(ct);
+
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Code))
+            .GroupBy(r => r.Code, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(r => r.Code, StringComparer.Ordinal)
+            .Select(r => new ProductionInstructionSlotOptionDto
+            {
+                Code = r.Code ?? "",
+                Name = r.Name ?? ""
+            })
+            .ToList();
+    }
+
+    /// <summary>
     /// 納期・作業区・便でオーダー行を検索する。1 行 = 1 ordertable レコード。
+    /// ordertable.ordertype が MO（大文字・前後空白無視）の行のみ。
+    /// 納期キーは COALESCE(needdate, releasedate)。作業区・便は未選択なら絞り込まない。
     /// </summary>
     public async Task<List<ProductionInstructionSearchRowDto>> SearchAsync(
         string needDate,
-        string? workcenterFilter,
-        string? slotFilter,
+        IReadOnlyList<long>? workcenterIds,
+        IReadOnlyList<string>? slotCodes,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(needDate);
         if (!date.HasValue)
             throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needDate));
 
-        var workF = (workcenterFilter ?? "").Trim();
-        var slotF = (slotFilter ?? "").Trim();
+        var wcIds = (workcenterIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
+        var slots = (slotCodes ?? Array.Empty<string>())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        // TO_CHAR は text を返すため、比較側も YYYYMMDD 文字列にする（DateOnly を渡すと text = date で失敗する）
+        var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 
         var rows = await _db.Database
             .SqlQuery<ProductionInstructionSearchSqlRow>($@"
 SELECT
   ot.ordertableid AS ""OrderTableId"",
-  i.itemcode AS ""ItemCode"",
+  COALESCE(ot.itemcode, i.itemcode, '') AS ""ItemCode"",
   COALESCE(i.itemname, '') AS ""ItemName"",
   TO_CHAR(
-    COALESCE(
-      ot.needdate,
-      sol.planneddeliverydate
-    ),
+    COALESCE(ot.needdate, ot.releasedate),
     'YYYYMMDD'
   ) AS ""NeedDate"",
   COALESCE(ds.slotname, ds.slotcode, '') AS ""SlotDisplay"",
   COALESCE((
-    {SqlFragments.WorkplaceNamesByItemcode("i.itemcode")}
+    SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
+    FROM itemworkcentermapping m2
+    INNER JOIN workcenter wc ON wc.workcentercode = m2.workcentercode
+    WHERE m2.itemcode = COALESCE(ot.itemcode, i.itemcode)
   ), '') AS ""WorkplaceNames""
 FROM ordertable ot
-INNER JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-INNER JOIN item i ON i.itemcode = sol.itemcode
+INNER JOIN item i ON i.itemcode = ot.itemcode
+LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-WHERE TO_CHAR(
-        COALESCE(
-          ot.needdate,
-          sol.planneddeliverydate
-        ),
+WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  AND TO_CHAR(
+        COALESCE(ot.needdate, ot.releasedate),
         'YYYYMMDD'
-      ) = {date.Value}
-  AND ({slotF} = '' OR COALESCE(ds.slotcode, '') ILIKE '%' || {slotF} || '%' OR COALESCE(ds.slotname, '') ILIKE '%' || {slotF} || '%')
-  AND ({workF} = '' OR COALESCE((
-        {SqlFragments.WorkplaceNamesByItemcode("i.itemcode")}
-      ), '') ILIKE '%' || {workF} || '%')
+      ) = {needDateYyyymmdd}
+  AND ({slots.Length} = 0 OR COALESCE(ds.slotcode, '') = ANY ({slots}))
+  AND ({wcIds.Length} = 0 OR EXISTS (
+        SELECT 1 FROM itemworkcentermapping m3
+        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+        WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY ({wcIds})
+      ))
 ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 ")
             .ToListAsync(ct);
@@ -103,7 +154,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
         var lines = new List<ProductionInstructionPdfLineModel>();
         foreach (var h in headers)
         {
-            var asof = h.NeedDate ?? h.PlannedDeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            var asof = h.NeedDate ?? h.ReleaseDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
             if (!bomCache.TryGetValue(h.ParentItemcode, out var boms))
             {
                 boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, ct);
@@ -173,27 +224,21 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 """
                 SELECT
                   ot.ordertableid,
-                  sol.salesorderid,
-                  COALESCE(
-                    ot.qty,
-                    sol.quantity
-                  ) AS mfg_qty,
-                  i.itemcode AS parent_itemcode,
+                  COALESCE(ot.qty, 0) AS mfg_qty,
+                  COALESCE(ot.itemcode, i.itemcode, '') AS parent_itemcode,
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(u0.unitname, '') AS parent_unitname,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
-                  COALESCE(
-                    ot.needdate,
-                    sol.planneddeliverydate
-                  ) AS need_date,
-                  sol.planneddeliverydate,
-                  COALESCE(sol.salesorderid::text, '') AS order_no
+                  COALESCE(ot.needdate, ot.releasedate) AS need_date,
+                  ot.releasedate,
+                  ot.ordertableid::text AS order_no
                 FROM ordertable ot
-                INNER JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                INNER JOIN item i ON i.itemcode = sol.itemcode
+                INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 WHERE ot.ordertableid = ANY(@ids)
+                  AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                 ORDER BY ot.ordertableid
                 """, conn);
             cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array)
@@ -208,15 +253,14 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 list.Add(new ProductionInstructionLineHeaderRow
                 {
                     OrderTableId = reader.GetInt64(0),
-                    Salesorderid = reader.GetInt64(1),
-                    MfgQty = reader.GetDecimal(2),
-                    ParentItemcode = reader.GetString(3),
-                    ParentItemname = reader.GetString(4),
-                    ParentUnitName = reader.GetString(5),
-                    SlotDisplay = reader.GetString(6),
-                    NeedDate = ReadDateNullable(reader, 7),
-                    PlannedDeliveryDate = ReadDateNullable(reader, 8),
-                    OrderNo = reader.GetString(9)
+                    MfgQty = reader.GetDecimal(1),
+                    ParentItemcode = reader.GetString(2),
+                    ParentItemname = reader.GetString(3),
+                    ParentUnitName = reader.GetString(4),
+                    SlotDisplay = reader.GetString(5),
+                    NeedDate = ReadDateNullable(reader, 6),
+                    ReleaseDate = ReadDateNullable(reader, 7),
+                    OrderNo = reader.GetString(8)
                 });
             }
 
@@ -317,6 +361,12 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
     }
 }
 
+internal sealed class ProductionInstructionSlotSqlRow
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
 internal sealed class ProductionInstructionSearchSqlRow
 {
     public long OrderTableId { get; set; }
@@ -330,14 +380,13 @@ internal sealed class ProductionInstructionSearchSqlRow
 internal sealed class ProductionInstructionLineHeaderRow
 {
     public long OrderTableId { get; set; }
-    public long Salesorderid { get; set; }
     public decimal MfgQty { get; set; }
     public string ParentItemcode { get; set; } = "";
     public string ParentItemname { get; set; } = "";
     public string ParentUnitName { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
     public DateOnly? NeedDate { get; set; }
-    public DateOnly? PlannedDeliveryDate { get; set; }
+    public DateOnly? ReleaseDate { get; set; }
     public string OrderNo { get; set; } = "";
 }
 

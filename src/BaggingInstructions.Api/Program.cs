@@ -48,6 +48,10 @@ builder.Services.AddScoped<CookingInstructionService>();
 builder.Services.AddScoped<CookingInstructionPdfService>();
 builder.Services.AddScoped<ProductionInstructionService>();
 builder.Services.AddScoped<ProductionInstructionPdfService>();
+builder.Services.AddScoped<InspectionRecordService>();
+builder.Services.AddScoped<InspectionRecordPdfService>();
+builder.Services.AddScoped<AcceptanceRecordService>();
+builder.Services.AddScoped<AcceptanceRecordPdfService>();
 
 builder.Services.AddCors(options =>
 {

@@ -31,6 +31,26 @@ public sealed class ProductionInstructionSearchResponseDto
     public List<ProductionInstructionSearchRowDto> Rows { get; set; } = new();
 }
 
+/// <summary>作業区マスタ（調味液配合表仕様プルダウン用）。</summary>
+public sealed class ProductionInstructionWorkcenterOptionDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
+/// <summary>便マスタ（調味液配合表仕様プルダウン用）。</summary>
+public sealed class ProductionInstructionSlotOptionDto
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
 /// <summary>製造指示書 PDF 1 行分のモデル。</summary>
 public sealed class ProductionInstructionPdfLineModel
 {

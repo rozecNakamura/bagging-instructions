@@ -32,14 +32,14 @@ public class BentoPdfService
             // GRAM＝ordertable.qty（受注数量）。InvariantCulture で小数点表記を統一
             tagValues[$"GRAM{nn}"] = r != null ? r.Jobordqun.ToString(CultureInfo.InvariantCulture) : "";
             // PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo02
-            tagValues[$"PACK{nn}"] = r != null ? ComputeGram(r.Quantity, r.Addinfo02) : "";
+            tagValues[$"PACK{nn}"] = r != null ? FormatMealCountDisplay(r.Quantity, r.Addinfo02) : "";
         }
 
         return tagValues;
     }
 
-    /// <summary>quantity / addinfo02 を計算。addinfo02 が 0 または無効な場合は空文字を返す。</summary>
-    private static string ComputeGram(decimal quantity, string? addinfo02)
+    /// <summary>quantity ÷ addinfo02（1食当たりの量）。除数が無効な場合は空文字。</summary>
+    public static string FormatMealCountDisplay(decimal quantity, string? addinfo02)
     {
         var divisor = ParseDivisor(addinfo02);
         if (!divisor.HasValue || divisor.Value == 0) return "";
