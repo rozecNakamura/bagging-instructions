@@ -33,7 +33,7 @@ public class CookingInstructionPdfServiceTests
         Assert.Equal("2025/03/01", tags["DATE01"]);
         Assert.Equal("朝便", tags["ITEMTYPE01"]);
 
-        Assert.Equal("P001 親商品", tags["ITEMPALNM00"]);
+        Assert.Equal("親商品", tags["ITEMPALNM00"]);
         Assert.Equal("子商品", tags["ITEMCHINM00"]);
         Assert.Equal("10.5", tags["ITEMPALNUM00"]);
         Assert.Equal("2.5", tags["ITEMCHINUM00"]);

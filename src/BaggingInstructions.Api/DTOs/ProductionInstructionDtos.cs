@@ -1,0 +1,52 @@
+using System.Text.Json.Serialization;
+
+namespace BaggingInstructions.Api.DTOs;
+
+public sealed class ProductionInstructionSearchRowDto
+{
+    [JsonPropertyName("orderTableId")]
+    public long OrderTableId { get; set; }
+
+    [JsonPropertyName("itemCode")]
+    public string ItemCode { get; set; } = "";
+
+    [JsonPropertyName("itemName")]
+    public string ItemName { get; set; } = "";
+
+    /// <summary>表示用 YYYY-MM-DD 形式の納期。</summary>
+    [JsonPropertyName("needDate")]
+    public string NeedDate { get; set; } = "";
+
+    /// <summary>便表示（slot 名称またはコード）。</summary>
+    [JsonPropertyName("slotDisplay")]
+    public string SlotDisplay { get; set; } = "";
+}
+
+public sealed class ProductionInstructionSearchResponseDto
+{
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("rows")]
+    public List<ProductionInstructionSearchRowDto> Rows { get; set; } = new();
+}
+
+/// <summary>製造指示書 PDF 1 行分のモデル。</summary>
+public sealed class ProductionInstructionPdfLineModel
+{
+    public string OrderNo { get; set; } = "";
+    public string ParentItemCode { get; set; } = "";
+    public string ParentItemName { get; set; } = "";
+    public string PlannedQuantityDisplay { get; set; } = "";
+    public string PlanUnitName { get; set; } = "";
+
+    public string ChildItemCode { get; set; } = "";
+    public string ChildItemName { get; set; } = "";
+    public string ChildSpec { get; set; } = "";
+    public string ChildRequiredQtyDisplay { get; set; } = "";
+    public string ChildUnitName { get; set; } = "";
+
+    public string NeedDateDisplay { get; set; } = "";
+    public string SlotDisplay { get; set; } = "";
+}
+

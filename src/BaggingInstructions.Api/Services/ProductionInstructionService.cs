@@ -9,25 +9,25 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 調理指示書用の検索・PDF 行生成サービス。
-/// salesorderline / ordertable / item / bom / workcenter / deliveryslot を用いて、
+/// 製造指示書用の検索・PDF 行生成サービス。
+/// ordertable / salesorderline / item / bom / deliveryslot / workcenter を用いて、
 /// 行ヘッダと BOM 展開を行う。
 /// </summary>
-public sealed class CookingInstructionService
+public sealed class ProductionInstructionService
 {
     private readonly AppDbContext _db;
 
-    public CookingInstructionService(AppDbContext db)
+    public ProductionInstructionService(AppDbContext db)
     {
         _db = db;
     }
 
     /// <summary>
-    /// 納期・作業区・便で親行を検索する。1 行 = 1 salesorderline。
+    /// 納期・作業区・便でオーダー行を検索する。1 行 = 1 ordertable レコード。
     /// </summary>
-    public async Task<List<CookingInstructionSearchRowDto>> SearchAsync(
+    public async Task<List<ProductionInstructionSearchRowDto>> SearchAsync(
         string needDate,
-        string? workplaceFilter,
+        string? workcenterFilter,
         string? slotFilter,
         CancellationToken ct = default)
     {
@@ -35,16 +35,18 @@ public sealed class CookingInstructionService
         if (!date.HasValue)
             throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needDate));
 
-        var workF = (workplaceFilter ?? "").Trim();
+        var workF = (workcenterFilter ?? "").Trim();
         var slotF = (slotFilter ?? "").Trim();
 
         var rows = await _db.Database
-            .SqlQuery<CookingInstructionSearchSqlRow>($@"
+            .SqlQuery<ProductionInstructionSearchSqlRow>($@"
 SELECT
-  sol.salesorderlineid AS ""SalesOrderLineId"",
+  ot.ordertableid AS ""OrderTableId"",
+  i.itemcode AS ""ItemCode"",
+  COALESCE(i.itemname, '') AS ""ItemName"",
   TO_CHAR(
     COALESCE(
-      (SELECT ot.needdate FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
+      ot.needdate,
       sol.planneddeliverydate
     ),
     'YYYYMMDD'
@@ -52,52 +54,53 @@ SELECT
   COALESCE(ds.slotname, ds.slotcode, '') AS ""SlotDisplay"",
   COALESCE((
     {SqlFragments.WorkplaceNamesByItemcode("i.itemcode")}
-  ), '') AS ""WorkplaceNames"",
-  i.itemcode AS ""ParentItemCode"",
-  COALESCE(i.itemname, '') AS ""ParentItemName""
-FROM salesorderline sol
+  ), '') AS ""WorkplaceNames""
+FROM ordertable ot
+INNER JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
 INNER JOIN item i ON i.itemcode = sol.itemcode
 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-WHERE COALESCE(
-        (SELECT ot.needdate FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
-        sol.planneddeliverydate
+WHERE TO_CHAR(
+        COALESCE(
+          ot.needdate,
+          sol.planneddeliverydate
+        ),
+        'YYYYMMDD'
       ) = {date.Value}
   AND ({slotF} = '' OR COALESCE(ds.slotcode, '') ILIKE '%' || {slotF} || '%' OR COALESCE(ds.slotname, '') ILIKE '%' || {slotF} || '%')
   AND ({workF} = '' OR COALESCE((
         {SqlFragments.WorkplaceNamesByItemcode("i.itemcode")}
       ), '') ILIKE '%' || {workF} || '%')
-ORDER BY sol.salesorderlineid
+ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 ")
             .ToListAsync(ct);
 
-        return rows.Select(r => new CookingInstructionSearchRowDto
+        return rows.Select(r => new ProductionInstructionSearchRowDto
         {
-            SalesOrderLineId = r.SalesOrderLineId,
+            OrderTableId = r.OrderTableId,
+            ItemCode = r.ItemCode ?? "",
+            ItemName = r.ItemName ?? "",
             NeedDate = FormatDateDisplay(r.NeedDate),
-            SlotDisplay = r.SlotDisplay ?? "",
-            WorkplaceNames = r.WorkplaceNames ?? "",
-            ParentItemCode = r.ParentItemCode ?? "",
-            ParentItemName = r.ParentItemName ?? ""
+            SlotDisplay = r.SlotDisplay ?? ""
         }).ToList();
     }
 
     /// <summary>
-    /// PDF 用の明細行を生成する。lineIds は salesorderlineid。
+    /// PDF 用の明細行を生成する。orderIds は ordertableid。
     /// </summary>
-    public async Task<List<CookingInstructionPdfLineModel>> BuildPdfLineModelsAsync(
-        IReadOnlyList<long> lineIds,
+    public async Task<List<ProductionInstructionPdfLineModel>> BuildPdfLineModelsAsync(
+        IReadOnlyList<long> orderIds,
         CancellationToken ct = default)
     {
-        if (lineIds == null || lineIds.Count == 0)
-            return new List<CookingInstructionPdfLineModel>();
+        if (orderIds == null || orderIds.Count == 0)
+            return new List<ProductionInstructionPdfLineModel>();
 
-        var headers = await FetchLineHeadersAsync(lineIds, ct);
+        var headers = await FetchLineHeadersAsync(orderIds, ct);
         if (headers.Count == 0)
-            return new List<CookingInstructionPdfLineModel>();
+            return new List<ProductionInstructionPdfLineModel>();
 
-        var bomCache = new Dictionary<string, List<CookingInstructionBomSqlRow>>(StringComparer.Ordinal);
+        var bomCache = new Dictionary<string, List<ProductionInstructionBomSqlRow>>(StringComparer.Ordinal);
 
-        var lines = new List<CookingInstructionPdfLineModel>();
+        var lines = new List<ProductionInstructionPdfLineModel>();
         foreach (var h in headers)
         {
             var asof = h.NeedDate ?? h.PlannedDeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
@@ -112,20 +115,20 @@ ORDER BY sol.salesorderlineid
 
             if (boms.Count == 0)
             {
-                lines.Add(new CookingInstructionPdfLineModel
+                lines.Add(new ProductionInstructionPdfLineModel
                 {
-                    OrderNo = h.Salesorderid.ToString(CultureInfo.InvariantCulture),
+                    OrderNo = h.OrderNo ?? "",
                     ParentItemCode = h.ParentItemcode,
                     ParentItemName = h.ParentItemname,
                     PlannedQuantityDisplay = parentQtyDisplay,
                     PlanUnitName = parentUnitName,
                     ChildItemCode = "",
                     ChildItemName = "",
+                    ChildSpec = "",
                     ChildRequiredQtyDisplay = "",
                     ChildUnitName = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    SlotDisplay = h.SlotDisplay,
-                    WorkplaceNames = h.WorkplaceNames
+                    SlotDisplay = h.SlotDisplay
                 });
                 continue;
             }
@@ -135,20 +138,20 @@ ORDER BY sol.salesorderlineid
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
 
-                lines.Add(new CookingInstructionPdfLineModel
+                lines.Add(new ProductionInstructionPdfLineModel
                 {
-                    OrderNo = h.Salesorderid.ToString(CultureInfo.InvariantCulture),
+                    OrderNo = h.OrderNo ?? "",
                     ParentItemCode = h.ParentItemcode,
                     ParentItemName = h.ParentItemname,
                     PlannedQuantityDisplay = parentQtyDisplay,
                     PlanUnitName = parentUnitName,
                     ChildItemCode = b.ChildItemcode,
                     ChildItemName = b.ChildItemname ?? "",
+                    ChildSpec = b.ChildSpec ?? "",
                     ChildRequiredQtyDisplay = qtyDisplay,
                     ChildUnitName = b.ChildUnitname ?? "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    SlotDisplay = h.SlotDisplay,
-                    WorkplaceNames = h.WorkplaceNames
+                    SlotDisplay = h.SlotDisplay
                 });
             }
         }
@@ -156,8 +159,8 @@ ORDER BY sol.salesorderlineid
         return lines;
     }
 
-    private async Task<List<CookingInstructionLineHeaderRow>> FetchLineHeadersAsync(
-        IReadOnlyList<long> lineIds,
+    private async Task<List<ProductionInstructionLineHeaderRow>> FetchLineHeadersAsync(
+        IReadOnlyList<long> orderIds,
         CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
@@ -169,56 +172,51 @@ ORDER BY sol.salesorderlineid
             await using var cmd = new NpgsqlCommand(
                 """
                 SELECT
-                  sol.salesorderlineid,
+                  ot.ordertableid,
                   sol.salesorderid,
                   COALESCE(
-                    (SELECT ot.qty FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
-                    (SELECT ot.qty FROM ordertable ot WHERE ot.itemcode = sol.itemcode
-                     ORDER BY abs(ot.needdate - sol.planneddeliverydate) NULLS LAST, ot.ordertableid DESC LIMIT 1),
+                    ot.qty,
                     sol.quantity
                   ) AS mfg_qty,
                   i.itemcode AS parent_itemcode,
                   COALESCE(i.itemname, '') AS parent_itemname,
+                  COALESCE(u0.unitname, '') AS parent_unitname,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
-                  COALESCE((
-                    {SqlFragments.WorkplaceNamesByItemcode("i.itemcode")}
-                  ), '') AS workplace_names,
-                  sol.planneddeliverydate,
                   COALESCE(
-                    (SELECT ot.needdate FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
-                    (SELECT ot.needdate FROM ordertable ot WHERE ot.itemcode = sol.itemcode AND ot.needdate IS NOT NULL
-                     ORDER BY abs(ot.needdate - sol.planneddeliverydate) NULLS LAST, ot.ordertableid DESC LIMIT 1),
+                    ot.needdate,
                     sol.planneddeliverydate
                   ) AS need_date,
-                  COALESCE(u0.unitname, '') AS parent_unitname
-                FROM salesorderline sol
+                  sol.planneddeliverydate,
+                  COALESCE(sol.salesorderid::text, '') AS order_no
+                FROM ordertable ot
+                INNER JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 INNER JOIN item i ON i.itemcode = sol.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-                WHERE sol.salesorderlineid = ANY(@ids)
-                ORDER BY sol.salesorderlineid
+                WHERE ot.ordertableid = ANY(@ids)
+                ORDER BY ot.ordertableid
                 """, conn);
             cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array)
             {
-                Value = lineIds.ToArray()
+                Value = orderIds.ToArray()
             });
 
-            var list = new List<CookingInstructionLineHeaderRow>();
+            var list = new List<ProductionInstructionLineHeaderRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                list.Add(new CookingInstructionLineHeaderRow
+                list.Add(new ProductionInstructionLineHeaderRow
                 {
-                    Salesorderlineid = reader.GetInt64(0),
+                    OrderTableId = reader.GetInt64(0),
                     Salesorderid = reader.GetInt64(1),
                     MfgQty = reader.GetDecimal(2),
                     ParentItemcode = reader.GetString(3),
                     ParentItemname = reader.GetString(4),
-                    SlotDisplay = reader.GetString(5),
-                    WorkplaceNames = reader.GetString(6),
-                    PlannedDeliveryDate = ReadDateNullable(reader, 7),
-                    NeedDate = ReadDateNullable(reader, 8),
-                    ParentUnitName = reader.GetString(9)
+                    ParentUnitName = reader.GetString(5),
+                    SlotDisplay = reader.GetString(6),
+                    NeedDate = ReadDateNullable(reader, 7),
+                    PlannedDeliveryDate = ReadDateNullable(reader, 8),
+                    OrderNo = reader.GetString(9)
                 });
             }
 
@@ -231,7 +229,7 @@ ORDER BY sol.salesorderlineid
         }
     }
 
-    private async Task<List<CookingInstructionBomSqlRow>> FetchBomsForParentAsync(
+    private async Task<List<ProductionInstructionBomSqlRow>> FetchBomsForParentAsync(
         string parentItemcode,
         DateOnly asOf,
         CancellationToken ct)
@@ -250,10 +248,12 @@ ORDER BY sol.salesorderlineid
                   b.outputqty,
                   b.yieldpercent,
                   COALESCE(ci.itemname, '') AS child_itemname,
-                  COALESCE(u.unitname, '') AS child_unitname
+                  COALESCE(u.unitname, '') AS child_unitname,
+                  COALESCE(ia.std, '') AS child_spec
                 FROM bom b
                 LEFT JOIN item ci ON ci.itemcode = b.childitemcode
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
+                LEFT JOIN itemadditionalinformation ia ON ia.itemcode = b.childitemcode
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
@@ -263,18 +263,19 @@ ORDER BY sol.salesorderlineid
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
 
-            var list = new List<CookingInstructionBomSqlRow>();
+            var list = new List<ProductionInstructionBomSqlRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                list.Add(new CookingInstructionBomSqlRow
+                list.Add(new ProductionInstructionBomSqlRow
                 {
                     ChildItemcode = reader.GetString(0),
                     InputQty = reader.GetDecimal(1),
                     OutputQty = reader.GetDecimal(2),
                     YieldPercent = reader.GetDecimal(3),
                     ChildItemname = reader.GetString(4),
-                    ChildUnitname = reader.GetString(5)
+                    ChildUnitname = reader.GetString(5),
+                    ChildSpec = reader.GetString(6)
                 });
             }
 
@@ -316,31 +317,31 @@ ORDER BY sol.salesorderlineid
     }
 }
 
-internal sealed class CookingInstructionSearchSqlRow
+internal sealed class ProductionInstructionSearchSqlRow
 {
-    public long SalesOrderLineId { get; set; }
+    public long OrderTableId { get; set; }
+    public string ItemCode { get; set; } = "";
+    public string ItemName { get; set; } = "";
     public string NeedDate { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
     public string WorkplaceNames { get; set; } = "";
-    public string ParentItemCode { get; set; } = "";
-    public string ParentItemName { get; set; } = "";
 }
 
-internal sealed class CookingInstructionLineHeaderRow
+internal sealed class ProductionInstructionLineHeaderRow
 {
-    public long Salesorderlineid { get; set; }
+    public long OrderTableId { get; set; }
     public long Salesorderid { get; set; }
     public decimal MfgQty { get; set; }
     public string ParentItemcode { get; set; } = "";
     public string ParentItemname { get; set; } = "";
-    public string SlotDisplay { get; set; } = "";
-    public string WorkplaceNames { get; set; } = "";
-    public DateOnly? PlannedDeliveryDate { get; set; }
-    public DateOnly? NeedDate { get; set; }
     public string ParentUnitName { get; set; } = "";
+    public string SlotDisplay { get; set; } = "";
+    public DateOnly? NeedDate { get; set; }
+    public DateOnly? PlannedDeliveryDate { get; set; }
+    public string OrderNo { get; set; } = "";
 }
 
-internal sealed class CookingInstructionBomSqlRow
+internal sealed class ProductionInstructionBomSqlRow
 {
     public string ChildItemcode { get; set; } = "";
     public decimal InputQty { get; set; }
@@ -348,5 +349,6 @@ internal sealed class CookingInstructionBomSqlRow
     public decimal YieldPercent { get; set; }
     public string? ChildItemname { get; set; }
     public string? ChildUnitname { get; set; }
+    public string? ChildSpec { get; set; }
 }
 

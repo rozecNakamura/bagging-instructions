@@ -624,3 +624,57 @@ export async function exportCookingInstructionPdf(filter, lineIds) {
     return await res.blob();
 }
 
+/**
+ * 製造指示書：検索（納期・作業区・便）
+ */
+export async function searchProductionInstruction(needDate, workcenter, slot) {
+    let needdateStr = needDate;
+    if (needDate && needDate.includes('-')) {
+        needdateStr = needDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ needdate: needdateStr });
+    if (workcenter && workcenter.trim()) params.set('workcenter', workcenter.trim());
+    if (slot && slot.trim()) params.set('slot', slot.trim());
+
+    const res = await fetch(`${API_BASE_URL}/production-instruction/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 製造指示書：PDF 出力
+ */
+export async function exportProductionInstructionPdf(filter, orderIds) {
+    const body = {
+        needdate: (filter.needDate && filter.needDate.includes('-'))
+            ? filter.needDate.replace(/-/g, '')
+            : (filter.needDate || null),
+        workcenter: filter.workcenter || null,
+        slot: filter.slot || null,
+        orderIds: orderIds || []
+    };
+
+    const res = await fetch(`${API_BASE_URL}/production-instruction/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `PDF出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+

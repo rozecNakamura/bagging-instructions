@@ -3,21 +3,21 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 調理指示書.rxz を用いた PDF。便（SlotDisplay）ごとにページ塊を分ける。
+/// 製造指示書.rxz を用いた PDF。便（SlotDisplay）ごとにページ塊を分ける。
 /// </summary>
-public sealed class CookingInstructionPdfService
+public sealed class ProductionInstructionPdfService
 {
-    private const int TemplateRowCount = 14;
-    private const int RowsPerPage = 12;
+    private const int TemplateRowCount = 20;
+    private const int RowsPerPage = 18;
 
     private readonly JuicePdfService _juicePdf;
 
-    public CookingInstructionPdfService(JuicePdfService juicePdf)
+    public ProductionInstructionPdfService(JuicePdfService juicePdf)
     {
         _juicePdf = juicePdf;
     }
 
-    public byte[] GeneratePdf(string rxzTemplatePath, IReadOnlyList<CookingInstructionPdfLineModel> lines)
+    public byte[] GeneratePdf(string rxzTemplatePath, IReadOnlyList<ProductionInstructionPdfLineModel> lines)
     {
         if (lines == null || lines.Count == 0)
             return Array.Empty<byte>();
@@ -47,32 +47,32 @@ public sealed class CookingInstructionPdfService
             }
         }
 
-        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "調理指示書");
+        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "調味液配合表");
     }
 
     internal static Dictionary<string, string> BuildPageTagValues(
-        IReadOnlyList<CookingInstructionPdfLineModel> chunk,
+        IReadOnlyList<ProductionInstructionPdfLineModel> chunk,
         string slotDisplay,
         string needDateDisplay)
     {
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var header = chunk.FirstOrDefault();
-        // Header fields
-        tags["GENRE01"] = header?.WorkplaceNames ?? string.Empty;      // 作業名：
-        tags["DATE01"] = needDateDisplay ?? string.Empty;              // 日付：
-        tags["ITEMTYPE01"] = slotDisplay ?? string.Empty;              // 製造便：
+
+        tags["DATE01"] = needDateDisplay ?? string.Empty;          // 日付：
+        tags["SLOT01"] = slotDisplay ?? string.Empty;              // 便：
 
         for (var i = 0; i < TemplateRowCount; i++)
         {
             var nn = i.ToString("D2");
-            tags[$"ITEMPALNM{nn}"] = "";
-            tags[$"ITEMCHINM{nn}"] = "";
-            tags[$"ITEMPALNUM{nn}"] = "";
-            tags[$"ITEMCHINUM{nn}"] = "";
-            tags[$"UNITPAR{nn}"] = "";
-            tags[$"UNITCHI{nn}"] = "";
-            tags[$"ORDERNO{nn}"] = "";
+            tags[$"PARENTNM{nn}"] = "";
+            tags[$"CHILDNM{nn}"] = "";
+            tags[$"PARENTQTY{nn}"] = "";
+            tags[$"CHILDQTY{nn}"] = "";
+            tags[$"PARENTUNIT{nn}"] = "";
+            tags[$"CHILDUNIT{nn}"] = "";
+            tags[$"ORDNO{nn}"] = "";
+            tags[$"CHILDSPEC{nn}"] = "";
         }
 
         for (var i = 0; i < chunk.Count && i < RowsPerPage; i++)
@@ -80,11 +80,12 @@ public sealed class CookingInstructionPdfService
             var r = chunk[i];
             var nn = i.ToString("D2");
 
-            // Template layout has a dedicated row index column at the far left;
-            // using codes here causes visual overlap with that "00/01..." column,
-            // so we only render item names in these cells.
-            var parentText = r.ParentItemName;
-            var childText = r.ChildItemName;
+            var parentText = string.IsNullOrEmpty(r.ParentItemCode)
+                ? r.ParentItemName
+                : $"{r.ParentItemCode} {r.ParentItemName}";
+            var childText = string.IsNullOrEmpty(r.ChildItemCode)
+                ? r.ChildItemName
+                : $"{r.ChildItemCode} {r.ChildItemName}";
 
             static string ShortenUnit(string? unit)
             {
@@ -92,13 +93,14 @@ public sealed class CookingInstructionPdfService
                 return unit.Length > 4 ? unit[..4] : unit;
             }
 
-            tags[$"ITEMPALNM{nn}"] = parentText ?? string.Empty;
-            tags[$"ITEMCHINM{nn}"] = childText ?? string.Empty;
-            tags[$"ITEMPALNUM{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
-            tags[$"ITEMCHINUM{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
-            tags[$"UNITPAR{nn}"] = ShortenUnit(r.PlanUnitName);
-            tags[$"UNITCHI{nn}"] = ShortenUnit(r.ChildUnitName);
-            tags[$"ORDERNO{nn}"] = r.OrderNo ?? string.Empty;
+            tags[$"PARENTNM{nn}"] = parentText ?? string.Empty;
+            tags[$"CHILDNM{nn}"] = childText ?? string.Empty;
+            tags[$"PARENTQTY{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
+            tags[$"CHILDQTY{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
+            tags[$"PARENTUNIT{nn}"] = ShortenUnit(r.PlanUnitName);
+            tags[$"CHILDUNIT{nn}"] = ShortenUnit(r.ChildUnitName);
+            tags[$"ORDNO{nn}"] = r.OrderNo ?? string.Empty;
+            tags[$"CHILDSPEC{nn}"] = r.ChildSpec ?? string.Empty;
         }
 
         return tags;
