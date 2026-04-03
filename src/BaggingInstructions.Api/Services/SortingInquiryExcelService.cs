@@ -5,51 +5,33 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 仕分け照会・仕訳表自動調整の Excel。ルートの 2_/3_ サンプル（テンプレート）のレイアウト・書式を流用し、
-/// 行3納入場所コード、行4［検体・店舗名・合計］、行7縦計、行8～明細をデータで上書きする。
+/// 仕分け照会・仕訳表自動調整の Excel。テンプレート不要で ClosedXML から生成し、検索一覧と同じ列（品目コード・品目名称・食種・納入場所…・合計）に揃える。
+/// 仕訳表自動調整のみ、納入場所名称行の上に納入場所コード行を付与する。
 /// </summary>
 public sealed class SortingInquiryExcelService
 {
-    private const int CodeRow = 3;
-    private const int HeaderRow = 4;
-    private const int HiddenRowStart = 5;
-    private const int HiddenRowEnd = 6;
-    private const int ColumnTotalRow = 7;
-    private const int FirstDataRow = 8;
+    private const int ColItemCode = 1;
+    private const int ColItemName = 2;
+    private const int ColFoodType = 3;
+    private const int FirstCustomerCol = 4;
     private const int FrozenColumns = 3;
-    private const int FrozenRows = 7;
-    private const int FirstStoreCol = 5;
-    private const int KentaiCol = 4;
-
-    private const string ShiwakeTemplateFile = "shiwake-inquiry-template.xlsx";
-    private const string JournalTemplateFile = "journal-adjustment-template.xlsx";
 
     public byte[] BuildShiwakeInquiryWorkbook(SortingInquirySearchResponseDto data, string delvedtYyyymmdd)
     {
-        using var templateStream = OpenTemplate(ShiwakeTemplateFile);
-        using var wb = new XLWorkbook(templateStream);
-        var ws = wb.Worksheet(1);
-        ws.Name = "仕分け照会";
-        FillFromTemplate(ws, data, delvedtYyyymmdd, topLine: $"仕分け照会　喫食日: {FormatDateLabel(delvedtYyyymmdd)}");
+        _ = delvedtYyyymmdd;
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("仕分け照会");
+        FillWorksheet(ws, data, title: null, storeCodeRow: false);
         return SaveWorkbook(wb);
     }
 
     public byte[] BuildJournalAdjustmentWorkbook(SortingInquirySearchResponseDto data, string delvedtYyyymmdd)
     {
-        using var templateStream = OpenTemplate(JournalTemplateFile);
-        using var wb = new XLWorkbook(templateStream);
-        var ws = wb.Worksheet(1);
-        ws.Name = "仕訳表自動調整";
-        FillFromTemplate(ws, data, delvedtYyyymmdd, topLine: $"仕訳表自動調整　喫食日: {FormatDateLabel(delvedtYyyymmdd)}");
+        _ = delvedtYyyymmdd;
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("仕訳表自動調整");
+        FillWorksheet(ws, data, title: null, storeCodeRow: true);
         return SaveWorkbook(wb);
-    }
-
-    private static Stream OpenTemplate(string fileName)
-    {
-        var path = Path.Combine(AppContext.BaseDirectory, "Templates", "SortingInquiry", fileName);
-        if (!File.Exists(path))
-            throw new FileNotFoundException($"Sorting inquiry template not found: {path}", path);
-        return File.OpenRead(path);
     }
 
     private static byte[] SaveWorkbook(XLWorkbook wb)
@@ -59,147 +41,89 @@ public sealed class SortingInquiryExcelService
         return stream.ToArray();
     }
 
-    private static void FillFromTemplate(
-        IXLWorksheet ws,
-        SortingInquirySearchResponseDto data,
-        string delvedtYyyymmdd,
-        string topLine)
+    /// <param name="title">null のとき先頭タイトル行を付けない。</param>
+    /// <param name="storeCodeRow">true のとき、納入場所名称行の直上に納入場所コード行を出す（仕訳表自動調整）。</param>
+    private static void FillWorksheet(IXLWorksheet ws, SortingInquirySearchResponseDto data, string? title, bool storeCodeRow = false)
     {
-        _ = delvedtYyyymmdd;
-
-        var totalCol = FindTotalColumn(ws, HeaderRow);
-        var templateSlots = totalCol - FirstStoreCol;
-        if (templateSlots < 1)
-            throw new InvalidOperationException("Template has no store column region before 合計.");
-
         var n = data.StoreKeys.Count;
+        var totalCol = n == 0 ? ColFoodType + 1 : ColFoodType + n + 1;
 
-        if (n > templateSlots)
+        var row = 1;
+        if (!string.IsNullOrEmpty(title))
         {
-            ws.Column(totalCol).InsertColumnsBefore(n - templateSlots);
-            totalCol = FirstStoreCol + n;
+            ws.Cell(row, 1).Value = title;
+            ws.Range(row, 1, row, totalCol).Merge();
+            ws.Row(row).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            row++;
         }
 
-        var lastStoreCol = n > 0 ? FirstStoreCol + n - 1 : FirstStoreCol;
-
-        ClearTemplateDataArea(ws, totalCol);
-
-        ws.Cell(1, 1).Value = topLine;
-        ws.Range(1, 1, 1, totalCol).Merge();
-
-        if (n == 0)
-            return;
-
-        for (var i = 0; i < n; i++)
+        if (storeCodeRow)
         {
-            var key = data.StoreKeys[i];
-            var locCode = LocationCodeFromStoreKey(key);
-            var c = FirstStoreCol + i;
-            SetCellValueSmart(ws.Cell(CodeRow, c), locCode);
+            for (var i = 0; i < n; i++)
+            {
+                var key = data.StoreKeys[i];
+                var codeLabel = data.StoreHeaderCodes.TryGetValue(key, out var c) && !string.IsNullOrEmpty(c)
+                    ? c
+                    : key;
+                ws.Cell(row, FirstCustomerCol + i).Value = codeLabel;
+            }
+
+            ws.Range(row, FirstCustomerCol, row, n > 0 ? FirstCustomerCol + n - 1 : FirstCustomerCol)
+                .Style.Font.Bold = true;
+            row++;
         }
 
-        ws.Cell(HeaderRow, KentaiCol).Value = "検体";
+        var headerRow = row;
+        var firstDataRow = headerRow + 1;
+        var freezeRows = headerRow;
+
+        ws.Cell(headerRow, ColItemCode).Value = "品目コード";
+        ws.Cell(headerRow, ColItemName).Value = "品目名称";
+        ws.Cell(headerRow, ColFoodType).Value = "食種";
+
         for (var i = 0; i < n; i++)
         {
             var key = data.StoreKeys[i];
             var header = data.StoreHeaders.TryGetValue(key, out var h) ? h : key;
-            ws.Cell(HeaderRow, FirstStoreCol + i).Value = header;
+            ws.Cell(headerRow, FirstCustomerCol + i).Value = header;
         }
 
-        ws.Cell(HeaderRow, totalCol).Value = "合計";
+        ws.Cell(headerRow, totalCol).Value = "合計";
+        ws.Range(headerRow, 1, headerRow, totalCol).Style.Font.Bold = true;
 
-        ws.Row(HiddenRowStart).Hide();
-        ws.Row(HiddenRowEnd).Hide();
+        var r = firstDataRow;
+        var lastStoreCol = n > 0 ? FirstCustomerCol + n - 1 : FirstCustomerCol;
 
-        var unusedStart = FirstStoreCol + n;
-        if (unusedStart < totalCol)
-        {
-            var clearBottom = Math.Max(ws.LastRowUsed()?.RowNumber() ?? ColumnTotalRow, FirstDataRow + 64);
-            ws.Range(CodeRow, unusedStart, clearBottom, totalCol - 1).Clear(XLClearOptions.Contents);
-        }
-
-        for (var c = FirstStoreCol; c <= FirstStoreCol + n - 1; c++)
-        {
-            ws.Cell(HiddenRowStart, c).Clear(XLClearOptions.Contents);
-            ws.Cell(HiddenRowEnd, c).Clear(XLClearOptions.Contents);
-        }
-
-        var lastDataRow = FirstDataRow + Math.Max(data.Rows.Count - 1, 0);
-
-        for (var i = 0; i < n; i++)
-        {
-            var c = FirstStoreCol + i;
-            var colLet = ws.Cell(ColumnTotalRow, c).Address.ColumnLetter;
-            ws.Cell(ColumnTotalRow, c).FormulaA1 =
-                $"SUM({colLet}{FirstDataRow}:{colLet}{lastDataRow})";
-        }
-
-        if (unusedStart < totalCol)
-            ws.Range(ColumnTotalRow, unusedStart, ColumnTotalRow, totalCol - 1).Clear(XLClearOptions.Contents);
-
-        var firstLet = ws.Cell(ColumnTotalRow, FirstStoreCol).Address.ColumnLetter;
-        var lastLet = ws.Cell(ColumnTotalRow, lastStoreCol).Address.ColumnLetter;
-        ws.Cell(ColumnTotalRow, totalCol).FormulaA1 = $"SUM({firstLet}{ColumnTotalRow}:{lastLet}{ColumnTotalRow})";
-
-        var r = FirstDataRow;
         foreach (var line in data.Rows)
         {
-            SetCellValueSmart(ws.Cell(r, 1), line.ItemCode);
-            ws.Cell(r, 2).Value = line.ItemName;
-            ws.Cell(r, 3).Value = line.FoodType;
-            ws.Cell(r, KentaiCol).Value = 1;
+            SetCellValueSmart(ws.Cell(r, ColItemCode), line.ItemCode);
+            ws.Cell(r, ColItemName).Value = line.ItemName;
+            ws.Cell(r, ColFoodType).Value = line.FoodType;
+
             for (var i = 0; i < n; i++)
             {
                 var key = data.StoreKeys[i];
-                var c = FirstStoreCol + i;
+                var c = FirstCustomerCol + i;
                 if (line.QuantitiesByStore.TryGetValue(key, out var q) && q != 0)
                     ws.Cell(r, c).Value = q;
-                else
-                    ws.Cell(r, c).Clear(XLClearOptions.Contents);
             }
 
-            if (unusedStart < totalCol)
-                ws.Range(r, unusedStart, r, totalCol - 1).Clear(XLClearOptions.Contents);
+            if (n > 0)
+            {
+                var rowFirstLet = ws.Cell(r, FirstCustomerCol).Address.ColumnLetter;
+                var rowLastLet = ws.Cell(r, lastStoreCol).Address.ColumnLetter;
+                ws.Cell(r, totalCol).FormulaA1 = $"SUM({rowFirstLet}{r}:{rowLastLet}{r})";
+            }
+            else
+                ws.Cell(r, totalCol).Value = 0;
 
-            var rowFirstLet = ws.Cell(r, FirstStoreCol).Address.ColumnLetter;
-            var rowLastLet = ws.Cell(r, lastStoreCol).Address.ColumnLetter;
-            ws.Cell(r, totalCol).FormulaA1 = $"SUM({rowFirstLet}{r}:{rowLastLet}{r})";
             r++;
         }
 
-        ws.SheetView.FreezeRows(FrozenRows);
+        ws.Columns().AdjustToContents(1, 80);
+        ws.SheetView.FreezeRows(freezeRows);
         ws.SheetView.FreezeColumns(FrozenColumns);
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
-
-        ws.Range(HeaderRow, 1, HeaderRow, totalCol).Style.Font.Bold = true;
-    }
-
-    private static void ClearTemplateDataArea(IXLWorksheet ws, int totalCol)
-    {
-        var lastRow = ws.LastRowUsed()?.RowNumber() ?? FirstDataRow;
-        if (lastRow < FirstDataRow)
-            return;
-
-        ws.Range(FirstDataRow, 1, lastRow, totalCol).Clear(XLClearOptions.Contents);
-    }
-
-    private static int FindTotalColumn(IXLWorksheet ws, int headerRow)
-    {
-        var last = ws.LastColumnUsed()?.ColumnNumber() ?? FirstStoreCol + 21;
-        for (var c = FirstStoreCol; c <= last; c++)
-        {
-            var s = ws.Cell(headerRow, c).GetString().Trim();
-            if (s == "合計")
-                return c;
-        }
-
-        throw new InvalidOperationException($"Template row {headerRow} must contain a 合計 column.");
-    }
-
-    private static string LocationCodeFromStoreKey(string storeKey)
-    {
-        var parts = storeKey.Split('|', 2, StringSplitOptions.None);
-        return parts.Length >= 2 ? parts[1].Trim() : storeKey.Trim();
     }
 
     private static void SetCellValueSmart(IXLCell cell, string? value)
@@ -217,13 +141,5 @@ public sealed class SortingInquiryExcelService
             cell.Value = decJa;
         else
             cell.Value = t;
-    }
-
-    private static string FormatDateLabel(string yyyymmdd)
-    {
-        if (yyyymmdd.Length == 8
-            && DateOnly.TryParseExact(yyyymmdd, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
-            return d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        return yyyymmdd;
     }
 }

@@ -9,7 +9,9 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 仕分け照会: salesorderline を喫食日（planneddeliverydate）・便（slotcode）で検索し、
-/// 品目×食種×店舗別に数量を集計する。食種は <see cref="SalesOrderLineAddinfo.Addinfo02Name"/>（無ければ <see cref="SalesOrderLineAddinfo.Addinfo02"/>）。
+/// 品目×食種×得意先コード別に数量を集計する（同一得意先の複数納入場所は合算）。一覧・Excel は品目コード・品目名称・食種のあと、
+/// 検索結果に現れる各得意先コードを1列とし、列見出しは納入場所名称（複数は「／」、名称が無い場合は場所コード、いずれも無い場合は得意先コード）。
+/// 最後に合計列とする。食種は <see cref="SalesOrderLineAddinfo.Addinfo02Name"/>（無ければ <see cref="SalesOrderLineAddinfo.Addinfo02"/>）。
 /// </summary>
 public sealed class SortingInquiryService
 {
@@ -59,13 +61,72 @@ ORDER BY slotcode
             .Distinct(StringComparer.Ordinal)
             .ToHashSet(StringComparer.Ordinal);
 
+        IReadOnlyDictionary<string, string> customersOnDate;
         IReadOnlyList<SortingInquiryLineMaterial> materials;
         if (_db.Database.IsRelational())
+        {
+            customersOnDate = await LoadCustomerHeadersRelationalAsync(date.Value, slots, ct);
             materials = await LoadLinesForSearchRelationalAsync(date.Value, slots, ct);
+        }
         else
+        {
+            customersOnDate = await LoadCustomerHeadersInMemoryAsync(date.Value, slots, ct);
             materials = await LoadLinesForSearchInMemoryAsync(date.Value, slots, ct);
+        }
 
-        return BuildSearchResponse(materials);
+        return BuildSearchResponse(materials, customersOnDate);
+    }
+
+    /// <summary>
+    /// 明細に addinfo 等で行が増えても漏れないよう、納入場所の有無に依存しない「その日・便条件の得意先一覧」を別経路で取得する。
+    /// </summary>
+    private async Task<Dictionary<string, string>> LoadCustomerHeadersRelationalAsync(
+        DateOnly plannedDate,
+        HashSet<string> slots,
+        CancellationToken ct)
+    {
+        var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
+        var rows = await _db.Database
+            .SqlQuery<SortingInquiryCustomerCodeSqlRow>($@"
+SELECT DISTINCT TRIM(COALESCE(s0.customercode, '')) AS ""CustomerCode""
+FROM salesorderline s
+INNER JOIN salesorder s0 ON s.salesorderid = s0.salesorderid
+WHERE s.planneddeliverydate = {plannedDate}
+  AND ({slotArr.Length} = 0
+       OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
+       OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
+")
+            .ToListAsync(ct);
+
+        return rows
+            .Select(r => (r.CustomerCode ?? "").Trim())
+            .Where(c => c.Length > 0)
+            .ToDictionary(c => c, c => c, StringComparer.Ordinal);
+    }
+
+    private async Task<Dictionary<string, string>> LoadCustomerHeadersInMemoryAsync(
+        DateOnly plannedDate,
+        HashSet<string> slots,
+        CancellationToken ct)
+    {
+        var query = _db.SalesOrderLines
+            .AsNoTracking()
+            .Include(l => l.SalesOrder!)
+            .Where(l => l.PlannedDeliveryDate == plannedDate);
+
+        if (slots.Count > 0)
+            query = query.Where(l =>
+                string.IsNullOrWhiteSpace(l.SlotCode) || slots.Contains(l.SlotCode!.Trim()));
+
+        var lines = await query.ToListAsync(ct);
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var code in lines
+                     .Select(l => (l.SalesOrder?.CustomerCode ?? "").Trim())
+                     .Where(c => c.Length > 0)
+                     .Distinct(StringComparer.Ordinal))
+            dict[code] = code;
+
+        return dict;
     }
 
     /// <summary>
@@ -82,8 +143,11 @@ ORDER BY slotcode
 SELECT
   s.quantity AS ""Quantity"",
   s0.customercode AS ""CustomerCode"",
-  c.locationcode AS ""LocationCode"",
-  c.locationname AS ""LocationName"",
+  COALESCE(
+    NULLIF(TRIM(COALESCE(c.locationcode, '')), ''),
+    NULLIF(TRIM(COALESCE(s0.customerdeliverylocationcode, '')), '')
+  ) AS ""LocationCode"",
+  NULLIF(TRIM(COALESCE(c.locationname, '')), '') AS ""LocationName"",
   COALESCE(i.itemcode, '') AS ""ItemCode"",
   COALESCE(i.itemname, '') AS ""ItemName"",
   s1.addinfo02 AS ""Addinfo02"",
@@ -95,7 +159,9 @@ LEFT JOIN customerdeliverylocation c
   ON s0.customercode = c.customercode AND s0.customerdeliverylocationcode = c.locationcode
 LEFT JOIN salesorderlineaddinfo s1 ON s.salesorderlineid = s1.salesorderlineid
 WHERE s.planneddeliverydate = {plannedDate}
-  AND ({slotArr.Length} = 0 OR COALESCE(s.slotcode, '') = ANY ({slotArr}))
+  AND ({slotArr.Length} = 0
+       OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
+       OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
 ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 ")
             .ToListAsync(ct);
@@ -125,7 +191,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .Where(l => l.PlannedDeliveryDate == plannedDate);
 
         if (slots.Count > 0)
-            query = query.Where(l => l.SlotCode != null && slots.Contains(l.SlotCode));
+            query = query.Where(l =>
+                string.IsNullOrWhiteSpace(l.SlotCode) || slots.Contains(l.SlotCode!.Trim()));
 
         var lines = await query
             .OrderBy(l => l.Item!.ItemCd ?? "")
@@ -135,7 +202,7 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         return lines.Select(l => new SortingInquiryLineMaterial(
             l.Quantity,
             (l.SalesOrder?.CustomerCode ?? "").Trim(),
-            (l.SalesOrder?.CustomerDeliveryLocation?.LocationCode ?? "").Trim(),
+            ResolveLocationCodeForSortingInquiry(l.SalesOrder),
             (l.SalesOrder?.CustomerDeliveryLocation?.LocationName ?? "").Trim(),
             (l.Item?.ItemCd ?? "").Trim(),
             (l.Item?.ItemName ?? "").Trim(),
@@ -143,49 +210,80 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             l.Addinfo?.Addinfo02Name)).ToList();
     }
 
-    private static SortingInquirySearchResponseDto BuildSearchResponse(IReadOnlyList<SortingInquiryLineMaterial> lines)
+    private static SortingInquirySearchResponseDto BuildSearchResponse(
+        IReadOnlyList<SortingInquiryLineMaterial> lines,
+        IReadOnlyDictionary<string, string> customersOnDate)
     {
-        if (lines.Count == 0)
+        if (customersOnDate.Count == 0 && lines.Count == 0)
             return new SortingInquirySearchResponseDto();
 
-        var firstLineByStoreKey = new Dictionary<string, (string LocCode, string LocName)>(StringComparer.Ordinal);
+        var headerLabelByCustomer = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var kv in customersOnDate)
+            headerLabelByCustomer[kv.Key] = kv.Key;
+
         foreach (var line in lines)
         {
-            var cust = line.CustomerCode;
-            var locCode = line.LocationCode;
-            var locName = line.LocationName;
-            if (string.IsNullOrEmpty(locCode) && string.IsNullOrEmpty(locName))
+            var cust = (line.CustomerCode ?? "").Trim();
+            if (cust.Length == 0)
                 continue;
-            var key = StoreKey(cust, locCode);
-            if (!firstLineByStoreKey.ContainsKey(key))
-                firstLineByStoreKey[key] = (locCode, locName);
+            if (!headerLabelByCustomer.ContainsKey(cust))
+                headerLabelByCustomer[cust] = cust;
         }
 
-        var displayLabelCount = firstLineByStoreKey.Values
-            .Select(v => string.IsNullOrEmpty(v.LocName) ? v.LocCode : v.LocName)
-            .GroupBy(l => l, StringComparer.Ordinal)
+        var locationTagsByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var locationCodesByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            var cust = (line.CustomerCode ?? "").Trim();
+            if (cust.Length == 0)
+                continue;
+            var tag = DeliveryLocationHeaderLabel(line.LocationName, line.LocationCode);
+            if (tag.Length > 0)
+            {
+                if (!locationTagsByCustomer.TryGetValue(cust, out var set))
+                {
+                    set = new HashSet<string>(StringComparer.Ordinal);
+                    locationTagsByCustomer[cust] = set;
+                }
+
+                set.Add(tag);
+            }
+
+            var locCode = (line.LocationCode ?? "").Trim();
+            if (locCode.Length > 0)
+            {
+                if (!locationCodesByCustomer.TryGetValue(cust, out var codeSet))
+                {
+                    codeSet = new HashSet<string>(StringComparer.Ordinal);
+                    locationCodesByCustomer[cust] = codeSet;
+                }
+
+                codeSet.Add(locCode);
+            }
+        }
+
+        foreach (var code in headerLabelByCustomer.Keys.ToArray())
+        {
+            if (locationTagsByCustomer.TryGetValue(code, out var set) && set.Count > 0)
+                headerLabelByCustomer[code] = string.Join("／", set.OrderBy(s => s, StringComparer.Ordinal));
+        }
+
+        var nameLabelCounts = headerLabelByCustomer.Values
+            .Select(v => (v ?? "").Trim())
+            .GroupBy(v => v, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 
         var storeHeaders = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var kv in firstLineByStoreKey)
+        foreach (var kv in headerLabelByCustomer)
         {
-            var (locCode, locName) = kv.Value;
-            var baseH = string.IsNullOrEmpty(locName) ? locCode : locName;
-            var customerFromKey = CustomerCodeFromStoreKey(kv.Key);
-            if (displayLabelCount.GetValueOrDefault(baseH) > 1 && !string.IsNullOrEmpty(locCode))
-            {
-                // 同じ表示名が複数キーにあるときは 納入場所コードで区別（名称のみの重複は「コード＋名称」）
-                storeHeaders[kv.Key] = string.IsNullOrEmpty(locName)
-                    ? (string.IsNullOrEmpty(customerFromKey) ? locCode : $"{customerFromKey}／{locCode}")
-                    : $"{locCode} {locName}".Trim();
-            }
-            else if (string.IsNullOrEmpty(locName) && !string.IsNullOrEmpty(locCode))
-            {
-                // マスタに納入場所名称が無いときはコードだけだと意味が分かりにくいので注記する
-                storeHeaders[kv.Key] = $"{locCode}（納入場所コード）";
-            }
+            var code = kv.Key;
+            var disp = (kv.Value ?? "").Trim();
+            if (string.IsNullOrEmpty(disp))
+                storeHeaders[code] = code;
+            else if (nameLabelCounts.GetValueOrDefault(disp) > 1)
+                storeHeaders[code] = $"{disp}（{code}）";
             else
-                storeHeaders[kv.Key] = string.IsNullOrEmpty(baseH) ? kv.Key : baseH;
+                storeHeaders[code] = disp;
         }
 
         var storeKeys = storeHeaders.Keys
@@ -193,19 +291,40 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .ThenBy(k => k, StringComparer.Ordinal)
             .ToList();
 
+        var headerCodeJoin = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var cust in storeHeaders.Keys)
+        {
+            if (locationCodesByCustomer.TryGetValue(cust, out var cset) && cset.Count > 0)
+                headerCodeJoin[cust] = string.Join("／", cset.OrderBy(s => s, StringComparer.Ordinal));
+            else
+                headerCodeJoin[cust] = cust;
+        }
+
+        var codeLabelCounts = headerCodeJoin.Values
+            .Select(v => (v ?? "").Trim())
+            .GroupBy(v => v, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+        var storeHeaderCodes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var kv in headerCodeJoin)
+        {
+            var code = kv.Key;
+            var disp = (kv.Value ?? "").Trim();
+            if (string.IsNullOrEmpty(disp))
+                storeHeaderCodes[code] = code;
+            else if (codeLabelCounts.GetValueOrDefault(disp) > 1)
+                storeHeaderCodes[code] = $"{disp}（{code}）";
+            else
+                storeHeaderCodes[code] = disp;
+        }
+
         var itemNameByCode = new Dictionary<string, string>(StringComparer.Ordinal);
         var aggregates = new Dictionary<(string ItemCode, string FoodType), Dictionary<string, decimal>>();
 
         foreach (var line in lines)
         {
-            var cust = line.CustomerCode;
-            var locCode = line.LocationCode;
-            var locName = line.LocationName;
-            if (string.IsNullOrEmpty(locCode) && string.IsNullOrEmpty(locName))
-                continue;
-
-            var sKey = StoreKey(cust, locCode);
-            if (!storeHeaders.ContainsKey(sKey))
+            var cust = (line.CustomerCode ?? "").Trim();
+            if (string.IsNullOrEmpty(cust) || !storeHeaders.ContainsKey(cust))
                 continue;
 
             var itemCode = line.ItemCode;
@@ -216,13 +335,13 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             var food = ResolveFoodTypeFromStrings(line.Addinfo02, line.Addinfo02Name);
             var groupKey = (itemCode, food);
 
-            if (!aggregates.TryGetValue(groupKey, out var byStore))
+            if (!aggregates.TryGetValue(groupKey, out var byCustomer))
             {
-                byStore = new Dictionary<string, decimal>(StringComparer.Ordinal);
-                aggregates[groupKey] = byStore;
+                byCustomer = new Dictionary<string, decimal>(StringComparer.Ordinal);
+                aggregates[groupKey] = byCustomer;
             }
 
-            byStore[sKey] = byStore.GetValueOrDefault(sKey) + line.Quantity;
+            byCustomer[cust] = byCustomer.GetValueOrDefault(cust) + line.Quantity;
         }
 
         var rows = aggregates
@@ -241,21 +360,31 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         {
             StoreKeys = storeKeys,
             StoreHeaders = storeHeaders,
+            StoreHeaderCodes = storeHeaderCodes,
             Rows = rows
         };
     }
 
-    private static string StoreKey(string customerCode, string locationCode) =>
-        $"{customerCode}|{locationCode}";
-
-    private static string CustomerCodeFromStoreKey(string storeKey)
+    /// <summary>列見出し用: 納入場所名称を優先し、無ければ場所コード。</summary>
+    private static string DeliveryLocationHeaderLabel(string? locationName, string? locationCode)
     {
-        var i = storeKey.IndexOf('|', StringComparison.Ordinal);
-        return i <= 0 ? "" : storeKey[..i].Trim();
+        var n = (locationName ?? "").Trim();
+        if (n.Length > 0)
+            return n;
+        return (locationCode ?? "").Trim();
     }
 
-    private static string ResolveFoodTypeFromAddinfo(SalesOrderLineAddinfo? addinfo) =>
-        ResolveFoodTypeFromStrings(addinfo?.Addinfo02, addinfo?.Addinfo02Name);
+    /// <summary>
+    /// 納入場所マスタに無い／JOIN で取れない行でも、受注の customerdeliverylocationcode で列キーを分け、
+    /// 得意先ごとに別列として集計できるようにする。
+    /// </summary>
+    private static string ResolveLocationCodeForSortingInquiry(SalesOrder? salesOrder)
+    {
+        var fromMaster = (salesOrder?.CustomerDeliveryLocation?.LocationCode ?? "").Trim();
+        if (fromMaster.Length > 0)
+            return fromMaster;
+        return (salesOrder?.CustomerDeliveryLocationCode ?? "").Trim();
+    }
 
     private static string ResolveFoodTypeFromStrings(string? addinfo02, string? addinfo02Name)
     {
@@ -273,6 +402,12 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             ? d
             : null;
     }
+}
+
+/// <summary>仕分け照会・その日の得意先コード一覧（DISTINCT）。</summary>
+internal sealed class SortingInquiryCustomerCodeSqlRow
+{
+    public string? CustomerCode { get; set; }
 }
 
 /// <summary>仕分け照会の生 SQL 行（ID 列を読まない）。</summary>

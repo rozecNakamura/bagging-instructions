@@ -62,7 +62,7 @@ public class SortingInquiryController : ControllerBase
         {
             var data = await _service.SearchAsync(delvedt, slotCode, ct);
             var bytes = _excelService.BuildShiwakeInquiryWorkbook(data, delvedt);
-            var fileName = $"仕分け照会_{delvedt}.xlsx";
+            var fileName = $"2_仕分け照会_{delvedt}.xlsx";
             return File(bytes,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 fileName);

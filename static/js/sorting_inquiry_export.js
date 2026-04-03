@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         try {
             const blob = await exportSortingInquiryShiwakeBlob(delvedt, slotCodes);
-            triggerDownload(blob, `仕分け照会_${delvedt}.xlsx`);
+            triggerDownload(blob, `2_仕分け照会_${delvedt}.xlsx`);
         } catch (e) {
             alert('Excel 出力に失敗しました: ' + e.message);
             console.error(e);

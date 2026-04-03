@@ -45,6 +45,16 @@ function buildSiSlotPanel() {
     updateSiSlotLabel();
 }
 
+/** @param {unknown} v */
+function formatSortingInquiryQty(v) {
+    if (v == null || v === '') return '';
+    const n = Number(v);
+    if (Number.isNaN(n)) return String(v);
+    if (Number.isInteger(n)) return String(n);
+    const t = String(n);
+    return t.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
 function displaySortingInquiryResults(data) {
     const section = document.getElementById('siResultsSection');
     const exportSection = document.getElementById('siExportSection');
@@ -100,13 +110,13 @@ function displaySortingInquiryResults(data) {
             if (v != null && v !== 0) {
                 const n = Number(v);
                 if (!Number.isNaN(n)) lineSum += n;
-                td.textContent = String(v);
+                td.textContent = formatSortingInquiryQty(v);
             } else {
                 td.textContent = '';
             }
         });
         const sumTd = tr.insertCell();
-        sumTd.textContent = lineSum !== 0 ? String(lineSum) : '';
+        sumTd.textContent = lineSum !== 0 ? formatSortingInquiryQty(lineSum) : '';
     });
 
     section.style.display = 'block';
