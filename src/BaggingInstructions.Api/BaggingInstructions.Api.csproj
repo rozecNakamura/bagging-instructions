@@ -18,6 +18,7 @@
     <!-- 汁仕分表 PDF 用フォント（.ttf を Fonts に置くと出力にコピーされ、かつ埋め込みリソースになる） -->
     <None Include="Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
     <EmbeddedResource Include="Fonts\*.ttf" Link="Fonts\%(Filename)%(Extension)" />
+    <None Include="Templates\SortingInquiry\*.xlsx" CopyToOutputDirectory="PreserveNewest" Link="Templates\SortingInquiry\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
@@ -27,6 +28,7 @@
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="ClosedXML" Version="0.102.3" />
   </ItemGroup>
 
 </Project>

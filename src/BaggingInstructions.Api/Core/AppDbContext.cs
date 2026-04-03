@@ -48,8 +48,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Bom>().Property(e => e.StartDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<Bom>().Property(e => e.EndDate).HasConversion(dateOnlyNullableConverter);
 
-        // Unit
-        modelBuilder.Entity<Unit>().HasIndex(u => u.UnitCode).IsUnique();
+        // Unit（item.unitcode0 → unit.unitcode 参照のため code を alternate key に）
+        modelBuilder.Entity<Unit>().HasAlternateKey(u => u.UnitCode);
 
         // SalesOrder -> Customer（customercode）, CustomerDeliveryLocation（customercode + locationcode）
         modelBuilder.Entity<SalesOrder>()
@@ -73,7 +73,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SalesOrderLine>()
             .HasOne(l => l.Item)
             .WithMany()
-            .HasForeignKey(l => l.ItemId)
+            .HasForeignKey(l => l.ItemCd)
+            .HasPrincipalKey(i => i.ItemCd)
             .IsRequired(false);
         modelBuilder.Entity<SalesOrderLine>()
             .HasOne(l => l.CustomerItem)
@@ -93,11 +94,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<OrderTable>()
             .HasKey(o => o.SalesOrderLineId);
 
-        // Item -> Unit, ItemAdditionalInformation
+        // Item -> Unit（unitcode0 → unit.unitcode）
         modelBuilder.Entity<Item>()
             .HasOne(i => i.Unit0)
             .WithMany()
-            .HasForeignKey(i => i.UnitId0)
+            .HasForeignKey(i => i.UnitCode0)
+            .HasPrincipalKey(u => u.UnitCode)
             .IsRequired(false);
         modelBuilder.Entity<Item>()
             .HasOne(i => i.AdditionalInformation)

@@ -43,6 +43,8 @@ public class JuicePdfService
         public int MarginBottom { get; set; }
         /// <summary>縮小して表示（rxz の ShrinkToFit）。true のとき枠に収まるまでフォントを縮小する。</summary>
         public bool ShrinkToFit { get; set; }
+        /// <summary>rxz の AlignVertical。1=上 2=中央 3=下。同一矩形に複数 Data を重ねるテンプレで必須。</summary>
+        public int AlignVertical { get; set; } = 2;
         /// <summary>rxz の Box（枠）。true のとき Data/Text ではなく矩形のみ描画する。</summary>
         public bool IsBox { get; set; }
         public int FillPattern { get; set; }
@@ -239,6 +241,7 @@ public class JuicePdfService
             marginBottom = (int?)marginEl.Attribute("Bottom") ?? 0;
         }
         bool shrinkToFit = (bool?)text.Element("ShrinkToFit") ?? false;
+        int alignVertical = (int?)text.Element("AlignVertical") ?? 2;
 
         item = new RxzTextItem
         {
@@ -260,8 +263,29 @@ public class JuicePdfService
             MarginTop = marginTop,
             MarginRight = marginRight,
             MarginBottom = marginBottom,
-            ShrinkToFit = shrinkToFit
+            ShrinkToFit = shrinkToFit,
+            AlignVertical = alignVertical
         };
+        // 単位列・予定数量列は幅が狭いがテンプレでは ShrinkToFit=false のことが多い。全文を枠内に収める。
+        if (name.StartsWith("UNITPAR", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("UNITCHI", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("MAKEQUNPLAN", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("USEQUNPLAN", StringComparison.OrdinalIgnoreCase))
+            item.ShrinkToFit = true;
+        // 調理指示書等: 子品目名・製造予定・使用予定を枠内の中央（横・縦）に。
+        if (name.StartsWith("ITEMCHINM", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("MAKEQUNPLAN", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("USEQUNPLAN", StringComparison.OrdinalIgnoreCase))
+        {
+            item.Alignment = 3;
+            item.AlignVertical = 2;
+        }
+        // 親品目セル下段（注番）: 右寄せ＋下寄せで右下隅（rxz の AlignVertical=3 と整合）。
+        else if (name.StartsWith("ITEMPALNM", StringComparison.OrdinalIgnoreCase))
+        {
+            item.Alignment = 2;
+            item.AlignVertical = 3;
+        }
         return true;
     }
 
@@ -445,7 +469,13 @@ public class JuicePdfService
 
             double lineHeight = font.GetHeight();
             double totalHeight = lineHeight * lines.Length;
-            double startY = textRect.Y + (textRect.Height - totalHeight) / 2.0;
+            // rxz の AlignVertical を反映。従来は常に中央寄せのため、親数量+親品目など同一セルが常に重なっていた。
+            double startY = item.AlignVertical switch
+            {
+                1 => textRect.Y,
+                3 => Math.Max(textRect.Y, textRect.Y + textRect.Height - totalHeight),
+                _ => textRect.Y + (textRect.Height - totalHeight) / 2.0
+            };
 
             // 枠からはみ出した文字は表示しない（テキスト描画領域でクリップ）
             gfx.Save();

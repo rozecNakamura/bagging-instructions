@@ -26,17 +26,30 @@ public class Item
     [Column("effectiveto")]
     public DateOnly? EffectiveTo { get; set; }
 
-    [Column("unitid0")]
-    public long? UnitId0 { get; set; }
+    /// <summary>基準単位コード（unit.unitcode へ FK）。</summary>
+    [Column("unitcode0")]
+    public string? UnitCode0 { get; set; }
 
     [Column("unitcode1")]
     public string? UnitCode1 { get; set; }
 
-    [Column("unitid2")]
-    public long? UnitId2 { get; set; }
+    /// <summary>単位1→単位0 の換算（数量は qtyuni1×本値 で単位0）。</summary>
+    [Column("conversionvalue1")]
+    public decimal? ConversionValue1 { get; set; }
 
-    [Column("unitid3")]
-    public long? UnitId3 { get; set; }
+    /// <summary>単位2→単位0 の換算。</summary>
+    [Column("conversionvalue2")]
+    public decimal? ConversionValue2 { get; set; }
+
+    /// <summary>単位3→単位0 の換算。</summary>
+    [Column("conversionvalue3")]
+    public decimal? ConversionValue3 { get; set; }
+
+    [Column("unitcode2")]
+    public string? UnitCode2 { get; set; }
+
+    [Column("unitcode3")]
+    public string? UnitCode3 { get; set; }
 
     [Column("shelflifedays")]
     public int? ShelflifeDays { get; set; }

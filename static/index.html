@@ -71,6 +71,7 @@
                 <li><button type="button" class="menu-btn" data-screen="cooking-instruction">調理指示書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="production-instruction">調味液配合表仕様</button></li>
                 <li><button type="button" class="menu-btn" data-screen="inspection-record">検品記録簿</button></li>
+                <li><button type="button" class="menu-btn" data-screen="sorting-inquiry">仕分け照会</button></li>
                 <li><button type="button" class="menu-btn" data-screen="acceptance-record">検収の記録簿</button></li>
             </ul>
         </nav>
@@ -730,6 +731,52 @@
                 </div>
             </div>
 
+            <!-- 仕分け照会 -->
+            <div id="screen-sorting-inquiry" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>仕分け照会</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="siEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="siEatingDate" required aria-required="true" title="納期（planneddeliverydate）に対応">
+                            </div>
+                            <div class="form-group">
+                                <label for="siSlotDropdown">便:</label>
+                                <div class="multi-select-dropdown" id="siSlotDropdown">
+                                    <div class="multi-select-display" id="siSlotDisplay">
+                                        <span id="siSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="siSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="siSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="siResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="siResultCount">0件</span>
+                        </div>
+                        <div class="table-container">
+                            <table id="siResultsTable">
+                                <thead id="siResultsThead"></thead>
+                                <tbody id="siResultsBody"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="siExportSection" style="display: none;">
+                        <h2>Excel 出力</h2>
+                        <button type="button" id="siExportShiwakeBtn" class="btn btn-primary">Excel 出力（仕分け照会）</button>
+                        <button type="button" id="siExportJournalBtn" class="btn btn-primary">Excel 出力（仕訳表自動調整）</button>
+                    </section>
+                </div>
+            </div>
+
             <!-- 作業前準備書画面（static版） -->
             <div id="screen-preparation-work" class="screen">
                 <div class="container">
@@ -832,6 +879,8 @@
     <script type="module" src="/static/js/production_instruction_print.js"></script>
     <script type="module" src="/static/js/inspection_record_search.js"></script>
     <script type="module" src="/static/js/inspection_record_print.js"></script>
+    <script type="module" src="/static/js/sorting_inquiry_search.js"></script>
+    <script type="module" src="/static/js/sorting_inquiry_export.js"></script>
     <script type="module" src="/static/js/acceptance_record_search.js"></script>
     <script type="module" src="/static/js/acceptance_record_print.js"></script>
     <script type="module" src="/static/js/print.js"></script>

@@ -33,7 +33,7 @@ public class ProductionInstructionPdfServiceTests
         Assert.Equal("2024/04/01", tags["DATE01"]);
         Assert.Equal("1便", tags["ITEMTYPE01"]);
 
-        Assert.Equal("1001\nP001 親品目１", tags["ITEMPALNM00"]);
+        Assert.Equal("P001 親品目１\n1001", tags["ITEMPALNM00"]);
         Assert.Equal("C001 子品目１", tags["ITEMCHINM00"]);
         Assert.Equal("", tags["ITEMPALNUM00"]);
         Assert.Equal("", tags["ITEMCHINUM00"]);
@@ -46,7 +46,7 @@ public class ProductionInstructionPdfServiceTests
     }
 
     [Fact]
-    public void BuildPageTagValues_ShortensLongUnits()
+    public void BuildPageTagValues_keeps_full_unit_names_for_pdf_shrink()
     {
         var lines = new List<ProductionInstructionPdfLineModel>
         {
@@ -69,8 +69,8 @@ public class ProductionInstructionPdfServiceTests
 
         var tags = ProductionInstructionPdfService.BuildPageTagValues(lines, "2便", "2024/04/02");
 
-        Assert.Equal("long", tags["UNITPAR00"]);
-        Assert.Equal("very", tags["UNITCHI00"]);
+        Assert.Equal("longunit", tags["UNITPAR00"]);
+        Assert.Equal("verylong", tags["UNITCHI00"]);
     }
 }
 

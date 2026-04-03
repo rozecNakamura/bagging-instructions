@@ -82,6 +82,17 @@ frontend/node_modules/
 # .NET build output (match anywhere under repo)
 [Bb]in/
 [Oo]bj/
+_b_obj/
+_b_out/
+_build_verify/
+_test_obj/
+_test_obj2/
+_v2obj/
+_test_obj4/
+_test_out/
+*_test_obj*/
+_v*/
+*_test*/
 
 # TypeScript incremental
 *.tsbuildinfo

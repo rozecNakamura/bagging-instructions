@@ -74,6 +74,12 @@ public sealed class CookingInstructionPdfService
             tags[$"UNITPAR{nn}"] = "";
             tags[$"UNITCHI{nn}"] = "";
             tags[$"ORDERNO{nn}"] = "";
+            // 調理指示書.rxz は調味液と同じく製造予定・使用予定の専用列（MAKEQUNPLAN / USEQUNPLAN）を持つ。
+            // ここを埋めないと画面上の「予定」列が空のままになる（ITEMPALNUM だけでは別座標のため表示されない）。
+            tags[$"MAKEQUNPLAN{nn}"] = "";
+            tags[$"MAKEQUNRESULT{nn}"] = "";
+            tags[$"USEQUNPLAN{nn}"] = "";
+            tags[$"USEQUNRESULT{nn}"] = "";
         }
 
         for (var i = 0; i < chunk.Count && i < RowsPerPage; i++)
@@ -81,22 +87,25 @@ public sealed class CookingInstructionPdfService
             var r = chunk[i];
             var nn = i.ToString("D2");
 
-            var parentText = FormatItemCodeName(r.ParentItemCode, r.ParentItemName);
+            // 親品目注番: rxz では ITEMPALNUM が上寄せ・上余白、ITEMPALNM が下寄せ・下余白の同一セル。
+            // 注番は下段（ITEMPALNM）、親品目は上段（ITEMPALNUM）。予定製造量は MAKEQUNPLAN 列。
+            var parentName = FormatItemCodeName(r.ParentItemCode, r.ParentItemName);
+            var orderNo = (r.OrderNo ?? "").Trim();
             var childText = FormatItemCodeName(r.ChildItemCode, r.ChildItemName);
 
-            static string ShortenUnit(string? unit)
-            {
-                if (string.IsNullOrEmpty(unit)) return string.Empty;
-                return unit.Length > 4 ? unit[..4] : unit;
-            }
-
-            tags[$"ITEMPALNM{nn}"] = parentText ?? string.Empty;
+            tags[$"ITEMPALNM{nn}"] = orderNo;
             tags[$"ITEMCHINM{nn}"] = childText ?? string.Empty;
-            tags[$"ITEMPALNUM{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
-            tags[$"ITEMCHINUM{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
-            tags[$"UNITPAR{nn}"] = ShortenUnit(r.PlanUnitName);
-            tags[$"UNITCHI{nn}"] = ShortenUnit(r.ChildUnitName);
-            tags[$"ORDERNO{nn}"] = r.OrderNo ?? string.Empty;
+            tags[$"ITEMPALNUM{nn}"] = parentName ?? string.Empty;
+            tags[$"ITEMCHINUM{nn}"] = "";
+            tags[$"MAKEQUNPLAN{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
+            tags[$"USEQUNPLAN{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
+
+            // 調理指示書.rxz では UNITPAR00/01 の Y がデータ行 1/0 と対応しており、番号が逆。
+            // 単位は全文を渡す（JuicePdf が UNITPAR/UNITCHI で ShrinkToFit を強制）。
+            var unitParNn = UnitParTagIndexForDataRow(i).ToString("D2");
+            tags[$"UNITPAR{unitParNn}"] = (r.PlanUnitName ?? "").Trim();
+            tags[$"UNITCHI{nn}"] = (r.ChildUnitName ?? "").Trim();
+            tags[$"ORDERNO{nn}"] = "";
         }
 
         return tags;
@@ -110,5 +119,24 @@ public sealed class CookingInstructionPdfService
         if (n.Length == 0) return c;
         return $"{c} {n}";
     }
+
+    /// <summary>親セル上段用: 注番と計画数量を上寄せのまま縦に積む（テスト・他用途）。</summary>
+    internal static string BuildParentTopCell(string? orderNo, string? plannedQtyDisplay)
+    {
+        var o = (orderNo ?? "").Trim();
+        var q = (plannedQtyDisplay ?? "").Trim();
+        if (o.Length == 0) return q;
+        if (q.Length == 0) return o;
+        return $"{o}\n{q}";
+    }
+
+    /// <summary>調理指示書.rxz の UNITPAR フィールド番号と表の行の対応（00/01 が逆）。</summary>
+    internal static int UnitParTagIndexForDataRow(int dataRowIndex) =>
+        dataRowIndex switch
+        {
+            0 => 1,
+            1 => 0,
+            _ => dataRowIndex
+        };
 }
 

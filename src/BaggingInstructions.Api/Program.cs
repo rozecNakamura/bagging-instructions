@@ -52,6 +52,8 @@ builder.Services.AddScoped<InspectionRecordService>();
 builder.Services.AddScoped<InspectionRecordPdfService>();
 builder.Services.AddScoped<AcceptanceRecordService>();
 builder.Services.AddScoped<AcceptanceRecordPdfService>();
+builder.Services.AddScoped<SortingInquiryService>();
+builder.Services.AddScoped<SortingInquiryExcelService>();
 
 builder.Services.AddCors(options =>
 {

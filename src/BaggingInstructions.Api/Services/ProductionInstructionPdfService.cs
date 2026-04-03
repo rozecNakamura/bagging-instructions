@@ -90,19 +90,14 @@ public sealed class ProductionInstructionPdfService
 
             var codeName = CookingInstructionPdfService.FormatItemCodeName(r.ParentItemCode, r.ParentItemName);
             var order = (r.OrderNo ?? "").Trim();
+            // ITEMPALNM は下寄せのため、2 行のとき下段に注番が来るよう「品目\n注番」の順にする。
             var parentText = order.Length == 0
                 ? codeName
                 : string.IsNullOrEmpty(codeName)
                     ? order
-                    : $"{order}\n{codeName}";
+                    : $"{codeName}\n{order}";
 
             var childText = CookingInstructionPdfService.FormatItemCodeName(r.ChildItemCode, r.ChildItemName);
-
-            static string ShortenUnit(string? unit)
-            {
-                if (string.IsNullOrEmpty(unit)) return string.Empty;
-                return unit.Length > 4 ? unit[..4] : unit;
-            }
 
             tags[$"ITEMPALNM{nn}"] = parentText;
             tags[$"ITEMCHINM{nn}"] = childText;
@@ -110,8 +105,8 @@ public sealed class ProductionInstructionPdfService
             tags[$"ITEMCHINUM{nn}"] = "";
             tags[$"MAKEQUNPLAN{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
             tags[$"USEQUNPLAN{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
-            tags[$"UNITPAR{nn}"] = ShortenUnit(r.PlanUnitName);
-            tags[$"UNITCHI{nn}"] = ShortenUnit(r.ChildUnitName);
+            tags[$"UNITPAR{nn}"] = (r.PlanUnitName ?? "").Trim();
+            tags[$"UNITCHI{nn}"] = (r.ChildUnitName ?? "").Trim();
             tags[$"ORDERNO{nn}"] = "";
             tags[$"ITEMSPEC{nn}"] = r.ChildSpec ?? string.Empty;
         }

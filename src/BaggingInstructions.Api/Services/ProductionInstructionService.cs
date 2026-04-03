@@ -161,8 +161,25 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 bomCache[h.ParentItemcode] = boms;
             }
 
-            var parentQtyDisplay = h.MfgQty.ToString("0.###", CultureInfo.InvariantCulture);
-            var parentUnitName = h.ParentUnitName ?? "";
+            var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
+                h.RawOrdertableQty,
+                h.QtyUni0,
+                h.QtyUni1,
+                h.QtyUni2,
+                h.QtyUni3,
+                h.IaStd,
+                h.IaCar0,
+                h.ConversionValue1,
+                h.ConversionValue2,
+                h.ConversionValue3);
+            var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
+                qtyU0,
+                h.QtyUni1,
+                h.ProcurementUnitName,
+                h.ParentUnitName,
+                h.ConversionValue1);
+            var parentQtyDisplay = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
+            var parentUnitName = dispUnit;
 
             if (boms.Count == 0)
             {
@@ -186,7 +203,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 
             foreach (var b in boms)
             {
-                var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
 
                 lines.Add(new ProductionInstructionPdfLineModel
@@ -224,18 +241,30 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 """
                 SELECT
                   ot.ordertableid,
-                  COALESCE(ot.qty, 0) AS mfg_qty,
+                  COALESCE(ot.qty, 0) AS raw_mfg_qty,
+                  ot.qtyuni0 AS ot_qtyuni0,
+                  ot.qtyuni1 AS ot_qtyuni1,
+                  ot.qtyuni2 AS ot_qtyuni2,
+                  ot.qtyuni3 AS ot_qtyuni3,
                   COALESCE(ot.itemcode, i.itemcode, '') AS parent_itemcode,
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(u0.unitname, '') AS parent_unitname,
+                  u1.unitname AS procurement_u_name,
+                  ia.std AS ia_std,
+                  ia.car0 AS ia_car0,
+                  i.conversionvalue1 AS cv1,
+                  i.conversionvalue2 AS cv2,
+                  i.conversionvalue3 AS cv3,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.releasedate,
                   ot.ordertableid::text AS order_no
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
@@ -253,14 +282,24 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 list.Add(new ProductionInstructionLineHeaderRow
                 {
                     OrderTableId = reader.GetInt64(0),
-                    MfgQty = reader.GetDecimal(1),
-                    ParentItemcode = reader.GetString(2),
-                    ParentItemname = reader.GetString(3),
-                    ParentUnitName = reader.GetString(4),
-                    SlotDisplay = reader.GetString(5),
-                    NeedDate = ReadDateNullable(reader, 6),
-                    ReleaseDate = ReadDateNullable(reader, 7),
-                    OrderNo = reader.GetString(8)
+                    RawOrdertableQty = reader.GetDecimal(1),
+                    QtyUni0 = ReadDecimalNullable(reader, 2),
+                    QtyUni1 = ReadDecimalNullable(reader, 3),
+                    QtyUni2 = ReadDecimalNullable(reader, 4),
+                    QtyUni3 = ReadDecimalNullable(reader, 5),
+                    ParentItemcode = reader.GetString(6),
+                    ParentItemname = reader.GetString(7),
+                    ParentUnitName = reader.GetString(8),
+                    ProcurementUnitName = reader.IsDBNull(9) ? null : reader.GetString(9),
+                    IaStd = reader.IsDBNull(10) ? null : reader.GetString(10),
+                    IaCar0 = ReadDecimalNullable(reader, 11),
+                    ConversionValue1 = ReadDecimalNullable(reader, 12),
+                    ConversionValue2 = ReadDecimalNullable(reader, 13),
+                    ConversionValue3 = ReadDecimalNullable(reader, 14),
+                    SlotDisplay = reader.GetString(15),
+                    NeedDate = ReadDateNullable(reader, 16),
+                    ReleaseDate = ReadDateNullable(reader, 17),
+                    OrderNo = reader.GetString(18)
                 });
             }
 
@@ -332,6 +371,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
         }
     }
 
+    private static decimal? ReadDecimalNullable(NpgsqlDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetDecimal(ordinal);
+
     private static DateOnly? ReadDateNullable(NpgsqlDataReader reader, int ordinal)
     {
         if (reader.IsDBNull(ordinal))
@@ -380,10 +422,20 @@ internal sealed class ProductionInstructionSearchSqlRow
 internal sealed class ProductionInstructionLineHeaderRow
 {
     public long OrderTableId { get; set; }
-    public decimal MfgQty { get; set; }
+    public decimal RawOrdertableQty { get; set; }
+    public decimal? QtyUni0 { get; set; }
+    public decimal? QtyUni1 { get; set; }
+    public decimal? QtyUni2 { get; set; }
+    public decimal? QtyUni3 { get; set; }
     public string ParentItemcode { get; set; } = "";
     public string ParentItemname { get; set; } = "";
     public string ParentUnitName { get; set; } = "";
+    public string? ProcurementUnitName { get; set; }
+    public string? IaStd { get; set; }
+    public decimal? IaCar0 { get; set; }
+    public decimal? ConversionValue1 { get; set; }
+    public decimal? ConversionValue2 { get; set; }
+    public decimal? ConversionValue3 { get; set; }
     public string SlotDisplay { get; set; } = "";
     public DateOnly? NeedDate { get; set; }
     public DateOnly? ReleaseDate { get; set; }

@@ -687,6 +687,99 @@ export async function fetchProductionInstructionWorkcenters() {
  * 調味液配合表仕様：便マスタ
  * @returns {Promise<{ code: string, name: string }[]>}
  */
+/**
+ * 仕分け照会：便マスタ一覧
+ */
+export async function fetchSortingInquirySlots() {
+    const res = await fetch(`${API_BASE_URL}/sorting-inquiry/slots`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 仕分け照会：検索（喫食日・便コード複数）
+ * @param {string} delvedt
+ * @param {string[]} slotCodes
+ */
+export async function searchSortingInquiry(delvedt, slotCodes) {
+    let delvedtStr = delvedt;
+    if (delvedt && delvedt.includes('-')) {
+        delvedtStr = delvedt.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ delvedt: delvedtStr });
+    const codes = Array.isArray(slotCodes) ? slotCodes : [];
+    codes.forEach(c => {
+        if (c && String(c).trim()) params.append('slot_code', String(c).trim());
+    });
+    const res = await fetch(`${API_BASE_URL}/sorting-inquiry/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 仕分け照会 Excel（仕分け照会様式）
+ */
+export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
+    let delvedtStr = delvedt;
+    if (delvedt && delvedt.includes('-')) {
+        delvedtStr = delvedt.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ delvedt: delvedtStr });
+    (Array.isArray(slotCodes) ? slotCodes : []).forEach(c => {
+        if (c && String(c).trim()) params.append('slot_code', String(c).trim());
+    });
+    const res = await fetch(`${API_BASE_URL}/sorting-inquiry/export/shiwake-inquiry?${params}`);
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `Excel出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
+/**
+ * 仕分け照会 Excel（仕訳表自動調整様式）
+ */
+export async function exportSortingInquiryJournalBlob(delvedt, slotCodes) {
+    let delvedtStr = delvedt;
+    if (delvedt && delvedt.includes('-')) {
+        delvedtStr = delvedt.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ delvedt: delvedtStr });
+    (Array.isArray(slotCodes) ? slotCodes : []).forEach(c => {
+        if (c && String(c).trim()) params.append('slot_code', String(c).trim());
+    });
+    const res = await fetch(`${API_BASE_URL}/sorting-inquiry/export/journal-adjustment?${params}`);
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `Excel出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
+}
+
 export async function fetchProductionInstructionSlots() {
     const res = await fetch(`${API_BASE_URL}/production-instruction/slots`);
     if (!res.ok) {

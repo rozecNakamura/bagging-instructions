@@ -8,8 +8,9 @@ public class Unit
     [Column("unitid")]
     public long UnitId { get; set; }
 
+    /// <summary>一意（item.unitcode0 等から参照）。DB に NULL があっても EF 上は空文字で扱う。</summary>
     [Column("unitcode")]
-    public string? UnitCode { get; set; }
+    public string UnitCode { get; set; } = "";
 
     [Column("unitname")]
     public string? UnitName { get; set; }

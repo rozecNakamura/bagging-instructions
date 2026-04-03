@@ -23,4 +23,8 @@
     <ProjectReference Include="..\BaggingInstructions.Api\BaggingInstructions.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\BaggingInstructions.Api\Templates\SortingInquiry\*.xlsx" CopyToOutputDirectory="PreserveNewest" Link="Templates\SortingInquiry\%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

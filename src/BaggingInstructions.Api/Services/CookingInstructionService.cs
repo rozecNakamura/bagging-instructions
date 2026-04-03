@@ -121,6 +121,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 
     /// <summary>
     /// PDF 行生成。ids は ordertableid。
+    /// 予定製造量: ordertable.qtyuni0 / qtyuni1..3（item.conversionvalue1..3 で単位0）優先、無ければ qty を単位0換算（ia.std / car0）。表示は qtyuni1＋手配単位または conversionvalue1 で手配表示。
+    /// 子品目: 当該親の有効 BOM の子品目コード・名称のみ。
+    /// 予定使用量: 上記単位0換算後の製造数 × BOM（input/output/yield）による子所要量。
     /// </summary>
     public async Task<List<CookingInstructionPdfLineModel>> BuildPdfLineModelsAsync(
         IReadOnlyList<long> orderTableIds,
@@ -145,9 +148,23 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 bomCache[h.ParentItemcode] = boms;
             }
 
-            var qtyU0 = CookingInstructionQuantity.ToParentQtyInUnit0(h.RawOrdertableQty, h.IaStd, h.IaCar0);
-            var (dispQty, dispUnit) = CookingInstructionQuantity.ParentDisplayForPdf(
-                qtyU0, h.ProcurementUnitName, h.Unit0Name, h.IaCar1);
+            var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
+                h.RawOrdertableQty,
+                h.QtyUni0,
+                h.QtyUni1,
+                h.QtyUni2,
+                h.QtyUni3,
+                h.IaStd,
+                h.IaCar0,
+                h.ConversionValue1,
+                h.ConversionValue2,
+                h.ConversionValue3);
+            var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
+                qtyU0,
+                h.QtyUni1,
+                h.ProcurementUnitName,
+                h.Unit0Name,
+                h.ConversionValue1);
             var parentQtyDisplay = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
             var parentUnitName = dispUnit;
 
@@ -173,8 +190,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 
             foreach (var b in boms)
             {
-                var qty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
-                var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
+                // 予定使用量: 単位0の製造数に対する BOM 子所要（手配単位表示の親数量とは独立）
+                var childReqQty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qtyDisplay = childReqQty.ToString("0.###", CultureInfo.InvariantCulture);
 
                 lines.Add(new CookingInstructionPdfLineModel
                 {
@@ -184,9 +202,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     PlannedQuantityDisplay = parentQtyDisplay,
                     PlanUnitName = parentUnitName,
                     ChildItemCode = b.ChildItemcode,
-                    ChildItemName = b.ChildItemname ?? "",
+                    ChildItemName = (b.ChildItemname ?? "").Trim(),
                     ChildRequiredQtyDisplay = qtyDisplay,
-                    ChildUnitName = b.ChildUnitname ?? "",
+                    ChildUnitName = (b.ChildUnitname ?? "").Trim(),
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay,
                     WorkplaceNames = h.WorkplaceNames
@@ -252,13 +270,19 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 SELECT
                   ot.ordertableid,
                   COALESCE(ot.qty, 0) AS raw_mfg_qty,
+                  ot.qtyuni0 AS ot_qtyuni0,
+                  ot.qtyuni1 AS ot_qtyuni1,
+                  ot.qtyuni2 AS ot_qtyuni2,
+                  ot.qtyuni3 AS ot_qtyuni3,
                   COALESCE(ot.itemcode, i.itemcode, '') AS parent_itemcode,
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(u0.unitname, '') AS parent_u0_name,
                   u1.unitname AS procurement_u_name,
                   ia.std AS ia_std,
                   ia.car0 AS ia_car0,
-                  ia.car1 AS ia_car1,
+                  i.conversionvalue1 AS cv1,
+                  i.conversionvalue2 AS cv2,
+                  i.conversionvalue3 AS cv3,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
                   COALESCE((
                     SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
@@ -267,7 +291,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     WHERE m2.itemcode = COALESCE(ot.itemcode, i.itemcode)
                   ), '') AS workplace_names,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
-                  COALESCE(sol.salesorderid::text, ot.ordertableid::text) AS order_no_for_pdf
+                  ot.ordertableid::text AS order_no_for_pdf
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
@@ -292,17 +316,23 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 {
                     OrderTableId = reader.GetInt64(0),
                     RawOrdertableQty = reader.GetDecimal(1),
-                    ParentItemcode = reader.GetString(2),
-                    ParentItemname = reader.GetString(3),
-                    Unit0Name = reader.GetString(4),
-                    ProcurementUnitName = reader.IsDBNull(5) ? null : reader.GetString(5),
-                    IaStd = reader.IsDBNull(6) ? null : reader.GetString(6),
-                    IaCar0 = reader.IsDBNull(7) ? null : reader.GetDecimal(7),
-                    IaCar1 = reader.IsDBNull(8) ? null : reader.GetDecimal(8),
-                    SlotDisplay = reader.GetString(9),
-                    WorkplaceNames = reader.GetString(10),
-                    NeedDate = ReadDateNullable(reader, 11),
-                    OrderNo = reader.GetString(12)
+                    QtyUni0 = ReadDecimalNullable(reader, 2),
+                    QtyUni1 = ReadDecimalNullable(reader, 3),
+                    QtyUni2 = ReadDecimalNullable(reader, 4),
+                    QtyUni3 = ReadDecimalNullable(reader, 5),
+                    ParentItemcode = reader.GetString(6),
+                    ParentItemname = reader.GetString(7),
+                    Unit0Name = reader.GetString(8),
+                    ProcurementUnitName = reader.IsDBNull(9) ? null : reader.GetString(9),
+                    IaStd = reader.IsDBNull(10) ? null : reader.GetString(10),
+                    IaCar0 = ReadDecimalNullable(reader, 11),
+                    ConversionValue1 = ReadDecimalNullable(reader, 12),
+                    ConversionValue2 = ReadDecimalNullable(reader, 13),
+                    ConversionValue3 = ReadDecimalNullable(reader, 14),
+                    SlotDisplay = reader.GetString(15),
+                    WorkplaceNames = reader.GetString(16),
+                    NeedDate = ReadDateNullable(reader, 17),
+                    OrderNo = reader.GetString(18)
                 });
             }
 
@@ -371,6 +401,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
         }
     }
 
+    private static decimal? ReadDecimalNullable(NpgsqlDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetDecimal(ordinal);
+
     private static DateOnly? ReadDateNullable(NpgsqlDataReader reader, int ordinal)
     {
         if (reader.IsDBNull(ordinal))
@@ -418,17 +451,23 @@ internal sealed class CookingInstructionLineHeaderRow
 {
     public long OrderTableId { get; set; }
     public decimal RawOrdertableQty { get; set; }
+    public decimal? QtyUni0 { get; set; }
+    public decimal? QtyUni1 { get; set; }
+    public decimal? QtyUni2 { get; set; }
+    public decimal? QtyUni3 { get; set; }
     public string ParentItemcode { get; set; } = "";
     public string ParentItemname { get; set; } = "";
     public string Unit0Name { get; set; } = "";
     public string? ProcurementUnitName { get; set; }
     public string? IaStd { get; set; }
     public decimal? IaCar0 { get; set; }
-    public decimal? IaCar1 { get; set; }
+    public decimal? ConversionValue1 { get; set; }
+    public decimal? ConversionValue2 { get; set; }
+    public decimal? ConversionValue3 { get; set; }
     public string SlotDisplay { get; set; } = "";
     public string WorkplaceNames { get; set; } = "";
     public DateOnly? NeedDate { get; set; }
-    /// <summary>PDF 注番等: 受注ヘッダ ID（salesorderline があるとき）。無ければ ordertableid。</summary>
+    /// <summary>PDF 注番: ordertable.ordertableid（文字列）。</summary>
     public string OrderNo { get; set; } = "";
 }
 

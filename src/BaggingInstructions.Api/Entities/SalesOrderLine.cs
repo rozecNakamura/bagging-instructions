@@ -14,20 +14,27 @@ public class SalesOrderLine
     [Column("lineno")]
     public int LineNo { get; set; }
 
-    [Column("itemid")]
-    public long? ItemId { get; set; }
+    /// <summary>品目コード（item.itemcode へ FK。craftlineax では明細は itemcode で紐づく）。</summary>
+    [Column("itemcode")]
+    public string? ItemCd { get; set; }
 
+    /// <summary>受注数量（DB: quantity）。</summary>
     [Column("quantity")]
     public decimal Quantity { get; set; }
 
-    [Column("quantityinput")]
-    public decimal? QuantityInput { get; set; }
+    /// <summary>数量（単位0）。DB: quantityuni0。</summary>
+    [Column("quantityuni0")]
+    public decimal? QtyUni0 { get; set; }
 
-    [Column("unitcode")]
-    public string? UnitCode { get; set; }
+    /// <summary>数量（単位1／手配単位）。DB: quantityuni1。</summary>
+    [Column("quantityuni1")]
+    public decimal? QtyUni1 { get; set; }
 
-    [Column("unitcodeinput")]
-    public string? UnitCodeInput { get; set; }
+    [Column("quantityuni2")]
+    public decimal? QtyUni2 { get; set; }
+
+    [Column("quantityuni3")]
+    public decimal? QtyUni3 { get; set; }
 
     [Column("unitprice")]
     public decimal? UnitPrice { get; set; }
@@ -55,6 +62,10 @@ public class SalesOrderLine
 
     [Column("comment")]
     public string? Comment { get; set; }
+
+    /// <summary>便コード（deliveryslot.slotcode と連携）。</summary>
+    [Column("slotcode")]
+    public string? SlotCode { get; set; }
 
     public virtual SalesOrder SalesOrder { get; set; } = null!;
     public virtual Item? Item { get; set; }
