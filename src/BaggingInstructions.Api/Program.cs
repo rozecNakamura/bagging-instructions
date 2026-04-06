@@ -50,6 +50,7 @@ builder.Services.AddScoped<ProductionInstructionService>();
 builder.Services.AddScoped<ProductionInstructionPdfService>();
 builder.Services.AddScoped<HoikoloProductionInstructionPdfService>();
 builder.Services.AddScoped<GanmonoTakiaiProductionInstructionPdfService>();
+builder.Services.AddScoped<CabWinnaSotiProductionInstructionPdfService>();
 builder.Services.AddScoped<InspectionRecordService>();
 builder.Services.AddScoped<InspectionRecordPdfService>();
 builder.Services.AddScoped<AcceptanceRecordService>();

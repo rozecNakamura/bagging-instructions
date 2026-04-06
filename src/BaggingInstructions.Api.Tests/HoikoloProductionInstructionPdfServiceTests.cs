@@ -6,40 +6,11 @@ namespace BaggingInstructions.Api.Tests;
 
 public class HoikoloProductionInstructionPdfServiceTests
 {
-    private static ProductionInstructionPdfLineModel ChildLine(
-        string orderNo,
-        string slot,
-        string parentCode,
-        string parentName,
-        string childCode,
-        string childName,
-        string qty,
-        string unit,
-        string yield,
-        string spec = "")
-    {
-        return new ProductionInstructionPdfLineModel
-        {
-            OrderNo = orderNo,
-            SlotDisplay = slot,
-            ParentItemCode = parentCode,
-            ParentItemName = parentName,
-            PlannedQuantityDisplay = "1",
-            PlanUnitName = "kg",
-            ChildItemCode = childCode,
-            ChildItemName = childName,
-            ChildSpec = spec,
-            ChildRequiredQtyDisplay = qty,
-            ChildUnitName = unit,
-            ChildYieldPercentDisplay = yield,
-            NeedDateDisplay = "2025/01/15"
-        };
-    }
-
     [Fact]
     public void BuildPageTagDictionary_HeaderAndMainRow()
     {
-        var header = ChildLine("501", "1便", "P1", "親", "C1", "子", "2.5", "kg", "100", "規格X");
+        var header = ProductionInstructionPdfTestModels.ChildLine(
+            "501", "1便", "P1", "親", "C1", "子", "2.5", "kg", "100", "規格X", needDateDisplay: "2025/01/15");
         var tags = HoikoloProductionInstructionPdfService.BuildPageTagDictionary(header, new[] { header });
 
         Assert.Equal("P1", tags["ITEMPARCD"]);
@@ -67,7 +38,8 @@ public class HoikoloProductionInstructionPdfServiceTests
             PlanUnitName = "個",
             NeedDateDisplay = "2025/02/01"
         };
-        var children = Enumerable.Range(1, 6).Select(i => ChildLine("9", "A便", "P", "親", $"C{i}", $"子{i}", $"{i}", "g", "99")).ToList();
+        var children = Enumerable.Range(1, 6).Select(i =>
+            ProductionInstructionPdfTestModels.ChildLine("9", "A便", "P", "親", $"C{i}", $"子{i}", $"{i}", "g", "99")).ToList();
 
         var tags = HoikoloProductionInstructionPdfService.BuildPageTagDictionary(h, children);
 
@@ -83,9 +55,9 @@ public class HoikoloProductionInstructionPdfServiceTests
     {
         var lines = new List<ProductionInstructionPdfLineModel>
         {
-            ChildLine("20", "2便", "P", "親", "a", "A", "1", "g", "1"),
-            ChildLine("10", "1便", "P", "親", "b", "B", "1", "g", "1"),
-            ChildLine("10", "1便", "P", "親", "c", "C", "1", "g", "1")
+            ProductionInstructionPdfTestModels.ChildLine("20", "2便", "P", "親", "a", "A", "1", "g", "1"),
+            ProductionInstructionPdfTestModels.ChildLine("10", "1便", "P", "親", "b", "B", "1", "g", "1"),
+            ProductionInstructionPdfTestModels.ChildLine("10", "1便", "P", "親", "c", "C", "1", "g", "1")
         };
 
         var groups = HoikoloProductionInstructionPdfService.GroupLinesForHoikolo(lines);

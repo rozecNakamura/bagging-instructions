@@ -829,12 +829,12 @@ export async function searchProductionInstruction(needDate, workcenterIds, slotC
 }
 
 /** 生産指示 POST report の report_variant（バックエンドと揃える） */
-const PRODUCTION_INSTRUCTION_REPORT_VARIANTS = new Set(['hoikolo', 'ganmono_takiai']);
+const PRODUCTION_INSTRUCTION_REPORT_VARIANTS = new Set(['hoikolo', 'ganmono_takiai', 'cab_winna_soti']);
 
 /**
  * @param {{ needDate: string, workcenterIds?: number[], slotCodes?: string[] }} filter
  * @param {number[]} orderIds
- * @param {'hoikolo'|'ganmono_takiai'|undefined} reportVariant 省略時は調味液配合表（chomi）
+ * @param {'hoikolo'|'ganmono_takiai'|'cab_winna_soti'|undefined} reportVariant 省略時は調味液配合表（chomi）
  * @returns {Promise<Blob>}
  */
 async function postProductionInstructionReport(filter, orderIds, reportVariant) {
@@ -882,6 +882,11 @@ export function exportProductionInstructionHoikoloPdf(filter, orderIds) {
 /** 生産指示書_がんもの炊き合わせ：PDF 出力 */
 export function exportProductionInstructionGanmonoTakiaiPdf(filter, orderIds) {
     return postProductionInstructionReport(filter, orderIds, 'ganmono_takiai');
+}
+
+/** 生産指示書_キャベツとウィンナーのソティ：PDF 出力 */
+export function exportProductionInstructionCabWinnaSotiPdf(filter, orderIds) {
+    return postProductionInstructionReport(filter, orderIds, 'cab_winna_soti');
 }
 
 /**

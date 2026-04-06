@@ -14,6 +14,7 @@ public class ProductionInstructionController : ControllerBase
     private readonly ProductionInstructionPdfService _pdfService;
     private readonly HoikoloProductionInstructionPdfService _hoikoloPdfService;
     private readonly GanmonoTakiaiProductionInstructionPdfService _ganmonoTakiaiPdfService;
+    private readonly CabWinnaSotiProductionInstructionPdfService _cabWinnaSotiPdfService;
     private readonly IWebHostEnvironment _env;
 
     public ProductionInstructionController(
@@ -21,12 +22,14 @@ public class ProductionInstructionController : ControllerBase
         ProductionInstructionPdfService pdfService,
         HoikoloProductionInstructionPdfService hoikoloPdfService,
         GanmonoTakiaiProductionInstructionPdfService ganmonoTakiaiPdfService,
+        CabWinnaSotiProductionInstructionPdfService cabWinnaSotiPdfService,
         IWebHostEnvironment env)
     {
         _service = service;
         _pdfService = pdfService;
         _hoikoloPdfService = hoikoloPdfService;
         _ganmonoTakiaiPdfService = ganmonoTakiaiPdfService;
+        _cabWinnaSotiPdfService = cabWinnaSotiPdfService;
         _env = env;
     }
 
@@ -100,7 +103,7 @@ public class ProductionInstructionController : ControllerBase
         [JsonPropertyName("orderIds")]
         public List<long> OrderIds { get; set; } = new();
 
-        /// <summary>省略または "chomi" = 調味液配合表。"hoikolo" = ホイコーロー。"ganmono_takiai" = がんもの炊き合わせ。</summary>
+        /// <summary>省略または "chomi" = 調味液配合表。"hoikolo" = ホイコーロー。"ganmono_takiai" = がんもの炊き合わせ。"cab_winna_soti" = キャベツとウィンナーのソティ。</summary>
         [JsonPropertyName("report_variant")]
         public string? ReportVariant { get; set; }
     }
@@ -135,6 +138,7 @@ public class ProductionInstructionController : ControllerBase
             {
                 VariantHoikolo => _hoikoloPdfService.GeneratePdf(fullPath, lines),
                 VariantGanmonoTakiai => _ganmonoTakiaiPdfService.GeneratePdf(fullPath, lines),
+                VariantCabWinnaSoti => _cabWinnaSotiPdfService.GeneratePdf(fullPath, lines),
                 _ => _pdfService.GeneratePdf(fullPath, lines)
             };
             var downloadName = DownloadFileName(variant);

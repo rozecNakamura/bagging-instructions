@@ -72,6 +72,7 @@
                 <li><button type="button" class="menu-btn" data-screen="production-instruction">調味液配合表仕様</button></li>
                 <li><button type="button" class="menu-btn" data-screen="production-instruction-hoikolo">生産指示書_ホイコーロー</button></li>
                 <li><button type="button" class="menu-btn" data-screen="production-instruction-ganmono">生産指示書_がんもの炊き合わせ</button></li>
+                <li><button type="button" class="menu-btn" data-screen="production-instruction-cab-winna-soti">生産指示書_キャベツとウィンナーのソティ</button></li>
                 <li><button type="button" class="menu-btn" data-screen="inspection-record">検品記録簿</button></li>
                 <li><button type="button" class="menu-btn" data-screen="sorting-inquiry">仕分け照会</button></li>
                 <li><button type="button" class="menu-btn" data-screen="acceptance-record">検収の記録簿</button></li>
@@ -867,6 +868,73 @@
                 </div>
             </div>
 
+            <!-- 生産指示書_キャベツとウィンナーのソティ（MO 検索・調味液と同条件） -->
+            <div id="screen-production-instruction-cab-winna-soti" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>生産指示書_キャベツとウィンナーのソティ</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="cwsNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="cwsNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="cwsWorkcenterDropdown">
+                                    <div class="multi-select-display" id="cwsWorkcenterDisplay">
+                                        <span id="cwsWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cwsWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>便:</label>
+                                <div class="multi-select-dropdown" id="cwsSlotDropdown">
+                                    <div class="multi-select-display" id="cwsSlotDisplay">
+                                        <span id="cwsSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cwsSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="cwsSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="cwsResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="cwsResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="cwsSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="cwsDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="cwsResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="cwsHeaderCheckbox"></th>
+                                        <th>品目名</th>
+                                        <th>日付</th>
+                                        <th>便</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cwsResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="print-section" id="cwsPrintSection" style="display: none;">
+                        <h2>帳票出力</h2>
+                        <button type="button" id="cwsPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                    </section>
+                </div>
+            </div>
+
             <!-- 仕分け照会 -->
             <div id="screen-sorting-inquiry" class="screen">
                 <div class="container">
@@ -1017,6 +1085,8 @@
         <script type="module" src="/static/js/hoikolo_production_instruction_print.js"></script>
         <script type="module" src="/static/js/ganmono_production_instruction_search.js"></script>
         <script type="module" src="/static/js/ganmono_production_instruction_print.js"></script>
+        <script type="module" src="/static/js/cab_winna_soti_production_instruction_search.js"></script>
+        <script type="module" src="/static/js/cab_winna_soti_production_instruction_print.js"></script>
     <script type="module" src="/static/js/inspection_record_search.js"></script>
     <script type="module" src="/static/js/inspection_record_print.js"></script>
     <script type="module" src="/static/js/sorting_inquiry_search.js"></script>

@@ -6,40 +6,10 @@ namespace BaggingInstructions.Api.Tests;
 
 public class GanmonoTakiaiProductionInstructionPdfServiceTests
 {
-    private static ProductionInstructionPdfLineModel ChildLine(
-        string orderNo,
-        string slot,
-        string parentCode,
-        string parentName,
-        string childCode,
-        string childName,
-        string qty,
-        string unit,
-        string yield,
-        string spec = "")
-    {
-        return new ProductionInstructionPdfLineModel
-        {
-            OrderNo = orderNo,
-            SlotDisplay = slot,
-            ParentItemCode = parentCode,
-            ParentItemName = parentName,
-            PlannedQuantityDisplay = "1",
-            PlanUnitName = "kg",
-            ChildItemCode = childCode,
-            ChildItemName = childName,
-            ChildSpec = spec,
-            ChildRequiredQtyDisplay = qty,
-            ChildUnitName = unit,
-            ChildYieldPercentDisplay = yield,
-            NeedDateDisplay = "2025/03/01"
-        };
-    }
-
     [Fact]
     public void BuildPageTagDictionary_HeaderAndMainRow()
     {
-        var line = ChildLine("701", "3便", "GP", "親品", "GC", "子品", "3", "個", "95", "規格Z");
+        var line = ProductionInstructionPdfTestModels.ChildLine("701", "3便", "GP", "親品", "GC", "子品", "3", "個", "95", "規格Z");
         var tags = GanmonoTakiaiProductionInstructionPdfService.BuildPageTagDictionary(line, new[] { line });
 
         Assert.Equal("GP", tags["ITEMPARCD"]);
@@ -68,7 +38,7 @@ public class GanmonoTakiaiProductionInstructionPdfServiceTests
             NeedDateDisplay = "2025/04/01"
         };
         var children = Enumerable.Range(1, 8).Select(i =>
-            ChildLine("8", "B便", "P", "親", $"C{i}", $"子{i}", $"{i}", "g", "90")).ToList();
+            ProductionInstructionPdfTestModels.ChildLine("8", "B便", "P", "親", $"C{i}", $"子{i}", $"{i}", "g", "90")).ToList();
 
         var tags = GanmonoTakiaiProductionInstructionPdfService.BuildPageTagDictionary(h, children);
 
@@ -84,9 +54,9 @@ public class GanmonoTakiaiProductionInstructionPdfServiceTests
     {
         var lines = new List<ProductionInstructionPdfLineModel>
         {
-            ChildLine("30", "3便", "P", "親", "a", "A", "1", "g", "1"),
-            ChildLine("10", "1便", "P", "親", "b", "B", "1", "g", "1"),
-            ChildLine("10", "1便", "P", "親", "c", "C", "1", "g", "1")
+            ProductionInstructionPdfTestModels.ChildLine("30", "3便", "P", "親", "a", "A", "1", "g", "1"),
+            ProductionInstructionPdfTestModels.ChildLine("10", "1便", "P", "親", "b", "B", "1", "g", "1"),
+            ProductionInstructionPdfTestModels.ChildLine("10", "1便", "P", "親", "c", "C", "1", "g", "1")
         };
 
         var fromService = HoikoloProductionInstructionPdfService.GroupLinesForHoikolo(lines);
