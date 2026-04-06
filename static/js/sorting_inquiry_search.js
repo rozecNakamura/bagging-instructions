@@ -75,26 +75,61 @@ function displaySortingInquiryResults(data) {
     }
 
     countEl.textContent = `${rows.length}件`;
-    const storeHeaders = data.storeHeaders || {};
+    const storeHeaderCodes = data.storeHeaderCodes || {};
+    const storeHeaderDeliveryCodes = data.storeHeaderDeliveryCodes || {};
+    const storeHeaderDeliveryNames = data.storeHeaderDeliveryNames || {};
+
+    /** Excel と同じ 7 段ヘッダー（1:得意先コード 2:納入場所コード 3:納入場所名 4–6:保留 7:空）。 */
+    const headerStackRowCount = 7;
 
     thead.innerHTML = '';
-    const tr = thead.insertRow();
 
-    ['品目コード', '品目名称', '食種'].forEach((label) => {
+    const tr1 = thead.insertRow();
+    ['品目コード', '品目名称', '適用'].forEach((label) => {
         const th = document.createElement('th');
+        th.rowSpan = headerStackRowCount;
         th.textContent = label;
-        tr.appendChild(th);
+        tr1.appendChild(th);
     });
-
     storeKeys.forEach((key) => {
         const th = document.createElement('th');
-        th.textContent = storeHeaders[key] || key;
-        tr.appendChild(th);
+        th.textContent = storeHeaderCodes[key] || key;
+        tr1.appendChild(th);
+    });
+    const thSum = document.createElement('th');
+    thSum.rowSpan = headerStackRowCount;
+    thSum.textContent = '合計';
+    tr1.appendChild(thSum);
+
+    const tr2 = thead.insertRow();
+    storeKeys.forEach((key) => {
+        const th = document.createElement('th');
+        th.textContent = storeHeaderDeliveryCodes[key] || '';
+        tr2.appendChild(th);
     });
 
-    const thSum = document.createElement('th');
-    thSum.textContent = '合計';
-    tr.appendChild(thSum);
+    const tr3 = thead.insertRow();
+    storeKeys.forEach((key) => {
+        const th = document.createElement('th');
+        th.textContent = storeHeaderDeliveryNames[key] || '';
+        tr3.appendChild(th);
+    });
+
+    for (let i = 0; i < 3; i++) {
+        const tr = thead.insertRow();
+        storeKeys.forEach(() => {
+            const th = document.createElement('th');
+            th.textContent = '';
+            tr.appendChild(th);
+        });
+    }
+
+    const trBottom = thead.insertRow();
+    storeKeys.forEach(() => {
+        const th = document.createElement('th');
+        th.textContent = '';
+        trBottom.appendChild(th);
+    });
 
     tbody.innerHTML = '';
     rows.forEach((row) => {

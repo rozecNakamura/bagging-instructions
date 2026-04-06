@@ -10,8 +10,12 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 仕分け照会: salesorderline を喫食日（planneddeliverydate）・便（slotcode）で検索し、
 /// 品目×食種×得意先コード別に数量を集計する（同一得意先の複数納入場所は合算）。一覧・Excel は品目コード・品目名称・食種のあと、
-/// 検索結果に現れる各得意先コードを1列とし、列見出しは納入場所名称（複数は「／」、名称が無い場合は場所コード、いずれも無い場合は得意先コード）。
-/// 最後に合計列とする。食種は <see cref="SalesOrderLineAddinfo.Addinfo02Name"/>（無ければ <see cref="SalesOrderLineAddinfo.Addinfo02"/>）。
+/// 検索結果に現れる各得意先コードを1列とし、列見出しは <c>customer</c> マスタの得意先名（略称優先、無ければ正式名、無ければ得意先コード）。
+/// 同一品目×食種行で複数得意先列が並び、同日に複数得意先が同一品目を取引したことが分かる。
+/// 最後に合計列とする。行データの食種キーは addinfo（<see cref="SalesOrderLineAddinfo.Addinfo02Name"/>／<see cref="SalesOrderLineAddinfo.Addinfo02"/>）。Excel の列見出しのみ「適用」とする。
+/// 仕訳表 Excel 用に <see cref="SortingInquirySearchResponseDto.StoreHeaderDeliveryCodes"/>／StoreHeaderDeliveryNames を付与する。
+/// 仕訳表用の列別収容は、明細ごとの単位0換算数量（<see cref="CookingInstructionQuantity.ResolveParentQtyInUnit0"/>）を
+/// <see cref="SalesOrderLineAddinfo.Addinfo01"/> は DB 上は文字列だが、仕訳表の収容計算では正の数値としてパースして除算し、得意先列ごとに合算する。
 /// </summary>
 public sealed class SortingInquiryService
 {
@@ -87,21 +91,36 @@ ORDER BY slotcode
     {
         var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
         var rows = await _db.Database
-            .SqlQuery<SortingInquiryCustomerCodeSqlRow>($@"
-SELECT DISTINCT TRIM(COALESCE(s0.customercode, '')) AS ""CustomerCode""
-FROM salesorderline s
-INNER JOIN salesorder s0 ON s.salesorderid = s0.salesorderid
-WHERE s.planneddeliverydate = {plannedDate}
-  AND ({slotArr.Length} = 0
-       OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
-       OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
+            .SqlQuery<SortingInquiryCustomerHeaderSqlRow>($@"
+SELECT
+  x.custcode AS ""CustomerCode"",
+  MAX(x.shortname) AS ""CustomerShortName"",
+  MAX(x.fullname) AS ""CustomerNameFromMaster""
+FROM (
+  SELECT
+    TRIM(COALESCE(s0.customercode, '')) AS custcode,
+    NULLIF(TRIM(COALESCE(cu.customershortname, '')), '') AS shortname,
+    NULLIF(TRIM(COALESCE(cu.customername, '')), '') AS fullname
+  FROM salesorderline s
+  INNER JOIN salesorder s0 ON s.salesorderid = s0.salesorderid
+  LEFT JOIN customer cu ON s0.customercode = cu.customercode
+  WHERE s.planneddeliverydate = {plannedDate}
+    AND ({slotArr.Length} = 0
+         OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
+         OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
+) x
+WHERE x.custcode <> ''
+GROUP BY x.custcode
 ")
             .ToListAsync(ct);
 
         return rows
-            .Select(r => (r.CustomerCode ?? "").Trim())
-            .Where(c => c.Length > 0)
-            .ToDictionary(c => c, c => c, StringComparer.Ordinal);
+            .Select(r => (Code: (r.CustomerCode ?? "").Trim(), r))
+            .Where(x => x.Code.Length > 0)
+            .ToDictionary(
+                x => x.Code,
+                x => ResolveCustomerDisplayName(x.r.CustomerShortName, x.r.CustomerNameFromMaster, x.Code),
+                StringComparer.Ordinal);
     }
 
     private async Task<Dictionary<string, string>> LoadCustomerHeadersInMemoryAsync(
@@ -112,6 +131,7 @@ WHERE s.planneddeliverydate = {plannedDate}
         var query = _db.SalesOrderLines
             .AsNoTracking()
             .Include(l => l.SalesOrder!)
+                .ThenInclude(so => so!.Customer)
             .Where(l => l.PlannedDeliveryDate == plannedDate);
 
         if (slots.Count > 0)
@@ -120,11 +140,19 @@ WHERE s.planneddeliverydate = {plannedDate}
 
         var lines = await query.ToListAsync(ct);
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var code in lines
-                     .Select(l => (l.SalesOrder?.CustomerCode ?? "").Trim())
-                     .Where(c => c.Length > 0)
-                     .Distinct(StringComparer.Ordinal))
-            dict[code] = code;
+        foreach (var g in lines
+                     .Select(l => (
+                         Code: (l.SalesOrder?.CustomerCode ?? "").Trim(),
+                         Cust: l.SalesOrder?.Customer))
+                     .Where(t => t.Code.Length > 0)
+                     .GroupBy(t => t.Code, StringComparer.Ordinal))
+        {
+            var first = g.First();
+            dict[g.Key] = ResolveCustomerDisplayName(
+                first.Cust?.CustomerShortName,
+                first.Cust?.CustomerName,
+                g.Key);
+        }
 
         return dict;
     }
@@ -142,6 +170,10 @@ WHERE s.planneddeliverydate = {plannedDate}
             .SqlQuery<SortingInquiryLineSqlRow>($@"
 SELECT
   s.quantity AS ""Quantity"",
+  s.quantityuni0 AS ""QuantityUni0"",
+  s.quantityuni1 AS ""QuantityUni1"",
+  s.quantityuni2 AS ""QuantityUni2"",
+  s.quantityuni3 AS ""QuantityUni3"",
   s0.customercode AS ""CustomerCode"",
   COALESCE(
     NULLIF(TRIM(COALESCE(c.locationcode, '')), ''),
@@ -150,10 +182,17 @@ SELECT
   NULLIF(TRIM(COALESCE(c.locationname, '')), '') AS ""LocationName"",
   COALESCE(i.itemcode, '') AS ""ItemCode"",
   COALESCE(i.itemname, '') AS ""ItemName"",
+  s1.addinfo01 AS ""Addinfo01"",
   s1.addinfo02 AS ""Addinfo02"",
-  s1.addinfo02name AS ""Addinfo02Name""
+  s1.addinfo02name AS ""Addinfo02Name"",
+  i.conversionvalue1 AS ""ConversionValue1"",
+  i.conversionvalue2 AS ""ConversionValue2"",
+  i.conversionvalue3 AS ""ConversionValue3"",
+  ia.std AS ""ItemStd"",
+  ia.car0 AS ""ItemCar0""
 FROM salesorderline s
 LEFT JOIN item i ON s.itemcode = i.itemcode
+LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
 INNER JOIN salesorder s0 ON s.salesorderid = s0.salesorderid
 LEFT JOIN customerdeliverylocation c
   ON s0.customercode = c.customercode AND s0.customerdeliverylocationcode = c.locationcode
@@ -166,13 +205,23 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 ")
             .ToListAsync(ct);
 
-        return rows.Select(r => new SortingInquiryLineMaterial(
+        return rows.Select(r => ToLineMaterial(
             r.Quantity,
+            r.QuantityUni0,
+            r.QuantityUni1,
+            r.QuantityUni2,
+            r.QuantityUni3,
+            r.ItemStd,
+            r.ItemCar0,
+            r.ConversionValue1,
+            r.ConversionValue2,
+            r.ConversionValue3,
             (r.CustomerCode ?? "").Trim(),
             (r.LocationCode ?? "").Trim(),
             (r.LocationName ?? "").Trim(),
             (r.ItemCode ?? "").Trim(),
             (r.ItemName ?? "").Trim(),
+            r.Addinfo01,
             r.Addinfo02,
             r.Addinfo02Name)).ToList();
     }
@@ -187,6 +236,7 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .Include(l => l.SalesOrder!)
                 .ThenInclude(so => so!.CustomerDeliveryLocation)
             .Include(l => l.Item)
+                .ThenInclude(i => i!.AdditionalInformation)
             .Include(l => l.Addinfo)
             .Where(l => l.PlannedDeliveryDate == plannedDate);
 
@@ -199,13 +249,23 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .ThenBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
 
-        return lines.Select(l => new SortingInquiryLineMaterial(
+        return lines.Select(l => ToLineMaterial(
             l.Quantity,
+            l.QtyUni0,
+            l.QtyUni1,
+            l.QtyUni2,
+            l.QtyUni3,
+            l.Item?.AdditionalInformation?.Std,
+            l.Item?.AdditionalInformation?.Car0,
+            l.Item?.ConversionValue1,
+            l.Item?.ConversionValue2,
+            l.Item?.ConversionValue3,
             (l.SalesOrder?.CustomerCode ?? "").Trim(),
             ResolveLocationCodeForSortingInquiry(l.SalesOrder),
             (l.SalesOrder?.CustomerDeliveryLocation?.LocationName ?? "").Trim(),
             (l.Item?.ItemCd ?? "").Trim(),
             (l.Item?.ItemName ?? "").Trim(),
+            l.Addinfo?.Addinfo01,
             l.Addinfo?.Addinfo02,
             l.Addinfo?.Addinfo02Name)).ToList();
     }
@@ -217,9 +277,7 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         if (customersOnDate.Count == 0 && lines.Count == 0)
             return new SortingInquirySearchResponseDto();
 
-        var headerLabelByCustomer = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var kv in customersOnDate)
-            headerLabelByCustomer[kv.Key] = kv.Key;
+        var headerLabelByCustomer = new Dictionary<string, string>(customersOnDate, StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -228,44 +286,6 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
                 continue;
             if (!headerLabelByCustomer.ContainsKey(cust))
                 headerLabelByCustomer[cust] = cust;
-        }
-
-        var locationTagsByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        var locationCodesByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var line in lines)
-        {
-            var cust = (line.CustomerCode ?? "").Trim();
-            if (cust.Length == 0)
-                continue;
-            var tag = DeliveryLocationHeaderLabel(line.LocationName, line.LocationCode);
-            if (tag.Length > 0)
-            {
-                if (!locationTagsByCustomer.TryGetValue(cust, out var set))
-                {
-                    set = new HashSet<string>(StringComparer.Ordinal);
-                    locationTagsByCustomer[cust] = set;
-                }
-
-                set.Add(tag);
-            }
-
-            var locCode = (line.LocationCode ?? "").Trim();
-            if (locCode.Length > 0)
-            {
-                if (!locationCodesByCustomer.TryGetValue(cust, out var codeSet))
-                {
-                    codeSet = new HashSet<string>(StringComparer.Ordinal);
-                    locationCodesByCustomer[cust] = codeSet;
-                }
-
-                codeSet.Add(locCode);
-            }
-        }
-
-        foreach (var code in headerLabelByCustomer.Keys.ToArray())
-        {
-            if (locationTagsByCustomer.TryGetValue(code, out var set) && set.Count > 0)
-                headerLabelByCustomer[code] = string.Join("／", set.OrderBy(s => s, StringComparer.Ordinal));
         }
 
         var nameLabelCounts = headerLabelByCustomer.Values
@@ -291,35 +311,58 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .ThenBy(k => k, StringComparer.Ordinal)
             .ToList();
 
-        var headerCodeJoin = new Dictionary<string, string>(StringComparer.Ordinal);
+        var storeHeaderCodes = storeHeaders.Keys.ToDictionary(k => k, k => k, StringComparer.Ordinal);
+
+        var locationCodesByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var locationTagsByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            var cust = (line.CustomerCode ?? "").Trim();
+            if (cust.Length == 0 || !storeHeaders.ContainsKey(cust))
+                continue;
+            var locCode = (line.LocationCode ?? "").Trim();
+            if (locCode.Length > 0)
+            {
+                if (!locationCodesByCustomer.TryGetValue(cust, out var cset))
+                {
+                    cset = new HashSet<string>(StringComparer.Ordinal);
+                    locationCodesByCustomer[cust] = cset;
+                }
+
+                cset.Add(locCode);
+            }
+
+            var tag = DeliveryLocationHeaderLabel(line.LocationName, line.LocationCode);
+            if (tag.Length > 0)
+            {
+                if (!locationTagsByCustomer.TryGetValue(cust, out var tset))
+                {
+                    tset = new HashSet<string>(StringComparer.Ordinal);
+                    locationTagsByCustomer[cust] = tset;
+                }
+
+                tset.Add(tag);
+            }
+        }
+
+        var rawDeliveryCodes = new Dictionary<string, string>(StringComparer.Ordinal);
+        var rawDeliveryNames = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var cust in storeHeaders.Keys)
         {
-            if (locationCodesByCustomer.TryGetValue(cust, out var cset) && cset.Count > 0)
-                headerCodeJoin[cust] = string.Join("／", cset.OrderBy(s => s, StringComparer.Ordinal));
-            else
-                headerCodeJoin[cust] = cust;
+            rawDeliveryCodes[cust] = locationCodesByCustomer.TryGetValue(cust, out var cs) && cs.Count > 0
+                ? string.Join("／", cs.OrderBy(s => s, StringComparer.Ordinal))
+                : "";
+            rawDeliveryNames[cust] = locationTagsByCustomer.TryGetValue(cust, out var ts) && ts.Count > 0
+                ? string.Join("／", ts.OrderBy(s => s, StringComparer.Ordinal))
+                : "";
         }
 
-        var codeLabelCounts = headerCodeJoin.Values
-            .Select(v => (v ?? "").Trim())
-            .GroupBy(v => v, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
-
-        var storeHeaderCodes = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var kv in headerCodeJoin)
-        {
-            var code = kv.Key;
-            var disp = (kv.Value ?? "").Trim();
-            if (string.IsNullOrEmpty(disp))
-                storeHeaderCodes[code] = code;
-            else if (codeLabelCounts.GetValueOrDefault(disp) > 1)
-                storeHeaderCodes[code] = $"{disp}（{code}）";
-            else
-                storeHeaderCodes[code] = disp;
-        }
+        var storeHeaderDeliveryCodes = DisambiguateStoreRowLabels(rawDeliveryCodes, StringComparer.Ordinal);
+        var storeHeaderDeliveryNames = DisambiguateStoreRowLabels(rawDeliveryNames, StringComparer.Ordinal);
 
         var itemNameByCode = new Dictionary<string, string>(StringComparer.Ordinal);
         var aggregates = new Dictionary<(string ItemCode, string FoodType), Dictionary<string, decimal>>();
+        var ratioAggregates = new Dictionary<(string ItemCode, string FoodType), Dictionary<string, decimal>>();
 
         foreach (var line in lines)
         {
@@ -342,6 +385,30 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             }
 
             byCustomer[cust] = byCustomer.GetValueOrDefault(cust) + line.Quantity;
+
+            var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
+            if (div.HasValue)
+            {
+                if (!ratioAggregates.TryGetValue(groupKey, out var byRatio))
+                {
+                    byRatio = new Dictionary<string, decimal>(StringComparer.Ordinal);
+                    ratioAggregates[groupKey] = byRatio;
+                }
+
+                byRatio[cust] = byRatio.GetValueOrDefault(cust) + line.QtyInUnit0 / div.Value;
+            }
+        }
+
+        var capacityByCustomer = storeHeaders.Keys.ToDictionary(k => k, _ => 0m, StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            var cust = (line.CustomerCode ?? "").Trim();
+            if (string.IsNullOrEmpty(cust) || !capacityByCustomer.ContainsKey(cust))
+                continue;
+            var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
+            if (!div.HasValue)
+                continue;
+            capacityByCustomer[cust] += line.QtyInUnit0 / div.Value;
         }
 
         var rows = aggregates
@@ -352,7 +419,10 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
                 ItemCode = a.Key.ItemCode,
                 ItemName = itemNameByCode.GetValueOrDefault(a.Key.ItemCode) ?? "",
                 FoodType = a.Key.FoodType,
-                QuantitiesByStore = a.Value.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
+                QuantitiesByStore = a.Value.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal),
+                RatioQuantitiesByStore = ratioAggregates.TryGetValue(a.Key, out var ratios)
+                    ? ratios.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
+                    : new Dictionary<string, decimal>(StringComparer.Ordinal)
             })
             .ToList();
 
@@ -361,17 +431,59 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             StoreKeys = storeKeys,
             StoreHeaders = storeHeaders,
             StoreHeaderCodes = storeHeaderCodes,
+            StoreHeaderDeliveryCodes = storeHeaderDeliveryCodes,
+            StoreHeaderDeliveryNames = storeHeaderDeliveryNames,
+            StoreHeaderCapacities = capacityByCustomer,
             Rows = rows
         };
     }
 
-    /// <summary>列見出し用: 納入場所名称を優先し、無ければ場所コード。</summary>
+    /// <summary>納入場所列見出し用: 名称優先、無ければコード。</summary>
     private static string DeliveryLocationHeaderLabel(string? locationName, string? locationCode)
     {
         var n = (locationName ?? "").Trim();
         if (n.Length > 0)
             return n;
         return (locationCode ?? "").Trim();
+    }
+
+    /// <summary>Excel 2〜3 行目用: 同一表示文字が複数列に付くときは「（得意先コード）」で区別。空はそのまま。</summary>
+    private static Dictionary<string, string> DisambiguateStoreRowLabels(
+        IReadOnlyDictionary<string, string> rawByCustomer,
+        StringComparer cmp)
+    {
+        var nonEmpty = rawByCustomer
+            .Where(kv => (kv.Value ?? "").Trim().Length > 0)
+            .Select(kv => ((kv.Key), v: (kv.Value ?? "").Trim()))
+            .ToList();
+        var counts = nonEmpty
+            .GroupBy(t => t.v, cmp)
+            .ToDictionary(g => g.Key, g => g.Count(), cmp);
+
+        var result = new Dictionary<string, string>(cmp);
+        foreach (var cust in rawByCustomer.Keys)
+        {
+            var disp = (rawByCustomer.TryGetValue(cust, out var rv) ? rv : "").Trim();
+            if (disp.Length == 0)
+                result[cust] = "";
+            else if (counts.GetValueOrDefault(disp) > 1)
+                result[cust] = $"{disp}（{cust}）";
+            else
+                result[cust] = disp;
+        }
+
+        return result;
+    }
+
+    private static string ResolveCustomerDisplayName(string? shortName, string? fullName, string? customerCode)
+    {
+        var s = (shortName ?? "").Trim();
+        if (s.Length > 0)
+            return s;
+        s = (fullName ?? "").Trim();
+        if (s.Length > 0)
+            return s;
+        return (customerCode ?? "").Trim();
     }
 
     /// <summary>
@@ -384,6 +496,67 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         if (fromMaster.Length > 0)
             return fromMaster;
         return (salesOrder?.CustomerDeliveryLocationCode ?? "").Trim();
+    }
+
+    /// <summary>
+    /// 仕訳表収容用: <c>salesorderlineaddinfo.addinfo01</c> は DB では text/varchar だが、ここでは数値として解釈する（Excel 収容行の除数）。
+    /// </summary>
+    private static decimal? ParseSortingInquiryAddinfoDivisor(string? addinfo01)
+    {
+        if (string.IsNullOrWhiteSpace(addinfo01))
+            return null;
+        var t = addinfo01.Trim().Replace("\u00a0", "", StringComparison.Ordinal);
+        const NumberStyles styles = NumberStyles.Number;
+        if (decimal.TryParse(t, styles, CultureInfo.InvariantCulture, out var inv) && inv > 0)
+            return inv;
+        if (decimal.TryParse(t, styles, CultureInfo.GetCultureInfo("ja-JP"), out var ja) && ja > 0)
+            return ja;
+        return null;
+    }
+
+    private static SortingInquiryLineMaterial ToLineMaterial(
+        decimal quantity,
+        decimal? quantityUni0,
+        decimal? quantityUni1,
+        decimal? quantityUni2,
+        decimal? quantityUni3,
+        string? itemStd,
+        decimal? itemCar0,
+        decimal? conversionValue1,
+        decimal? conversionValue2,
+        decimal? conversionValue3,
+        string customerCode,
+        string locationCode,
+        string locationName,
+        string itemCode,
+        string itemName,
+        string? addinfo01,
+        string? addinfo02,
+        string? addinfo02Name)
+    {
+        var qty0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
+            quantity,
+            quantityUni0,
+            quantityUni1,
+            quantityUni2,
+            quantityUni3,
+            itemStd,
+            itemCar0,
+            conversionValue1,
+            conversionValue2,
+            conversionValue3);
+
+        return new SortingInquiryLineMaterial(
+            quantity,
+            customerCode,
+            locationCode,
+            locationName,
+            itemCode,
+            itemName,
+            addinfo02,
+            addinfo02Name,
+            addinfo01,
+            qty0);
     }
 
     private static string ResolveFoodTypeFromStrings(string? addinfo02, string? addinfo02Name)
@@ -404,23 +577,35 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
     }
 }
 
-/// <summary>仕分け照会・その日の得意先コード一覧（DISTINCT）。</summary>
-internal sealed class SortingInquiryCustomerCodeSqlRow
+/// <summary>仕分け照会・得意先一覧（<c>salesorder.customercode</c> → <c>customer</c> 名称）。</summary>
+internal sealed class SortingInquiryCustomerHeaderSqlRow
 {
     public string? CustomerCode { get; set; }
+    public string? CustomerShortName { get; set; }
+    public string? CustomerNameFromMaster { get; set; }
 }
 
 /// <summary>仕分け照会の生 SQL 行（ID 列を読まない）。</summary>
 internal sealed class SortingInquiryLineSqlRow
 {
     public decimal Quantity { get; set; }
+    public decimal? QuantityUni0 { get; set; }
+    public decimal? QuantityUni1 { get; set; }
+    public decimal? QuantityUni2 { get; set; }
+    public decimal? QuantityUni3 { get; set; }
     public string? CustomerCode { get; set; }
     public string? LocationCode { get; set; }
     public string? LocationName { get; set; }
     public string? ItemCode { get; set; }
     public string? ItemName { get; set; }
+    public string? Addinfo01 { get; set; }
     public string? Addinfo02 { get; set; }
     public string? Addinfo02Name { get; set; }
+    public decimal? ConversionValue1 { get; set; }
+    public decimal? ConversionValue2 { get; set; }
+    public decimal? ConversionValue3 { get; set; }
+    public string? ItemStd { get; set; }
+    public decimal? ItemCar0 { get; set; }
 }
 
 internal readonly record struct SortingInquiryLineMaterial(
@@ -431,4 +616,6 @@ internal readonly record struct SortingInquiryLineMaterial(
     string ItemCode,
     string ItemName,
     string? Addinfo02,
-    string? Addinfo02Name);
+    string? Addinfo02Name,
+    string? Addinfo01,
+    decimal QtyInUnit0);

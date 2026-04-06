@@ -101,3 +101,12 @@ table tr:hover {
     background-color: #f9f9f9;
 }
 
+/* 仕分け照会: 多段 thead では th ごとの border-bottom が帯状の下線になるため除去し、本体先頭行の上線のみ */
+#siResultsTable thead th {
+    border-bottom: none;
+}
+
+#siResultsTable tbody tr:first-child td {
+    border-top: 1px solid #ddd;
+}
+
