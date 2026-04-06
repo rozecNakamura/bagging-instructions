@@ -31,7 +31,7 @@ public sealed class SortingInquirySearchResponseDto
     [JsonPropertyName("storeHeaders")]
     public Dictionary<string, string> StoreHeaders { get; set; } = new();
 
-    /// <summary>得意先コード → 得意先コード（仕訳表自動調整 Excel 1 行目）。</summary>
+    /// <summary>得意先コード → 得意先コード（仕分け照会 Excel 1 行目。仕訳表自動調整 1 行目は納入場所コード）。</summary>
     [JsonPropertyName("storeHeaderCodes")]
     public Dictionary<string, string> StoreHeaderCodes { get; set; } = new();
 
@@ -39,11 +39,11 @@ public sealed class SortingInquirySearchResponseDto
     [JsonPropertyName("storeHeaderDeliveryCodes")]
     public Dictionary<string, string> StoreHeaderDeliveryCodes { get; set; } = new();
 
-    /// <summary>得意先コード → 納入場所表示名（名称優先、無ければコード。複数は「／」）。仕訳表自動調整 Excel 3 行目。</summary>
+    /// <summary>得意先コード → 納入場所表示名（名称優先、無ければコード。複数は「／」）。仕訳表自動調整では Excel 2 行目。</summary>
     [JsonPropertyName("storeHeaderDeliveryNames")]
     public Dictionary<string, string> StoreHeaderDeliveryNames { get; set; } = new();
 
-    /// <summary>得意先コード → 列ごとの最大収容相当（当該検索の受注明細について Σ(単位0換算数量 ÷ addinfo01)）。仕訳表自動調整 Excel 3 行目。addinfo01 は文字列から数値パース。</summary>
+    /// <summary>得意先コード → Σ(単位0換算数量 ÷ addinfo01)（API 用）。仕訳表自動調整 Excel の 3 行目は明細列の最大値から算出し、この辞書は参照しない。</summary>
     [JsonPropertyName("storeHeaderCapacities")]
     public Dictionary<string, decimal> StoreHeaderCapacities { get; set; } = new();
 

@@ -7,7 +7,7 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 仕分け照会・仕訳表自動調整の Excel。テンプレート不要で ClosedXML から生成する。
 /// 仕分け照会: 1 行目得意先コード、2 納入場所コード、3 納入場所名、4〜6 保留、7 列見出し（品目・適用・得意先名）、8 行目以降は受注数量。
-/// 仕訳表自動調整: 1 納入場所コード、2 納入場所名、3 列別最大収容（Σ 単位0÷addinfo01）、4 列見出し（店舗列は空）、5 行目以降は品目行で比（Σ 単位0÷addinfo01）。
+/// 仕訳表自動調整: 1 納入場所コード、2 納入場所名、3 品目コード／品目名称／適用・店舗列は当該列の最大比・合計見出し、4 行目から品目明細。
 /// </summary>
 public sealed class SortingInquiryExcelService
 {
@@ -131,25 +131,20 @@ public sealed class SortingInquiryExcelService
         }
 
         row++;
-        for (var i = 0; i < n; i++)
-        {
-            var key = data.StoreKeys[i];
-            if (data.StoreHeaderCapacities.TryGetValue(key, out var cap) && cap != 0)
-            {
-                var cell = ws.Cell(row, FirstCustomerCol + i);
-                cell.Value = cap;
-                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            }
-        }
-
-        row++;
         var headerRow = row;
-
         ws.Cell(headerRow, ColItemCode).Value = "品目コード";
         ws.Cell(headerRow, ColItemName).Value = "品目名称";
         ws.Cell(headerRow, ColTekiyo).Value = TekiyoColumnTitle;
+
+        var columnRatioMaxes = MaxRatioQuantitiesByStoreColumn(data);
         for (var i = 0; i < n; i++)
-            ws.Cell(headerRow, FirstCustomerCol + i).Value = "";
+        {
+            var key = data.StoreKeys[i];
+            columnRatioMaxes.TryGetValue(key, out var colMax);
+            var cell = ws.Cell(headerRow, FirstCustomerCol + i);
+            cell.Value = colMax;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        }
 
         ws.Cell(headerRow, totalCol).Value = "合計";
 
@@ -163,6 +158,30 @@ public sealed class SortingInquiryExcelService
         ws.SheetView.FreezeRows(headerRow);
         ws.SheetView.FreezeColumns(FrozenColumns);
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+    }
+
+    /// <summary>仕訳表 3 行目: 各店舗列について、行 4 以降に出力する比の最大値。</summary>
+    private static Dictionary<string, decimal> MaxRatioQuantitiesByStoreColumn(SortingInquirySearchResponseDto data)
+    {
+        var maxes = data.StoreKeys.ToDictionary(k => k, _ => 0m, StringComparer.Ordinal);
+        var seen = data.StoreKeys.ToDictionary(k => k, _ => false, StringComparer.Ordinal);
+        foreach (var line in data.Rows)
+        {
+            foreach (var key in data.StoreKeys)
+            {
+                if (!line.RatioQuantitiesByStore.TryGetValue(key, out var q))
+                    continue;
+                if (!seen[key])
+                {
+                    maxes[key] = q;
+                    seen[key] = true;
+                }
+                else if (q > maxes[key])
+                    maxes[key] = q;
+            }
+        }
+
+        return maxes;
     }
 
     private static void WriteDataRows(
