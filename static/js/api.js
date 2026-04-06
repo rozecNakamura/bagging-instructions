@@ -829,9 +829,12 @@ export async function searchProductionInstruction(needDate, workcenterIds, slotC
 }
 
 /**
- * 調味液配合表仕様：PDF 出力
+ * @param {{ needDate: string, workcenterIds?: number[], slotCodes?: string[] }} filter
+ * @param {number[]} orderIds
+ * @param {'hoikolo'|undefined} reportVariant 省略時は調味液配合表（chomi）
+ * @returns {Promise<Blob>}
  */
-export async function exportProductionInstructionPdf(filter, orderIds) {
+async function postProductionInstructionReport(filter, orderIds, reportVariant) {
     const wcIds = Array.isArray(filter.workcenterIds) ? filter.workcenterIds : [];
     const slotCodes = Array.isArray(filter.slotCodes) ? filter.slotCodes : [];
     const body = {
@@ -842,6 +845,9 @@ export async function exportProductionInstructionPdf(filter, orderIds) {
         slot_code: slotCodes.length ? slotCodes : null,
         orderIds: orderIds || []
     };
+    if (reportVariant === 'hoikolo') {
+        body.report_variant = 'hoikolo';
+    }
 
     const res = await fetch(`${API_BASE_URL}/production-instruction/report`, {
         method: 'POST',
@@ -858,6 +864,16 @@ export async function exportProductionInstructionPdf(filter, orderIds) {
         throw new Error(msg);
     }
     return await res.blob();
+}
+
+/** 調味液配合表仕様：PDF 出力 */
+export function exportProductionInstructionPdf(filter, orderIds) {
+    return postProductionInstructionReport(filter, orderIds, undefined);
+}
+
+/** 生産指示書_ホイコーロー：PDF 出力 */
+export function exportProductionInstructionHoikoloPdf(filter, orderIds) {
+    return postProductionInstructionReport(filter, orderIds, 'hoikolo');
 }
 
 /**

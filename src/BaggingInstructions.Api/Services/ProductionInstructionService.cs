@@ -195,6 +195,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     ChildSpec = "",
                     ChildRequiredQtyDisplay = "",
                     ChildUnitName = "",
+                    ChildYieldPercentDisplay = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay
                 });
@@ -205,6 +206,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
             {
                 var qty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
+                var yieldDisplay = b.YieldPercent.ToString("0.###", CultureInfo.InvariantCulture);
 
                 lines.Add(new ProductionInstructionPdfLineModel
                 {
@@ -218,6 +220,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     ChildSpec = b.ChildSpec ?? "",
                     ChildRequiredQtyDisplay = qtyDisplay,
                     ChildUnitName = b.ChildUnitname ?? "",
+                    ChildYieldPercentDisplay = yieldDisplay,
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay
                 });

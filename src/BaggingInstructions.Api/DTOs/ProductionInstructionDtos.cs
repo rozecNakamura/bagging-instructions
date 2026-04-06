@@ -66,6 +66,9 @@ public sealed class ProductionInstructionPdfLineModel
     public string ChildRequiredQtyDisplay { get; set; } = "";
     public string ChildUnitName { get; set; } = "";
 
+    /// <summary>BOM 歩留（yieldpercent）の表示。子行が無い場合は空。</summary>
+    public string ChildYieldPercentDisplay { get; set; } = "";
+
     public string NeedDateDisplay { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
 }
