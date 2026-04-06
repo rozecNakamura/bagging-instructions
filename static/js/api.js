@@ -828,10 +828,13 @@ export async function searchProductionInstruction(needDate, workcenterIds, slotC
     return await res.json();
 }
 
+/** 生産指示 POST report の report_variant（バックエンドと揃える） */
+const PRODUCTION_INSTRUCTION_REPORT_VARIANTS = new Set(['hoikolo', 'ganmono_takiai']);
+
 /**
  * @param {{ needDate: string, workcenterIds?: number[], slotCodes?: string[] }} filter
  * @param {number[]} orderIds
- * @param {'hoikolo'|undefined} reportVariant 省略時は調味液配合表（chomi）
+ * @param {'hoikolo'|'ganmono_takiai'|undefined} reportVariant 省略時は調味液配合表（chomi）
  * @returns {Promise<Blob>}
  */
 async function postProductionInstructionReport(filter, orderIds, reportVariant) {
@@ -845,8 +848,8 @@ async function postProductionInstructionReport(filter, orderIds, reportVariant) 
         slot_code: slotCodes.length ? slotCodes : null,
         orderIds: orderIds || []
     };
-    if (reportVariant === 'hoikolo') {
-        body.report_variant = 'hoikolo';
+    if (reportVariant && PRODUCTION_INSTRUCTION_REPORT_VARIANTS.has(reportVariant)) {
+        body.report_variant = reportVariant;
     }
 
     const res = await fetch(`${API_BASE_URL}/production-instruction/report`, {
@@ -874,6 +877,11 @@ export function exportProductionInstructionPdf(filter, orderIds) {
 /** 生産指示書_ホイコーロー：PDF 出力 */
 export function exportProductionInstructionHoikoloPdf(filter, orderIds) {
     return postProductionInstructionReport(filter, orderIds, 'hoikolo');
+}
+
+/** 生産指示書_がんもの炊き合わせ：PDF 出力 */
+export function exportProductionInstructionGanmonoTakiaiPdf(filter, orderIds) {
+    return postProductionInstructionReport(filter, orderIds, 'ganmono_takiai');
 }
 
 /**

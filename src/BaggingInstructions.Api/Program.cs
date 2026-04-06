@@ -49,6 +49,7 @@ builder.Services.AddScoped<CookingInstructionPdfService>();
 builder.Services.AddScoped<ProductionInstructionService>();
 builder.Services.AddScoped<ProductionInstructionPdfService>();
 builder.Services.AddScoped<HoikoloProductionInstructionPdfService>();
+builder.Services.AddScoped<GanmonoTakiaiProductionInstructionPdfService>();
 builder.Services.AddScoped<InspectionRecordService>();
 builder.Services.AddScoped<InspectionRecordPdfService>();
 builder.Services.AddScoped<AcceptanceRecordService>();

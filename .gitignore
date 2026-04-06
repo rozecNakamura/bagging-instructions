@@ -94,6 +94,6 @@ _test_out/
 _v*/
 *_test*/
 _build*/
-
+_*/
 # TypeScript incremental
 *.tsbuildinfo

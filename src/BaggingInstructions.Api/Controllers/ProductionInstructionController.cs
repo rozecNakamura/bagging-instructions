@@ -13,17 +13,20 @@ public class ProductionInstructionController : ControllerBase
     private readonly ProductionInstructionService _service;
     private readonly ProductionInstructionPdfService _pdfService;
     private readonly HoikoloProductionInstructionPdfService _hoikoloPdfService;
+    private readonly GanmonoTakiaiProductionInstructionPdfService _ganmonoTakiaiPdfService;
     private readonly IWebHostEnvironment _env;
 
     public ProductionInstructionController(
         ProductionInstructionService service,
         ProductionInstructionPdfService pdfService,
         HoikoloProductionInstructionPdfService hoikoloPdfService,
+        GanmonoTakiaiProductionInstructionPdfService ganmonoTakiaiPdfService,
         IWebHostEnvironment env)
     {
         _service = service;
         _pdfService = pdfService;
         _hoikoloPdfService = hoikoloPdfService;
+        _ganmonoTakiaiPdfService = ganmonoTakiaiPdfService;
         _env = env;
     }
 
@@ -97,7 +100,7 @@ public class ProductionInstructionController : ControllerBase
         [JsonPropertyName("orderIds")]
         public List<long> OrderIds { get; set; } = new();
 
-        /// <summary>省略または "chomi" = 調味液配合表。"hoikolo" = 生産指示書_ホイコーロー。</summary>
+        /// <summary>省略または "chomi" = 調味液配合表。"hoikolo" = ホイコーロー。"ganmono_takiai" = がんもの炊き合わせ。</summary>
         [JsonPropertyName("report_variant")]
         public string? ReportVariant { get; set; }
     }
@@ -114,14 +117,13 @@ public class ProductionInstructionController : ControllerBase
 
         var variant = (body.ReportVariant ?? "").Trim().ToLowerInvariant();
         if (IsInvalidVariant(variant))
-            return BadRequest(new { detail = "report_variant は 'chomi' または 'hoikolo' を指定してください。" });
+            return BadRequest(new { detail = InvalidVariantDetail });
 
-        var isHoikolo = IsHoikolo(variant);
-        var templateFile = isHoikolo ? HoikoloTemplateFileName : ChomiTemplateFileName;
+        var templateFile = TemplateFileName(variant);
         var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", templateFile);
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
-            return NotFound(new { detail = isHoikolo ? "生産指示書_ホイコーローテンプレートが見つかりません" : "調味液配合表テンプレートが見つかりません" });
+            return NotFound(new { detail = TemplateMissingMessage(variant) });
 
         try
         {
@@ -129,18 +131,13 @@ public class ProductionInstructionController : ControllerBase
             if (lines.Count == 0)
                 return BadRequest(new { detail = "該当する受注明細がありません" });
 
-            byte[] pdfBytes;
-            string downloadName;
-            if (isHoikolo)
+            byte[] pdfBytes = variant switch
             {
-                pdfBytes = _hoikoloPdfService.GeneratePdf(fullPath, lines);
-                downloadName = HoikoloDownloadFileName;
-            }
-            else
-            {
-                pdfBytes = _pdfService.GeneratePdf(fullPath, lines);
-                downloadName = ChomiDownloadFileName;
-            }
+                VariantHoikolo => _hoikoloPdfService.GeneratePdf(fullPath, lines),
+                VariantGanmonoTakiai => _ganmonoTakiaiPdfService.GeneratePdf(fullPath, lines),
+                _ => _pdfService.GeneratePdf(fullPath, lines)
+            };
+            var downloadName = DownloadFileName(variant);
 
             if (pdfBytes.Length == 0)
                 return BadRequest(new { detail = "印刷する行がありません" });

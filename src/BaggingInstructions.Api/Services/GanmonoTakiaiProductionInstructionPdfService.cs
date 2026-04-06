@@ -4,25 +4,20 @@ using static BaggingInstructions.Api.ProductionInstructionReportKinds;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 生産指示書_ホイコーロー.rxz 用 PDF。1 オーダーあたり最大 15 明細（主材料 5 + 副材料 10）／ページ。
-/// 便・注番順は chomi と同様に並べ、ページを連結する。
+/// 生産指示書_がんもの炊き合わせ.rxz 用 PDF。主材料 7 + 副材料 9 行／ページ。
 /// </summary>
-public sealed class HoikoloProductionInstructionPdfService
+public sealed class GanmonoTakiaiProductionInstructionPdfService
 {
-    public const int MainMaterialSlots = 5;
-    public const int SubMaterialSlots = 10;
+    public const int MainMaterialSlots = 7;
+    public const int SubMaterialSlots = 9;
     public const int MaxMaterialsPerPage = MainMaterialSlots + SubMaterialSlots;
 
     private readonly JuicePdfService _juicePdf;
 
-    public HoikoloProductionInstructionPdfService(JuicePdfService juicePdf)
+    public GanmonoTakiaiProductionInstructionPdfService(JuicePdfService juicePdf)
     {
         _juicePdf = juicePdf;
     }
-
-    internal static List<List<ProductionInstructionPdfLineModel>> GroupLinesForHoikolo(
-        IReadOnlyList<ProductionInstructionPdfLineModel> lines) =>
-        ProductionInstructionPdfLineGrouping.GroupByOrderSortedBySlotThenOrderId(lines);
 
     public byte[] GeneratePdf(string rxzTemplatePath, IReadOnlyList<ProductionInstructionPdfLineModel> lines)
     {
@@ -42,7 +37,7 @@ public sealed class HoikoloProductionInstructionPdfService
         for (var i = 0; i < pageTagList.Count; i++)
             JuicePdfService.AddPrintTags(pageTagList[i], printNow, i + 1, totalPages);
 
-        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pageTagList, HoikoloPdfDocumentTitle);
+        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pageTagList, GanmonoTakiaiPdfDocumentTitle);
     }
 
     /// <summary>単体テスト用：1 ページ分のタグ辞書を構築する。</summary>
@@ -57,9 +52,7 @@ public sealed class HoikoloProductionInstructionPdfService
         tags["ITEMCLASS"] = header.SlotDisplay ?? "";
 
         for (var i = 0; i < MainMaterialSlots && i < materialChunk.Count; i++)
-        {
             ApplyMainMaterialRow(tags, i, materialChunk[i]);
-        }
 
         for (var j = 0; j < SubMaterialSlots; j++)
         {
@@ -95,16 +88,12 @@ public sealed class HoikoloProductionInstructionPdfService
         tags[$"SUBMATCD{nn}"] = row.ChildItemCode ?? "";
         tags[$"SUBMATNM{nn}"] = row.ChildItemName ?? "";
         tags[$"COMPRATE{nn}"] = row.ChildYieldPercentDisplay ?? "";
-        tags[$"SUBITEMNM{nn}"] = ProductionInstructionRxzTagTexts.SpecOrItemName(row);
+        tags[$"SUBCUTITEMNM{nn}"] = ProductionInstructionRxzTagTexts.SpecOrItemName(row);
         tags[$"SUBFILLQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
         tags[$"SUBUSEQUN{nn}"] = ProductionInstructionRxzTagTexts.FormatQtyWithUnit(row.ChildRequiredQtyDisplay, row.ChildUnitName);
     }
 
-    internal static long ParseOrderKey(string? orderNo) =>
-        ProductionInstructionPdfLineGrouping.ParseOrderKey(orderNo);
-
-    /// <summary>Label### 以外の Data 名を空で初期化（テンプレに無いキーは無害）。</summary>
-    internal static Dictionary<string, string> CreateEmptyDataTags(StringComparer comparer)
+    private static Dictionary<string, string> CreateEmptyDataTags(StringComparer comparer)
     {
         var d = new Dictionary<string, string>(comparer);
         foreach (var name in TemplateDataFieldNames.All)
@@ -112,39 +101,43 @@ public sealed class HoikoloProductionInstructionPdfService
         return d;
     }
 
-    /// <summary>生産指示書_ホイコーロー.rxz の Data 名（静的ラベル除く）。</summary>
     private static class TemplateDataFieldNames
     {
         internal static readonly string[] All = BuildAll().ToArray();
 
         private static IEnumerable<string> BuildAll()
         {
+            yield return "LOTNO";
             yield return "HEATTEMP";
             yield return "HEATTIME";
             yield return "VACPACK";
             yield return "VACSETNO";
-            yield return "VACSETVAL_1";
-            yield return "VACSETVAL_2";
+            yield return "VACSTOPPOINT";
             yield return "SEALSETVAL";
             yield return "SPEED";
             yield return "XRAYSET_1";
-            yield return "XRAYSET_5";
             yield return "PACKLOCATION";
             yield return "PACKNAME_1";
             yield return "PACKSIZE_1";
             yield return "PACKBBD";
             yield return "PACKPRINT";
-            yield return "PACKSIZE_5";
-            yield return "PACKNAME_5";
-            yield return "SUBYIELD";
             yield return "MANAGERNAME";
             yield return "FILLQUNSUM";
-            yield return "SUBUSEQUN11";
             yield return "SUBFILLQUNSUM";
+            yield return "COMPRATESUM";
+            yield return "SUBUSEQUNSUM";
+            yield return "SUBMATYIELD";
             yield return "ITEMPARCD";
             yield return "ITEMPARNM";
             yield return "ITEMMAKEDATE";
             yield return "ITEMCLASS";
+            yield return "NEEDSQUN";
+
+            for (var n = 0; n <= 6; n++)
+                yield return $"NEEDSUNIT{n:D2}";
+
+            for (var n = 0; n <= 8; n++)
+                yield return $"ONEFIRSTUNIT{n:D2}";
 
             for (var i = 0; i < MainMaterialSlots; i++)
             {
@@ -155,10 +148,11 @@ public sealed class HoikoloProductionInstructionPdfService
                 yield return $"CUTITEMNM{nn}";
                 yield return $"FILLQUN{nn}";
                 yield return $"USEQUN{nn}";
-                yield return $"FILLQUN_1_{nn}";
-                yield return $"FILLQUN_5_{nn}";
                 yield return $"BBD{nn}";
             }
+
+            for (var i = 0; i < MainMaterialSlots; i++)
+                yield return $"ONESIXTH{i:D2}";
 
             for (var j = 0; j < SubMaterialSlots; j++)
             {
@@ -166,10 +160,11 @@ public sealed class HoikoloProductionInstructionPdfService
                 yield return $"SUBMATCD{nn}";
                 yield return $"SUBMATNM{nn}";
                 yield return $"COMPRATE{nn}";
-                yield return $"SUBITEMNM{nn}";
-                yield return $"SUBFILLQUN{nn}";
-                yield return $"SUBUSEQUN{nn}";
+                yield return $"SUBCUTITEMNM{nn}";
                 yield return $"SUBBBD{nn}";
+                yield return $"SUBUSEQUN{nn}";
+                yield return $"SUBFILLQUN{nn}";
+                yield return $"ONEFIRST{nn}";
             }
         }
     }
