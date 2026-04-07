@@ -244,6 +244,8 @@ ORDER BY slotcode
             var parentQtyDisplay = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
             var parentUnitName = dispUnit;
 
+            var printAddinfo = MapParentItemPrintAddinfo(h);
+
             if (boms.Count == 0)
             {
                 lines.Add(new ProductionInstructionPdfLineModel
@@ -260,7 +262,8 @@ ORDER BY slotcode
                     ChildUnitName = "",
                     ChildYieldPercentDisplay = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    SlotDisplay = h.SlotDisplay
+                    SlotDisplay = h.SlotDisplay,
+                    ParentItemPrintAddinfo = printAddinfo
                 });
                 continue;
             }
@@ -285,7 +288,8 @@ ORDER BY slotcode
                     ChildUnitName = b.ChildUnitname ?? "",
                     ChildYieldPercentDisplay = yieldDisplay,
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    SlotDisplay = h.SlotDisplay
+                    SlotDisplay = h.SlotDisplay,
+                    ParentItemPrintAddinfo = printAddinfo
                 });
             }
         }
@@ -324,7 +328,22 @@ ORDER BY slotcode
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.releasedate,
-                  ot.ordertableid::text AS order_no
+                  ot.ordertableid::text AS order_no,
+                  COALESCE(ia.addinfo05, '') AS ia_addinfo05,
+                  COALESCE(ia.addinfo06, '') AS ia_addinfo06,
+                  COALESCE(ia.addinfo07, '') AS ia_addinfo07,
+                  COALESCE(ia.addinfo08, '') AS ia_addinfo08,
+                  COALESCE(ia.addinfo09, '') AS ia_addinfo09,
+                  COALESCE(ia.addinfo10, '') AS ia_addinfo10,
+                  COALESCE(ia.addinfo11, '') AS ia_addinfo11,
+                  COALESCE(ia.addinfo12, '') AS ia_addinfo12,
+                  COALESCE(ia.addinfo13, '') AS ia_addinfo13,
+                  COALESCE(ia.addinfo14, '') AS ia_addinfo14,
+                  COALESCE(ia.addinfo15, '') AS ia_addinfo15,
+                  COALESCE(ia.addinfo16, '') AS ia_addinfo16,
+                  COALESCE(ia.addinfo17, '') AS ia_addinfo17,
+                  ia.steritemprange AS ia_steritemprange,
+                  ia.steritime AS ia_steritime
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
@@ -365,7 +384,22 @@ ORDER BY slotcode
                     SlotDisplay = reader.GetString(15),
                     NeedDate = ReadDateNullable(reader, 16),
                     ReleaseDate = ReadDateNullable(reader, 17),
-                    OrderNo = reader.GetString(18)
+                    OrderNo = reader.GetString(18),
+                    IaAddinfo05 = reader.GetString(19),
+                    IaAddinfo06 = reader.GetString(20),
+                    IaAddinfo07 = reader.GetString(21),
+                    IaAddinfo08 = reader.GetString(22),
+                    IaAddinfo09 = reader.GetString(23),
+                    IaAddinfo10 = reader.GetString(24),
+                    IaAddinfo11 = reader.GetString(25),
+                    IaAddinfo12 = reader.GetString(26),
+                    IaAddinfo13 = reader.GetString(27),
+                    IaAddinfo14 = reader.GetString(28),
+                    IaAddinfo15 = reader.GetString(29),
+                    IaAddinfo16 = reader.GetString(30),
+                    IaAddinfo17 = reader.GetString(31),
+                    IaSterItemPrange = ReadDecimalFlexible(reader, 32),
+                    IaSteriTime = ReadDecimalFlexible(reader, 33)
                 });
             }
 
@@ -397,7 +431,11 @@ ORDER BY slotcode
                   b.outputqty,
                   b.yieldpercent,
                   COALESCE(ci.itemname, '') AS child_itemname,
-                  COALESCE(u.unitname, '') AS child_unitname,
+                  COALESCE(
+                    NULLIF(TRIM(b.inputunitcode), ''),
+                    NULLIF(TRIM(u.unitname), ''),
+                    ''
+                  ) AS child_unitname,
                   COALESCE(ia.std, '') AS child_spec
                 FROM bom b
                 LEFT JOIN item ci ON ci.itemcode = b.childitemcode
@@ -407,7 +445,7 @@ ORDER BY slotcode
                   AND b.childitemcode IS NOT NULL
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
                   AND (b.enddate IS NULL OR b.enddate >= @asof)
-                ORDER BY b.productionorder NULLS LAST, b.childitemcode
+                ORDER BY COALESCE(b.productionorder, 0), b.bomid
                 """, conn);
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
@@ -440,6 +478,24 @@ ORDER BY slotcode
     private static decimal? ReadDecimalNullable(NpgsqlDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : reader.GetDecimal(ordinal);
 
+    /// <summary>numeric / float8 等、DB 型の差を吸収する。</summary>
+    private static decimal? ReadDecimalFlexible(NpgsqlDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return null;
+        var o = reader.GetValue(ordinal);
+        return o switch
+        {
+            decimal d => d,
+            double db => (decimal)db,
+            float f => (decimal)f,
+            long l => l,
+            int i => i,
+            short s => s,
+            _ => Convert.ToDecimal(o, CultureInfo.InvariantCulture)
+        };
+    }
+
     private static DateOnly? ReadDateNullable(NpgsqlDataReader reader, int ordinal)
     {
         if (reader.IsDBNull(ordinal))
@@ -451,6 +507,27 @@ ORDER BY slotcode
             return DateOnly.FromDateTime(dt);
         return null;
     }
+
+    private static ProductionInstructionParentItemAddinfoForPdf MapParentItemPrintAddinfo(
+        ProductionInstructionLineHeaderRow h) =>
+        new()
+        {
+            Addinfo05 = h.IaAddinfo05 ?? "",
+            Addinfo06 = h.IaAddinfo06 ?? "",
+            Addinfo07 = h.IaAddinfo07 ?? "",
+            Addinfo08 = h.IaAddinfo08 ?? "",
+            Addinfo09 = h.IaAddinfo09 ?? "",
+            Addinfo10 = h.IaAddinfo10 ?? "",
+            Addinfo11 = h.IaAddinfo11 ?? "",
+            Addinfo12 = h.IaAddinfo12 ?? "",
+            Addinfo13 = h.IaAddinfo13 ?? "",
+            Addinfo14 = h.IaAddinfo14 ?? "",
+            Addinfo15 = h.IaAddinfo15 ?? "",
+            Addinfo16 = h.IaAddinfo16 ?? "",
+            Addinfo17 = h.IaAddinfo17 ?? "",
+            SterItemPrange = h.IaSterItemPrange,
+            SteriTimeSeconds = h.IaSteriTime
+        };
 
     private static DateOnly? ParseYyyymmdd(string? s)
     {
@@ -496,6 +573,21 @@ internal sealed class ProductionInstructionLineHeaderRow
     public DateOnly? NeedDate { get; set; }
     public DateOnly? ReleaseDate { get; set; }
     public string OrderNo { get; set; } = "";
+    public string IaAddinfo05 { get; set; } = "";
+    public string IaAddinfo06 { get; set; } = "";
+    public string IaAddinfo07 { get; set; } = "";
+    public string IaAddinfo08 { get; set; } = "";
+    public string IaAddinfo09 { get; set; } = "";
+    public string IaAddinfo10 { get; set; } = "";
+    public string IaAddinfo11 { get; set; } = "";
+    public string IaAddinfo12 { get; set; } = "";
+    public string IaAddinfo13 { get; set; } = "";
+    public string IaAddinfo14 { get; set; } = "";
+    public string IaAddinfo15 { get; set; } = "";
+    public string IaAddinfo16 { get; set; } = "";
+    public string IaAddinfo17 { get; set; } = "";
+    public decimal? IaSterItemPrange { get; set; }
+    public decimal? IaSteriTime { get; set; }
 }
 
 internal sealed class ProductionInstructionBomSqlRow

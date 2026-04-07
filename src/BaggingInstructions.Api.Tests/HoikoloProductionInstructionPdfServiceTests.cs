@@ -7,6 +7,23 @@ namespace BaggingInstructions.Api.Tests;
 public class HoikoloProductionInstructionPdfServiceTests
 {
     [Fact]
+    public void BuildPageTagDictionary_LowerSection_Hoikolo_SplitsXrayAndClearsLot()
+    {
+        var header = ProductionInstructionPdfTestModels.ChildLine(
+            "501", "1便", "P1", "親", "C1", "子", "1", "kg", "100", needDateDisplay: "2025/01/15");
+        header.ParentItemPrintAddinfo = new ProductionInstructionParentItemAddinfoForPdf
+        {
+            Addinfo13 = "XrayA",
+            Addinfo14 = "XrayB"
+        };
+        var tags = HoikoloProductionInstructionPdfService.BuildPageTagDictionary(header, new[] { header });
+        Assert.Equal("XrayA", tags["XRAYSET_1"]);
+        Assert.Equal("XrayB", tags["XRAYSET_5"]);
+        Assert.Equal("", tags["LOTNO_1"]);
+        Assert.Equal("", tags["LOTNO_5"]);
+    }
+
+    [Fact]
     public void BuildPageTagDictionary_HeaderAndMainRow()
     {
         var header = ProductionInstructionPdfTestModels.ChildLine(
@@ -22,7 +39,14 @@ public class HoikoloProductionInstructionPdfServiceTests
         Assert.Equal("100", tags["YIELD00"]);
         Assert.Equal("規格X", tags["CUTITEMNM00"]);
         Assert.Equal("2.5", tags["FILLQUN00"]);
-        Assert.Equal("2.5 kg", tags["USEQUN00"]);
+        Assert.Equal("kg", tags["FILLQUNUNIT00"]);
+        Assert.Equal("2.5", tags["USEQUN00"]);
+        Assert.Equal("kg", tags["USEQUNUNIT00"]);
+        Assert.Equal("2.5", tags["FILLQUNSUM"]);
+        Assert.Equal("kg", tags["FILLQUNSUMUNIT"]);
+        Assert.Equal("2.5", tags["USEQUNSUM"]);
+        Assert.Equal("", tags["SUBFILLQUNSUM"]);
+        Assert.Equal("", tags["SUBUSEQUN11"]);
     }
 
     [Fact]
@@ -47,7 +71,15 @@ public class HoikoloProductionInstructionPdfServiceTests
         Assert.Equal("子6", tags["SUBMATNM00"]);
         Assert.Equal("99", tags["COMPRATE00"]);
         Assert.Equal("6", tags["SUBFILLQUN00"]);
-        Assert.Equal("6 g", tags["SUBUSEQUN00"]);
+        Assert.Equal("g", tags["SUBFILLQUNUNIT00"]);
+        Assert.Equal("6", tags["SUBUSEQUN00"]);
+        Assert.Equal("g", tags["SUBUSEQUNUNIT00"]);
+        Assert.Equal("15", tags["FILLQUNSUM"]);
+        Assert.Equal("g", tags["FILLQUNSUMUNIT"]);
+        Assert.Equal("15", tags["USEQUNSUM"]);
+        Assert.Equal("6", tags["SUBFILLQUNSUM"]);
+        Assert.Equal("g", tags["SUBFILLQUNSUMUNIT"]);
+        Assert.Equal("6", tags["SUBUSEQUN11"]);
     }
 
     [Fact]

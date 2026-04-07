@@ -83,17 +83,10 @@ frontend/node_modules/
 [Bb]in/
 [Oo]bj/
 _b_obj/
-_b_out/
-_build_verify/
-_test_obj/
-_test_obj2/
-_v2obj/
-_test_obj4/
-_test_out/
-*_test_obj*/
-_v*/
-*_test*/
-_build*/
+test*/
 _*/
+build*/
+artifacts*/
+.vs/
 # TypeScript incremental
 *.tsbuildinfo

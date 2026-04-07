@@ -56,6 +56,11 @@ public sealed class HoikoloProductionInstructionPdfService
         tags["ITEMMAKEDATE"] = header.NeedDateDisplay ?? "";
         tags["ITEMCLASS"] = header.SlotDisplay ?? "";
 
+        ProductionInstructionRxzTagTexts.ApplyParentItemAddinfoToLowerRxzTags(
+            tags,
+            header.ParentItemPrintAddinfo,
+            ProductionInstructionLowerSectionPdfVariant.Hoikolo);
+
         for (var i = 0; i < MainMaterialSlots && i < materialChunk.Count; i++)
         {
             ApplyMainMaterialRow(tags, i, materialChunk[i]);
@@ -68,6 +73,17 @@ public sealed class HoikoloProductionInstructionPdfService
                 break;
             ApplySubMaterialRow(tags, j, materialChunk[idx]);
         }
+
+        var mainRows = materialChunk.Take(MainMaterialSlots).ToList();
+        var subRows = materialChunk.Skip(MainMaterialSlots).Take(SubMaterialSlots).ToList();
+        var mainSum = ProductionInstructionRxzTagTexts.SumChildRequiredQtyDisplay(mainRows);
+        tags["FILLQUNSUM"] = mainSum;
+        tags["USEQUNSUM"] = mainSum;
+        tags["FILLQUNSUMUNIT"] = ProductionInstructionRxzTagTexts.CommonChildUnitNameForSum(mainRows);
+        var subSum = ProductionInstructionRxzTagTexts.SumChildRequiredQtyDisplay(subRows);
+        tags["SUBFILLQUNSUM"] = subSum;
+        tags["SUBUSEQUN11"] = subSum;
+        tags["SUBFILLQUNSUMUNIT"] = ProductionInstructionRxzTagTexts.CommonChildUnitNameForSum(subRows);
 
         return tags;
     }
@@ -83,7 +99,9 @@ public sealed class HoikoloProductionInstructionPdfService
         tags[$"YIELD{nn}"] = row.ChildYieldPercentDisplay ?? "";
         tags[$"CUTITEMNM{nn}"] = ProductionInstructionRxzTagTexts.SpecOrItemName(row);
         tags[$"FILLQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
-        tags[$"USEQUN{nn}"] = ProductionInstructionRxzTagTexts.FormatQtyWithUnit(row.ChildRequiredQtyDisplay, row.ChildUnitName);
+        tags[$"FILLQUNUNIT{nn}"] = (row.ChildUnitName ?? "").Trim();
+        tags[$"USEQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
+        tags[$"USEQUNUNIT{nn}"] = (row.ChildUnitName ?? "").Trim();
     }
 
     private static void ApplySubMaterialRow(
@@ -97,7 +115,9 @@ public sealed class HoikoloProductionInstructionPdfService
         tags[$"COMPRATE{nn}"] = row.ChildYieldPercentDisplay ?? "";
         tags[$"SUBITEMNM{nn}"] = ProductionInstructionRxzTagTexts.SpecOrItemName(row);
         tags[$"SUBFILLQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
-        tags[$"SUBUSEQUN{nn}"] = ProductionInstructionRxzTagTexts.FormatQtyWithUnit(row.ChildRequiredQtyDisplay, row.ChildUnitName);
+        tags[$"SUBFILLQUNUNIT{nn}"] = (row.ChildUnitName ?? "").Trim();
+        tags[$"SUBUSEQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
+        tags[$"SUBUSEQUNUNIT{nn}"] = (row.ChildUnitName ?? "").Trim();
     }
 
     internal static long ParseOrderKey(string? orderNo) =>
@@ -138,9 +158,14 @@ public sealed class HoikoloProductionInstructionPdfService
             yield return "PACKNAME_5";
             yield return "SUBYIELD";
             yield return "MANAGERNAME";
+            yield return "LOTNO_1";
+            yield return "LOTNO_5";
             yield return "FILLQUNSUM";
+            yield return "FILLQUNSUMUNIT";
+            yield return "USEQUNSUM";
             yield return "SUBUSEQUN11";
             yield return "SUBFILLQUNSUM";
+            yield return "SUBFILLQUNSUMUNIT";
             yield return "ITEMPARCD";
             yield return "ITEMPARNM";
             yield return "ITEMMAKEDATE";
@@ -154,7 +179,9 @@ public sealed class HoikoloProductionInstructionPdfService
                 yield return $"YIELD{nn}";
                 yield return $"CUTITEMNM{nn}";
                 yield return $"FILLQUN{nn}";
+                yield return $"FILLQUNUNIT{nn}";
                 yield return $"USEQUN{nn}";
+                yield return $"USEQUNUNIT{nn}";
                 yield return $"FILLQUN_1_{nn}";
                 yield return $"FILLQUN_5_{nn}";
                 yield return $"BBD{nn}";
@@ -168,7 +195,9 @@ public sealed class HoikoloProductionInstructionPdfService
                 yield return $"COMPRATE{nn}";
                 yield return $"SUBITEMNM{nn}";
                 yield return $"SUBFILLQUN{nn}";
+                yield return $"SUBFILLQUNUNIT{nn}";
                 yield return $"SUBUSEQUN{nn}";
+                yield return $"SUBUSEQUNUNIT{nn}";
                 yield return $"SUBBBD{nn}";
             }
         }

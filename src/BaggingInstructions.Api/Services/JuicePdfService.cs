@@ -13,6 +13,19 @@ public class JuicePdfService
     /// <summary>座標変換: rxz の値 / twip = ポイント。参照: RozecCrPrintClass twip = 20000</summary>
     private const double Twip = 20000;
 
+    /// <summary>ShrinkToFit 時の既定最小フォント（pt）。</summary>
+    private const double DefaultShrinkToFitMinFontSizePts = 1.0;
+
+    /// <summary>ShrinkToFit で 1 段階ずつ下げるフォント（pt）。</summary>
+    private const double ShrinkToFitStepPts = 0.25;
+
+    /// <summary>
+    /// 単位列のみ、枠内判定をわずかに緩める（MeasureString と DrawString の差・丸めで収まるのに 1 段階大きいフォントが捨てられるのを防ぐ）。
+    /// </summary>
+    private const double QuantityUnitFitWidthSlackPts = 1.25;
+
+    private const double QuantityUnitFitHeightSlackPts = 0.5;
+
     /// <summary>1ページあたりの最大表示行数。これを超える行は2ページ目以降に出力する。</summary>
     private const int RowsPerPage = 23;
 
@@ -43,6 +56,11 @@ public class JuicePdfService
         public int MarginBottom { get; set; }
         /// <summary>縮小して表示（rxz の ShrinkToFit）。true のとき枠に収まるまでフォントを縮小する。</summary>
         public bool ShrinkToFit { get; set; }
+
+        /// <summary>
+        /// ShrinkToFit 時の最小フォント（pt）。null のときは <see cref="DefaultShrinkToFitMinFontSizePts"/>。
+        /// </summary>
+        public double? ShrinkToFitMinFontSizePts { get; set; }
         /// <summary>rxz の AlignVertical。1=上 2=中央 3=下。同一矩形に複数 Data を重ねるテンプレで必須。</summary>
         public int AlignVertical { get; set; } = 2;
         /// <summary>rxz の Box（枠）。true のとき Data/Text ではなく矩形のみ描画する。</summary>
@@ -264,11 +282,19 @@ public class JuicePdfService
             MarginRight = marginRight,
             MarginBottom = marginBottom,
             ShrinkToFit = shrinkToFit,
-            AlignVertical = alignVertical
+            AlignVertical = alignVertical,
+            ShrinkToFitMinFontSizePts = null
         };
+        if (IsQuantityUnitFieldName(name))
+            item.ShrinkToFit = true;
         // 単位列・予定数量列は幅が狭いがテンプレでは ShrinkToFit=false のことが多い。全文を枠内に収める。
         if (name.StartsWith("UNITPAR", StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith("UNITCHI", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("USEQUNSUM", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("FILLQUNSUM", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("SUBUSEQUNSUM", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("SUBFILLQUNSUM", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("SUBUSEQUN11", StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith("MAKEQUNPLAN", StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith("USEQUNPLAN", StringComparison.OrdinalIgnoreCase))
             item.ShrinkToFit = true;
@@ -288,6 +314,14 @@ public class JuicePdfService
         }
         return true;
     }
+
+    private static bool IsQuantityUnitFieldName(string name) =>
+        name.StartsWith("USEQUNUNIT", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SUBUSEQUNUNIT", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("FILLQUNUNIT", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SUBFILLQUNUNIT", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("FILLQUNSUMUNIT", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("SUBFILLQUNSUMUNIT", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>rxz の Box（Graphic + Size）をパースする。</summary>
     private static bool TryParseBoxItem(XElement box, out RxzTextItem item)
@@ -427,11 +461,19 @@ public class JuicePdfService
 
             double fontSize = item.FontHeight / 100.0;
             if (fontSize < 1) fontSize = 11;
-            const double minFontSize = 1;
+            double minFontSize = item.ShrinkToFitMinFontSizePts ?? DefaultShrinkToFitMinFontSizePts;
 
             // 縮小して表示: 枠に収まるまでフォントサイズを小さくする（RozecCrPrintClass と同様）
             if (item.ShrinkToFit)
             {
+                double widthLimit = textRect.Width;
+                double heightLimit = textRect.Height;
+                if (IsQuantityUnitFieldName(item.Name))
+                {
+                    widthLimit += QuantityUnitFitWidthSlackPts;
+                    heightLimit += QuantityUnitFitHeightSlackPts;
+                }
+
                 double trySize = fontSize;
                 while (trySize >= minFontSize)
                 {
@@ -449,12 +491,12 @@ public class JuicePdfService
                         if (sz.Width > maxLineWidth) maxLineWidth = sz.Width;
                         totalMeasuredHeight += tryFont.GetHeight();
                     }
-                    if (maxLineWidth <= textRect.Width && totalMeasuredHeight <= textRect.Height)
+                    if (maxLineWidth <= widthLimit && totalMeasuredHeight <= heightLimit)
                     {
                         fontSize = trySize;
                         break;
                     }
-                    trySize -= 0.5;
+                    trySize -= ShrinkToFitStepPts;
                 }
                 if (trySize < minFontSize) fontSize = minFontSize;
             }

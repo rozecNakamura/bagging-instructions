@@ -49,8 +49,18 @@ public sealed class CabWinnaSotiProductionInstructionPdfService
         tags["ITEMMAKEDATE"] = header.NeedDateDisplay ?? "";
         tags["ITEMCLASS"] = header.SlotDisplay ?? "";
 
+        ProductionInstructionRxzTagTexts.ApplyParentItemAddinfoToLowerRxzTags(
+            tags,
+            header.ParentItemPrintAddinfo,
+            ProductionInstructionLowerSectionPdfVariant.CabWinnaSoti);
+
         for (var i = 0; i < MaterialSlotsPerPage && i < materialChunk.Count; i++)
             ApplyMaterialRow(tags, i, materialChunk[i]);
+
+        var sum = ProductionInstructionRxzTagTexts.SumChildRequiredQtyDisplay(materialChunk);
+        tags["FILLQUNSUM"] = sum;
+        tags["USEQUNSUM"] = sum;
+        tags["FILLQUNSUMUNIT"] = ProductionInstructionRxzTagTexts.CommonChildUnitNameForSum(materialChunk);
 
         return tags;
     }
@@ -66,7 +76,9 @@ public sealed class CabWinnaSotiProductionInstructionPdfService
         tags[$"YIELD{nn}"] = row.ChildYieldPercentDisplay ?? "";
         tags[$"CUTITEMNM{nn}"] = ProductionInstructionRxzTagTexts.SpecOrItemName(row);
         tags[$"FILLQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
-        tags[$"USEQUN{nn}"] = ProductionInstructionRxzTagTexts.FormatQtyWithUnit(row.ChildRequiredQtyDisplay, row.ChildUnitName);
+        tags[$"FILLQUNUNIT{nn}"] = (row.ChildUnitName ?? "").Trim();
+        tags[$"USEQUN{nn}"] = row.ChildRequiredQtyDisplay ?? "";
+        tags[$"USEQUNUNIT{nn}"] = (row.ChildUnitName ?? "").Trim();
         tags[$"BBD{nn}"] = "";
     }
 
@@ -102,6 +114,7 @@ public sealed class CabWinnaSotiProductionInstructionPdfService
             yield return "PACKPRINT";
             yield return "MANAGERNAME";
             yield return "FILLQUNSUM";
+            yield return "FILLQUNSUMUNIT";
             yield return "USEQUNSUM";
             yield return "DOCMAKEDATE";
             yield return "DOCNO";
@@ -126,7 +139,9 @@ public sealed class CabWinnaSotiProductionInstructionPdfService
                 yield return $"YIELD{nn}";
                 yield return $"CUTITEMNM{nn}";
                 yield return $"FILLQUN{nn}";
+                yield return $"FILLQUNUNIT{nn}";
                 yield return $"USEQUN{nn}";
+                yield return $"USEQUNUNIT{nn}";
                 yield return $"BBD{nn}";
             }
         }

@@ -79,5 +79,37 @@ public sealed class ProductionInstructionPdfLineModel
 
     public string NeedDateDisplay { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
+
+    /// <summary>
+    /// 親品目（製造オーダー品目）の <c>itemadditionalinformation</c> から、生産指示書 RXZ 下部（包装・加熱等）へ転記する値。
+    /// 袋品目マスタの addinfo05〜17・滅菌温度・滅菌時間（秒）に相当。
+    /// </summary>
+    public ProductionInstructionParentItemAddinfoForPdf? ParentItemPrintAddinfo { get; set; }
+}
+
+/// <summary>
+/// 品目付加情報のうち、生産指示書 PDF 下部ブロックへマッピングするフィールド（DB 列と同名想定）。
+/// </summary>
+public sealed class ProductionInstructionParentItemAddinfoForPdf
+{
+    public string Addinfo05 { get; set; } = "";
+    public string Addinfo06 { get; set; } = "";
+    public string Addinfo07 { get; set; } = "";
+    public string Addinfo08 { get; set; } = "";
+    public string Addinfo09 { get; set; } = "";
+    public string Addinfo10 { get; set; } = "";
+    public string Addinfo11 { get; set; } = "";
+    public string Addinfo12 { get; set; } = "";
+    public string Addinfo13 { get; set; } = "";
+    public string Addinfo14 { get; set; } = "";
+    public string Addinfo15 { get; set; } = "";
+    public string Addinfo16 { get; set; } = "";
+    public string Addinfo17 { get; set; } = "";
+
+    /// <summary>加熱温度（℃）— <c>steritemprange</c>。</summary>
+    public decimal? SterItemPrange { get; set; }
+
+    /// <summary>加熱時間（DB は秒）— <c>steritime</c>。PDF では分に換算する。</summary>
+    public decimal? SteriTimeSeconds { get; set; }
 }
 

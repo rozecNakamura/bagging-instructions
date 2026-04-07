@@ -7,6 +7,47 @@ namespace BaggingInstructions.Api.Tests;
 public class GanmonoTakiaiProductionInstructionPdfServiceTests
 {
     [Fact]
+    public void BuildPageTagDictionary_LowerSection_FromParentItemPrintAddinfo()
+    {
+        var line = ProductionInstructionPdfTestModels.ChildLine("701", "3便", "GP", "親品", "GC", "子品", "3", "個", "95", "規格Z");
+        line.ParentItemPrintAddinfo = new ProductionInstructionParentItemAddinfoForPdf
+        {
+            Addinfo05 = "BagName",
+            Addinfo06 = "100x200",
+            Addinfo07 = "Top",
+            Addinfo08 = "VacA",
+            Addinfo09 = "Set9",
+            Addinfo10 = "StopPt",
+            Addinfo11 = "Seal11",
+            Addinfo12 = "Sp12",
+            Addinfo13 = "Xa",
+            Addinfo14 = "Xb",
+            Addinfo15 = "HeatDev",
+            Addinfo16 = "Store16",
+            Addinfo17 = "Note17",
+            SterItemPrange = 85.5m,
+            SteriTimeSeconds = 90m
+        };
+        var tags = GanmonoTakiaiProductionInstructionPdfService.BuildPageTagDictionary(line, new[] { line });
+
+        Assert.Equal("BagName", tags["PACKNAME_1"]);
+        Assert.Equal("100x200", tags["PACKSIZE_1"]);
+        Assert.Equal("Top", tags["PACKPRINT"]);
+        Assert.Equal("VacA", tags["VACPACK"]);
+        Assert.Equal("Set9", tags["VACSETNO"]);
+        Assert.Equal("StopPt", tags["VACSTOPPOINT"]);
+        Assert.Equal("Seal11", tags["SEALSETVAL"]);
+        Assert.Equal("Sp12", tags["SPEED"]);
+        Assert.Equal("Xa / Xb", tags["XRAYSET_1"]);
+        Assert.Equal("HeatDev", tags["PACKLOCATION"]);
+        Assert.Equal("Store16", tags["PACKBBD"]);
+        Assert.Equal("Note17", tags["MANAGERNAME"]);
+        Assert.Equal("85.5", tags["HEATTEMP"]);
+        Assert.Equal("1.5", tags["HEATTIME"]);
+        Assert.Equal("", tags["LOTNO"]);
+    }
+
+    [Fact]
     public void BuildPageTagDictionary_HeaderAndMainRow()
     {
         var line = ProductionInstructionPdfTestModels.ChildLine("701", "3便", "GP", "親品", "GC", "子品", "3", "個", "95", "規格Z");
@@ -21,7 +62,14 @@ public class GanmonoTakiaiProductionInstructionPdfServiceTests
         Assert.Equal("95", tags["YIELD00"]);
         Assert.Equal("規格Z", tags["CUTITEMNM00"]);
         Assert.Equal("3", tags["FILLQUN00"]);
-        Assert.Equal("3 個", tags["USEQUN00"]);
+        Assert.Equal("個", tags["FILLQUNUNIT00"]);
+        Assert.Equal("3", tags["USEQUN00"]);
+        Assert.Equal("個", tags["USEQUNUNIT00"]);
+        Assert.Equal("3", tags["FILLQUNSUM"]);
+        Assert.Equal("個", tags["FILLQUNSUMUNIT"]);
+        Assert.Equal("3", tags["USEQUNSUM"]);
+        Assert.Equal("", tags["SUBFILLQUNSUM"]);
+        Assert.Equal("", tags["SUBUSEQUNSUM"]);
     }
 
     [Fact]
@@ -46,7 +94,15 @@ public class GanmonoTakiaiProductionInstructionPdfServiceTests
         Assert.Equal("子8", tags["SUBMATNM00"]);
         Assert.Equal("90", tags["COMPRATE00"]);
         Assert.Equal("8", tags["SUBFILLQUN00"]);
-        Assert.Equal("8 g", tags["SUBUSEQUN00"]);
+        Assert.Equal("g", tags["SUBFILLQUNUNIT00"]);
+        Assert.Equal("8", tags["SUBUSEQUN00"]);
+        Assert.Equal("g", tags["SUBUSEQUNUNIT00"]);
+        Assert.Equal("28", tags["FILLQUNSUM"]);
+        Assert.Equal("g", tags["FILLQUNSUMUNIT"]);
+        Assert.Equal("28", tags["USEQUNSUM"]);
+        Assert.Equal("8", tags["SUBFILLQUNSUM"]);
+        Assert.Equal("g", tags["SUBFILLQUNSUMUNIT"]);
+        Assert.Equal("8", tags["SUBUSEQUNSUM"]);
     }
 
     [Fact]
