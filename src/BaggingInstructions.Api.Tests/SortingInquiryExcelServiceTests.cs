@@ -39,14 +39,14 @@ public class SortingInquiryExcelServiceTests
         Assert.Equal("CUSTX", ws.Cell(1, 4).GetString());
         Assert.Equal("WH01", ws.Cell(2, 4).GetString());
         Assert.Equal("第1配送先", ws.Cell(3, 4).GetString());
-        Assert.Equal("品目コード", ws.Cell(7, 1).GetString());
-        Assert.Equal("適用", ws.Cell(7, 3).GetString());
-        Assert.Equal("店A", ws.Cell(7, 4).GetString());
-        Assert.Equal("合計", ws.Cell(7, 5).GetString());
-        Assert.Equal("I1", ws.Cell(8, 1).GetString());
-        Assert.Equal("品目1", ws.Cell(8, 2).GetString());
-        Assert.Equal("食種A", ws.Cell(8, 3).GetString());
-        Assert.Equal(3, ws.Cell(8, 4).GetDouble());
+        Assert.Equal("品目コード", ws.Cell(4, 1).GetString());
+        Assert.Equal("適用", ws.Cell(4, 3).GetString());
+        Assert.Equal("店A", ws.Cell(4, 4).GetString());
+        Assert.Equal("合計", ws.Cell(4, 5).GetString());
+        Assert.Equal("I1", ws.Cell(5, 1).GetString());
+        Assert.Equal("品目1", ws.Cell(5, 2).GetString());
+        Assert.Equal("食種A", ws.Cell(5, 3).GetString());
+        Assert.Equal(3, ws.Cell(5, 4).GetDouble());
     }
 
     [Fact]

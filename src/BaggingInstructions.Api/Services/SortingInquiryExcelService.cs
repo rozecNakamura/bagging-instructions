@@ -6,7 +6,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 仕分け照会・仕訳表自動調整の Excel。テンプレート不要で ClosedXML から生成する。
-/// 仕分け照会: 1 行目得意先コード、2 納入場所コード、3 納入場所名、4〜6 保留、7 列見出し（品目・適用・得意先名）、8 行目以降は受注数量。
+/// 仕分け照会: 1 行目得意先コード、2 納入場所コード、3 納入場所名、4 行目に列見出し（品目・適用・得意先名）、5 行目以降は受注数量。
 /// 仕訳表自動調整: 1 納入場所コード、2 納入場所名、3 品目コード／品目名称／適用・店舗列は当該列の最大比・合計見出し、4 行目から品目明細。
 /// </summary>
 public sealed class SortingInquiryExcelService
@@ -17,8 +17,6 @@ public sealed class SortingInquiryExcelService
     private const int FirstCustomerCol = 4;
     private const int FrozenColumns = 3;
     private const string TekiyoColumnTitle = "適用";
-    private const int StackedHeaderReservedBlankRows = 3;
-
     private const double MinWidthItemCode = 16;
     private const double MinWidthItemName = 40;
     private const double MinWidthTekiyo = 18;
@@ -80,7 +78,6 @@ public sealed class SortingInquiryExcelService
         }
 
         row++;
-        row += StackedHeaderReservedBlankRows;
 
         var headerRow = row;
 

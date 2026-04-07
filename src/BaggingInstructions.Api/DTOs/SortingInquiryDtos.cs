@@ -27,7 +27,7 @@ public sealed class SortingInquirySearchResponseDto
     [JsonPropertyName("storeKeys")]
     public List<string> StoreKeys { get; set; } = new();
 
-    /// <summary>得意先コード → 一覧・Excel 用列見出し（<c>customer</c> マスタの得意先名。略称優先）。</summary>
+    /// <summary>得意先コード → 一覧・Excel 用列見出し（<c>customer</c> マスタの得意先名。正式名優先、無ければ略称）。</summary>
     [JsonPropertyName("storeHeaders")]
     public Dictionary<string, string> StoreHeaders { get; set; } = new();
 

@@ -10,7 +10,7 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 仕分け照会: salesorderline を喫食日（planneddeliverydate）・便（slotcode）で検索し、
 /// 品目×食種×得意先コード別に数量を集計する（同一得意先の複数納入場所は合算）。一覧・Excel は品目コード・品目名称・食種のあと、
-/// 検索結果に現れる各得意先コードを1列とし、列見出しは <c>customer</c> マスタの得意先名（略称優先、無ければ正式名、無ければ得意先コード）。
+/// 検索結果に現れる各得意先コードを1列とし、列見出しは <c>customer</c> マスタの得意先名（正式名優先、無ければ略称、無ければ得意先コード）。
 /// 同一品目×食種行で複数得意先列が並び、同日に複数得意先が同一品目を取引したことが分かる。
 /// 最後に合計列とする。行データの食種キーは addinfo（<see cref="SalesOrderLineAddinfo.Addinfo02Name"/>／<see cref="SalesOrderLineAddinfo.Addinfo02"/>）。Excel の列見出しのみ「適用」とする。
 /// 仕訳表 Excel 用に <see cref="SortingInquirySearchResponseDto.StoreHeaderDeliveryCodes"/>／StoreHeaderDeliveryNames を付与する。
@@ -477,10 +477,10 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 
     private static string ResolveCustomerDisplayName(string? shortName, string? fullName, string? customerCode)
     {
+        var f = (fullName ?? "").Trim();
+        if (f.Length > 0)
+            return f;
         var s = (shortName ?? "").Trim();
-        if (s.Length > 0)
-            return s;
-        s = (fullName ?? "").Trim();
         if (s.Length > 0)
             return s;
         return (customerCode ?? "").Trim();
