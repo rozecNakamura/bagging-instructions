@@ -26,7 +26,7 @@ public class ProductionInstructionServiceTests
         var service = new ProductionInstructionService(db);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.SearchAsync("202404", null, null, CancellationToken.None));
+            service.SearchAsync("202404", null, null, null, CancellationToken.None));
     }
 }
 

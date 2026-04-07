@@ -65,14 +65,16 @@ ORDER BY slotcode
     }
 
     /// <summary>
-    /// 納期・作業区・便でオーダー行を検索する。1 行 = 1 ordertable レコード。
+    /// 納期・作業区・便・品目キーワードでオーダー行を検索する。1 行 = 1 ordertable レコード。
     /// ordertable.ordertype が MO（大文字・前後空白無視）の行のみ。
     /// 納期キーは COALESCE(needdate, releasedate)。作業区・便は未選択なら絞り込まない。
+    /// 品目はコード・名称に部分一致（大小文字無視）。数量・単位表示は PDF 親行と同じ換算。
     /// </summary>
     public async Task<List<ProductionInstructionSearchRowDto>> SearchAsync(
         string needDate,
         IReadOnlyList<long>? workcenterIds,
         IReadOnlyList<string>? slotCodes,
+        string? itemSearch = null,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(needDate);
@@ -85,54 +87,115 @@ ORDER BY slotcode
             .Where(s => s.Length > 0)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+        var itemTerm = (itemSearch ?? "").Trim();
 
-        // TO_CHAR は text を返すため、比較側も YYYYMMDD 文字列にする（DateOnly を渡すと text = date で失敗する）
         var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 
-        var rows = await _db.Database
-            .SqlQuery<ProductionInstructionSearchSqlRow>($@"
-SELECT
-  ot.ordertableid AS ""OrderTableId"",
-  COALESCE(ot.itemcode, i.itemcode, '') AS ""ItemCode"",
-  COALESCE(i.itemname, '') AS ""ItemName"",
-  TO_CHAR(
-    COALESCE(ot.needdate, ot.releasedate),
-    'YYYYMMDD'
-  ) AS ""NeedDate"",
-  COALESCE(ds.slotname, ds.slotcode, '') AS ""SlotDisplay"",
-  COALESCE((
-    SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
-    FROM itemworkcentermapping m2
-    INNER JOIN workcenter wc ON wc.workcentercode = m2.workcentercode
-    WHERE m2.itemcode = COALESCE(ot.itemcode, i.itemcode)
-  ), '') AS ""WorkplaceNames""
-FROM ordertable ot
-INNER JOIN item i ON i.itemcode = ot.itemcode
-LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-  AND TO_CHAR(
-        COALESCE(ot.needdate, ot.releasedate),
-        'YYYYMMDD'
-      ) = {needDateYyyymmdd}
-  AND ({slots.Length} = 0 OR COALESCE(ds.slotcode, '') = ANY ({slots}))
-  AND ({wcIds.Length} = 0 OR EXISTS (
-        SELECT 1 FROM itemworkcentermapping m3
-        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
-        WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY ({wcIds})
-      ))
-ORDER BY i.itemname, ds.slotcode, ot.ordertableid
-")
-            .ToListAsync(ct);
-
-        return rows.Select(r => new ProductionInstructionSearchRowDto
+        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var shouldClose = conn.State != ConnectionState.Open;
+        if (shouldClose)
+            await conn.OpenAsync(ct);
+        try
         {
-            OrderTableId = r.OrderTableId,
-            ItemCode = r.ItemCode ?? "",
-            ItemName = r.ItemName ?? "",
-            NeedDate = FormatDateDisplay(r.NeedDate),
-            SlotDisplay = r.SlotDisplay ?? ""
-        }).ToList();
+            await using var cmd = new NpgsqlCommand(
+                """
+                SELECT
+                  ot.ordertableid,
+                  COALESCE(ot.itemcode, i.itemcode, ''),
+                  COALESCE(i.itemname, ''),
+                  TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD'),
+                  COALESCE(ds.slotname, ds.slotcode, ''),
+                  COALESCE(ot.qty, 0),
+                  ot.qtyuni0,
+                  ot.qtyuni1,
+                  ot.qtyuni2,
+                  ot.qtyuni3,
+                  COALESCE(u0.unitname, ''),
+                  u1.unitname,
+                  ia.std,
+                  ia.car0,
+                  i.conversionvalue1,
+                  i.conversionvalue2,
+                  i.conversionvalue3
+                FROM ordertable ot
+                INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
+                LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
+                WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+                  AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = @needdate
+                  AND (@slot_count = 0 OR COALESCE(ds.slotcode, '') = ANY(@slots))
+                  AND (@wc_count = 0 OR EXISTS (
+                        SELECT 1 FROM itemworkcentermapping m3
+                        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+                        WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY(@wc_ids)
+                      ))
+                  AND (length(trim(@item_term)) = 0 OR (
+                        strpos(lower(COALESCE(ot.itemcode, i.itemcode, '')), lower(@item_term)) > 0
+                        OR strpos(lower(COALESCE(i.itemname, '')), lower(@item_term)) > 0
+                      ))
+                ORDER BY i.itemname, ds.slotcode, ot.ordertableid
+                """,
+                conn);
+            cmd.Parameters.AddWithValue("needdate", needDateYyyymmdd);
+            cmd.Parameters.AddWithValue("slot_count", slots.Length);
+            cmd.Parameters.Add(new NpgsqlParameter("slots", NpgsqlDbType.Array | NpgsqlDbType.Text)
+            {
+                Value = slots.Length == 0 ? Array.Empty<string>() : slots
+            });
+            cmd.Parameters.AddWithValue("wc_count", wcIds.Length);
+            cmd.Parameters.Add(new NpgsqlParameter("wc_ids", NpgsqlDbType.Array | NpgsqlDbType.Bigint)
+            {
+                Value = wcIds.Length == 0 ? Array.Empty<long>() : wcIds
+            });
+            cmd.Parameters.AddWithValue("item_term", itemTerm);
+
+            var result = new List<ProductionInstructionSearchRowDto>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var rawQty = reader.GetDecimal(5);
+                var qtyUni0 = ReadDecimalNullable(reader, 6);
+                var qtyUni1 = ReadDecimalNullable(reader, 7);
+                var qtyUni2 = ReadDecimalNullable(reader, 8);
+                var qtyUni3 = ReadDecimalNullable(reader, 9);
+                var parentUnit0 = reader.GetString(10);
+                var procurementUnit = reader.IsDBNull(11) ? null : reader.GetString(11);
+                var iaStd = reader.IsDBNull(12) ? null : reader.GetString(12);
+                var iaCar0 = ReadDecimalNullable(reader, 13);
+                var cv1 = ReadDecimalNullable(reader, 14);
+                var cv2 = ReadDecimalNullable(reader, 15);
+                var cv3 = ReadDecimalNullable(reader, 16);
+
+                var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
+                    rawQty, qtyUni0, qtyUni1, qtyUni2, qtyUni3,
+                    iaStd, iaCar0, cv1, cv2, cv3);
+                var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
+                    qtyU0, qtyUni1, procurementUnit, parentUnit0, cv1);
+                var qtyStr = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
+
+                var needYmd = reader.GetString(3);
+                result.Add(new ProductionInstructionSearchRowDto
+                {
+                    OrderTableId = reader.GetInt64(0),
+                    ItemCode = reader.GetString(1),
+                    ItemName = reader.GetString(2),
+                    QuantityDisplay = qtyStr,
+                    UnitName = dispUnit ?? "",
+                    NeedDate = FormatDateDisplay(needYmd),
+                    SlotDisplay = reader.GetString(4)
+                });
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (shouldClose && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
     }
 
     /// <summary>
@@ -410,16 +473,6 @@ internal sealed class ProductionInstructionSlotSqlRow
 {
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
-}
-
-internal sealed class ProductionInstructionSearchSqlRow
-{
-    public long OrderTableId { get; set; }
-    public string ItemCode { get; set; } = "";
-    public string ItemName { get; set; } = "";
-    public string NeedDate { get; set; } = "";
-    public string SlotDisplay { get; set; } = "";
-    public string WorkplaceNames { get; set; } = "";
 }
 
 internal sealed class ProductionInstructionLineHeaderRow

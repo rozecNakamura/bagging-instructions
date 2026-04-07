@@ -13,6 +13,14 @@ public sealed class ProductionInstructionSearchRowDto
     [JsonPropertyName("itemName")]
     public string ItemName { get; set; } = "";
 
+    /// <summary>表示用数量（ordertable／item 換算ロジックは PDF 親行と同じ）。</summary>
+    [JsonPropertyName("quantityDisplay")]
+    public string QuantityDisplay { get; set; } = "";
+
+    /// <summary>表示用単位名。</summary>
+    [JsonPropertyName("unitName")]
+    public string UnitName { get; set; } = "";
+
     /// <summary>表示用 YYYY-MM-DD 形式の納期。</summary>
     [JsonPropertyName("needDate")]
     public string NeedDate { get; set; } = "";

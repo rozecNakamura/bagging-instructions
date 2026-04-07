@@ -799,7 +799,13 @@ export async function fetchProductionInstructionSlots() {
  * @param {number[]|number|null|undefined} workcenterIds
  * @param {string[]|string|null|undefined} slotCodes
  */
-export async function searchProductionInstruction(needDate, workcenterIds, slotCodes) {
+/**
+ * @param {string} needDate
+ * @param {number[]|null|undefined} workcenterIds
+ * @param {string[]|null|undefined} slotCodes
+ * @param {string|null|undefined} itemQuery 品目コード・品目名の部分一致（省略可）
+ */
+export async function searchProductionInstruction(needDate, workcenterIds, slotCodes, itemQuery) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
@@ -815,6 +821,8 @@ export async function searchProductionInstruction(needDate, workcenterIds, slotC
         .map(s => String(s).trim())
         .filter(s => s)
         .forEach(code => params.append('slot_code', code));
+    const item = itemQuery != null ? String(itemQuery).trim() : '';
+    if (item) params.set('item', item);
 
     const res = await fetch(`${API_BASE_URL}/production-instruction/search?${params}`);
     if (!res.ok) {

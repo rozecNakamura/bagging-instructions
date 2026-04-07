@@ -734,7 +734,7 @@
                 </div>
             </div>
 
-            <!-- 生産指示書_ホイコーロー（MO 検索・調味液と同条件） -->
+            <!-- 生産指示書_ホイコーロー（MO ordertable 検索：納期・品目） -->
             <div id="screen-production-instruction-hoikolo" class="screen">
                 <div class="container">
                     <header>
@@ -748,24 +748,8 @@
                                 <input type="date" id="hclNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label>作業区:</label>
-                                <div class="multi-select-dropdown" id="hclWorkcenterDropdown">
-                                    <div class="multi-select-display" id="hclWorkcenterDisplay">
-                                        <span id="hclWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="hclWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>便:</label>
-                                <div class="multi-select-dropdown" id="hclSlotDropdown">
-                                    <div class="multi-select-display" id="hclSlotDisplay">
-                                        <span id="hclSlotSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="hclSlotOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
+                                <label for="hclItemSearch">品目検索:</label>
+                                <input type="text" id="hclItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
                             </div>
                             <button type="button" id="hclSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -784,9 +768,10 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="hclHeaderCheckbox"></th>
+                                        <th>品目コード</th>
                                         <th>品目名</th>
-                                        <th>日付</th>
-                                        <th>便</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
                                     </tr>
                                 </thead>
                                 <tbody id="hclResultsBody">
@@ -801,7 +786,7 @@
                 </div>
             </div>
 
-            <!-- 生産指示書_がんもの炊き合わせ（MO 検索・調味液と同条件） -->
+            <!-- 生産指示書_がんもの炊き合わせ（MO ordertable 検索：納期・品目） -->
             <div id="screen-production-instruction-ganmono" class="screen">
                 <div class="container">
                     <header>
@@ -815,24 +800,8 @@
                                 <input type="date" id="gmtNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label>作業区:</label>
-                                <div class="multi-select-dropdown" id="gmtWorkcenterDropdown">
-                                    <div class="multi-select-display" id="gmtWorkcenterDisplay">
-                                        <span id="gmtWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="gmtWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>便:</label>
-                                <div class="multi-select-dropdown" id="gmtSlotDropdown">
-                                    <div class="multi-select-display" id="gmtSlotDisplay">
-                                        <span id="gmtSlotSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="gmtSlotOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
+                                <label for="gmtItemSearch">品目検索:</label>
+                                <input type="text" id="gmtItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
                             </div>
                             <button type="button" id="gmtSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -851,9 +820,10 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="gmtHeaderCheckbox"></th>
+                                        <th>品目コード</th>
                                         <th>品目名</th>
-                                        <th>日付</th>
-                                        <th>便</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
                                     </tr>
                                 </thead>
                                 <tbody id="gmtResultsBody">
@@ -868,7 +838,7 @@
                 </div>
             </div>
 
-            <!-- 生産指示書_キャベツとウィンナーのソティ（MO 検索・調味液と同条件） -->
+            <!-- 生産指示書_キャベツとウィンナーのソティ（MO ordertable 検索：納期・品目） -->
             <div id="screen-production-instruction-cab-winna-soti" class="screen">
                 <div class="container">
                     <header>
@@ -882,24 +852,8 @@
                                 <input type="date" id="cwsNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label>作業区:</label>
-                                <div class="multi-select-dropdown" id="cwsWorkcenterDropdown">
-                                    <div class="multi-select-display" id="cwsWorkcenterDisplay">
-                                        <span id="cwsWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="cwsWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>便:</label>
-                                <div class="multi-select-dropdown" id="cwsSlotDropdown">
-                                    <div class="multi-select-display" id="cwsSlotDisplay">
-                                        <span id="cwsSlotSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="cwsSlotOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
+                                <label for="cwsItemSearch">品目検索:</label>
+                                <input type="text" id="cwsItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
                             </div>
                             <button type="button" id="cwsSearchBtn" class="btn btn-primary">検索</button>
                         </div>
@@ -918,9 +872,10 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="cwsHeaderCheckbox"></th>
+                                        <th>品目コード</th>
                                         <th>品目名</th>
-                                        <th>日付</th>
-                                        <th>便</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
                                     </tr>
                                 </thead>
                                 <tbody id="cwsResultsBody">

@@ -1,15 +1,6 @@
-import {
-    searchProductionInstruction,
-    fetchProductionInstructionWorkcenters,
-    fetchProductionInstructionSlots
-} from './api.js';
-import { productionInstructionMultiSelectLabel } from './production_instruction_common.js';
+import { searchProductionInstruction } from './api.js';
 
 let hclRows = [];
-let hclWorkcenterList = [];
-let hclSlotList = [];
-let hclSelectedWorkcenterIds = new Set();
-let hclSelectedSlotCodes = new Set();
 
 const screenSel = '#screen-production-instruction-hoikolo';
 
@@ -33,12 +24,12 @@ function displayHclResults(rows) {
 
     rows.forEach((row, index) => {
         const tr = tbody.insertRow();
-        const dateDisplay = row.needDate || '-';
         tr.innerHTML = `
             <td><input type="checkbox" class="hcl-item-checkbox" data-index="${index}"></td>
+            <td>${row.itemCode || '-'}</td>
             <td>${row.itemName || '-'}</td>
-            <td>${dateDisplay || '-'}</td>
-            <td>${row.slotDisplay || '-'}</td>
+            <td>${row.quantityDisplay != null && row.quantityDisplay !== '' ? row.quantityDisplay : '-'}</td>
+            <td>${row.unitName || '-'}</td>
         `;
         tr.style.cursor = 'pointer';
         tr.addEventListener('click', (e) => {
@@ -72,81 +63,9 @@ export function getHclReportFilter() {
     const needDate = document.getElementById('hclNeedDate')?.value || '';
     return {
         needDate,
-        workcenterIds: Array.from(hclSelectedWorkcenterIds).map(id => Number(id)).filter(id => id > 0),
-        slotCodes: Array.from(hclSelectedSlotCodes).filter(s => s)
+        workcenterIds: [],
+        slotCodes: []
     };
-}
-
-function updateHclWorkcenterSlotLabels() {
-    const wcLabel = document.getElementById('hclWorkcenterSelectedLabel');
-    const slotLabel = document.getElementById('hclSlotSelectedLabel');
-
-    if (wcLabel) {
-        wcLabel.textContent = productionInstructionMultiSelectLabel(
-            hclSelectedWorkcenterIds.size,
-            hclWorkcenterList.length
-        );
-    }
-
-    if (slotLabel) {
-        slotLabel.textContent = productionInstructionMultiSelectLabel(
-            hclSelectedSlotCodes.size,
-            hclSlotList.length
-        );
-    }
-}
-
-function buildHclWorkcenterSlotPanels() {
-    const wcContainer = document.getElementById('hclWorkcenterOptions');
-    const slotContainer = document.getElementById('hclSlotOptions');
-    if (!wcContainer || !slotContainer) return;
-
-    wcContainer.innerHTML = '';
-    slotContainer.innerHTML = '';
-
-    hclWorkcenterList.forEach(w => {
-        const label = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = String(w.id);
-        if (hclSelectedWorkcenterIds.has(w.id)) cb.checked = true;
-        cb.addEventListener('change', () => {
-            if (cb.checked) {
-                hclSelectedWorkcenterIds.add(w.id);
-            } else {
-                hclSelectedWorkcenterIds.delete(w.id);
-            }
-            updateHclWorkcenterSlotLabels();
-        });
-        const text = document.createElement('span');
-        text.textContent = w.name || '';
-        label.appendChild(cb);
-        label.appendChild(text);
-        wcContainer.appendChild(label);
-    });
-
-    hclSlotList.forEach(s => {
-        const label = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = s.code || '';
-        if (hclSelectedSlotCodes.has(s.code)) cb.checked = true;
-        cb.addEventListener('change', () => {
-            if (cb.checked) {
-                if (s.code) hclSelectedSlotCodes.add(s.code);
-            } else {
-                hclSelectedSlotCodes.delete(s.code);
-            }
-            updateHclWorkcenterSlotLabels();
-        });
-        const text = document.createElement('span');
-        text.textContent = s.name || s.code || '';
-        label.appendChild(cb);
-        label.appendChild(text);
-        slotContainer.appendChild(label);
-    });
-
-    updateHclWorkcenterSlotLabels();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -154,67 +73,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerCheckbox = document.getElementById('hclHeaderCheckbox');
     const selectAllBtn = document.getElementById('hclSelectAllBtn');
     const deselectAllBtn = document.getElementById('hclDeselectAllBtn');
-    const wcDisplay = document.getElementById('hclWorkcenterDisplay');
-    const slotDisplay = document.getElementById('hclSlotDisplay');
 
     if (!searchBtn) return;
 
-    (async () => {
-        try {
-            const [wcs, slots] = await Promise.all([
-                fetchProductionInstructionWorkcenters(),
-                fetchProductionInstructionSlots()
-            ]);
-            hclWorkcenterList = wcs || [];
-            hclSlotList = slots || [];
-            buildHclWorkcenterSlotPanels();
-        } catch (e) {
-            console.error('生産指示書_ホイコーロー マスタ取得エラー:', e);
-        }
-    })();
-
-    function closeAllHclPanels() {
-        const p1 = document.getElementById('hclWorkcenterOptions');
-        const p2 = document.getElementById('hclSlotOptions');
-        if (p1) p1.style.display = 'none';
-        if (p2) p2.style.display = 'none';
-    }
-
-    if (wcDisplay) {
-        wcDisplay.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const panel = document.getElementById('hclWorkcenterOptions');
-            if (!panel) return;
-            const isHidden = panel.style.display === 'none' || panel.style.display === '';
-            closeAllHclPanels();
-            panel.style.display = isHidden ? 'block' : 'none';
-        });
-    }
-
-    if (slotDisplay) {
-        slotDisplay.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const panel = document.getElementById('hclSlotOptions');
-            if (!panel) return;
-            const isHidden = panel.style.display === 'none' || panel.style.display === '';
-            closeAllHclPanels();
-            panel.style.display = isHidden ? 'block' : 'none';
-        });
-    }
-
-    document.addEventListener('click', (e) => {
-        const dropdown = (e.target instanceof HTMLElement)
-            ? e.target.closest(`${screenSel} .multi-select-dropdown`)
-            : null;
-        if (!dropdown) {
-            closeAllHclPanels();
-        }
-    });
-
     searchBtn.addEventListener('click', async () => {
         const needDate = document.getElementById('hclNeedDate').value;
-        const workcenterIds = Array.from(hclSelectedWorkcenterIds);
-        const slotCodes = Array.from(hclSelectedSlotCodes);
+        const itemQuery = document.getElementById('hclItemSearch')?.value || '';
 
         if (!needDate) {
             alert('納期を入力してください');
@@ -222,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await searchProductionInstruction(needDate, workcenterIds, slotCodes);
+            const res = await searchProductionInstruction(needDate, [], [], itemQuery);
             hclRows = res.rows || [];
             displayHclResults(hclRows);
         } catch (e) {

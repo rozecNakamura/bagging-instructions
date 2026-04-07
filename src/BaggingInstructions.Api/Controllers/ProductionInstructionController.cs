@@ -66,13 +66,14 @@ public class ProductionInstructionController : ControllerBase
         [FromQuery(Name = "needdate")] string needDate,
         [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "item")] string? item,
         CancellationToken ct)
     {
         try
         {
             var wc = workcenterId ?? Array.Empty<long>();
             var sc = slotCode ?? Array.Empty<string>();
-            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
+            var rows = await _service.SearchAsync(needDate, wc, sc, item, ct);
             return Ok(new ProductionInstructionSearchResponseDto
             {
                 Total = rows.Count,
