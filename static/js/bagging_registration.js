@@ -6,7 +6,8 @@ import {
     getBaggingInput,
     saveBaggingInput,
     fetchBaggingRequiredQuantities,
-    calculateBagging
+    calculateBagging,
+    normalizePrddt
 } from './api.js';
 import { generateInstructionPDF, generateLabelPDF } from './pdf_generator.js';
 import { getSelectedBaggingGroup } from './search.js';
@@ -26,11 +27,6 @@ function matchSavedLine(savedLines, reqLine, index) {
         if (sl.input_order != null) return sl.input_order === io && sl.citemcd === reqLine.citemcd;
         return sl.citemcd === reqLine.citemcd;
     });
-}
-
-function prddtForApi(isoDate) {
-    if (!isoDate) return '';
-    return isoDate.replace(/-/g, '');
 }
 
 function getModalRoot() {
@@ -140,7 +136,7 @@ function buildPayloadFromEditors() {
 async function loadRegistrationUi(group) {
     activeGroup = group;
     const prodEl = document.getElementById('productionDate');
-    const prddt = prddtForApi(prodEl?.value) || group.prddt;
+    const prddt = normalizePrddt(prodEl?.value) || group.prddt;
 
     const ctx = document.getElementById('baggingRegContext');
     if (ctx) {
@@ -221,7 +217,7 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
 document.getElementById('baggingRegSaveBtn')?.addEventListener('click', async () => {
     if (!activeGroup) return;
     const prodEl = document.getElementById('productionDate');
-    const prddt = prddtForApi(prodEl?.value) || activeGroup.prddt;
+    const prddt = normalizePrddt(prodEl?.value) || activeGroup.prddt;
     try {
         await saveBaggingInput(prddt, activeGroup.itemcd, buildPayloadFromEditors(), activeGroup.line_prkeys);
         alert('登録しました。');

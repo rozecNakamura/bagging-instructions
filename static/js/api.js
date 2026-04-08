@@ -4,33 +4,41 @@
 
 const API_BASE_URL = '/api';
 
+/** YYYYMMDD for API query params (YYYY-MM-DD → YYYYMMDD; already-compact values pass through). */
+export function normalizePrddt(value) {
+    if (value == null || value === '') return '';
+    const s = String(value);
+    return s.includes('-') ? s.replace(/-/g, '') : s;
+}
+
+/** @returns {Promise<string>} e.g. ` - server message` or empty */
+async function jsonErrorDetailSuffix(response) {
+    try {
+        const body = await response.json();
+        return body.detail ? ` - ${body.detail}` : '';
+    } catch {
+        return '';
+    }
+}
+
 /**
  * 受注明細を検索
  */
 export async function searchOrders(productionDate, productCode) {
     try {
-        // 日付をYYYYMMDD形式に変換（YYYY-MM-DD → YYYYMMDD）
-        let prddt = productionDate;
-        if (productionDate && productionDate.includes('-')) {
-            prddt = productionDate.replace(/-/g, ''); // ハイフンを削除
-        }
-        
+        const prddt = normalizePrddt(productionDate);
         const params = new URLSearchParams({
             prddt: prddt,
             itemcd: productCode
         });
-        
+
         const response = await fetch(`${API_BASE_URL}/search?${params}`);
-        
+
         if (!response.ok) {
-            let detail = '';
-            try {
-                const body = await response.json();
-                detail = body.detail ? ` - ${body.detail}` : '';
-            } catch (_) { /* body が JSON でない場合は無視 */ }
+            const detail = await jsonErrorDetailSuffix(response);
             throw new Error(`検索エラー: ${response.status}${detail}`);
         }
-        
+
         return await response.json();
     } catch (error) {
         console.error('検索APIエラー:', error);
@@ -42,18 +50,11 @@ export async function searchOrders(productionDate, productCode) {
  * 袋詰用：製造日・品目で合算した検索グループ
  */
 export async function searchBaggingGroups(productionDate, productCode) {
-    let prddt = productionDate;
-    if (productionDate && productionDate.includes('-')) {
-        prddt = productionDate.replace(/-/g, '');
-    }
+    const prddt = normalizePrddt(productionDate);
     const params = new URLSearchParams({ prddt, itemcd: productCode || '' });
     const response = await fetch(`${API_BASE_URL}/search/bagging?${params}`);
     if (!response.ok) {
-        let detail = '';
-        try {
-            const body = await response.json();
-            detail = body.detail ? ` - ${body.detail}` : '';
-        } catch (_) { /* ignore */ }
+        const detail = await jsonErrorDetailSuffix(response);
         throw new Error(`検索エラー: ${response.status}${detail}`);
     }
     return await response.json();
@@ -628,17 +629,11 @@ export async function calculateBagging(jobordPrkeys, printType, useSavedInput = 
         });
         
         if (!response.ok) {
-            let detail = '';
-            try {
-                const body = await response.json();
-                detail = body.detail ? ` - ${body.detail}` : '';
-            } catch (_) { /* body が JSON でない場合は無視 */ }
+            const detail = await jsonErrorDetailSuffix(response);
             throw new Error(`計算エラー: ${response.status}${detail}`);
         }
-        
-        const data = await response.json();
-        
-        return data;
+
+        return await response.json();
     } catch (error) {
         console.error('計算APIエラー:', error);
         throw error;
