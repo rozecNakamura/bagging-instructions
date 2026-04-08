@@ -8,17 +8,17 @@ public class Bom
     [Column("bomid")]
     public long BomId { get; set; }
 
-    [Column("parentitemcd")]
+    [Column("parentitemcode")]
     public string? ParentItemCd { get; set; }
 
-    [Column("childitemcd")]
+    [Column("childitemcode")]
     public string? ChildItemCd { get; set; }
 
     [Column("inputqty")]
     public decimal InputQty { get; set; }
 
-    [Column("inputunitid")]
-    public long? InputUnitId { get; set; }
+    [Column("inputunitcode")]
+    public string? InputUnitCode { get; set; }
 
     [Column("yieldpercent")]
     public decimal YieldPercent { get; set; } = 100;

@@ -8,8 +8,9 @@ public class Stock
     [Column("stockid")]
     public long StockId { get; set; }
 
-    [Column("itemid")]
-    public long ItemId { get; set; }
+    /// <summary>品目コード（item.itemcode へ FK。craftlineax の stock は itemcode で紐づく）。</summary>
+    [Column("itemcode")]
+    public string? ItemCd { get; set; }
 
     [Column("warehouseid")]
     public long WarehouseId { get; set; }

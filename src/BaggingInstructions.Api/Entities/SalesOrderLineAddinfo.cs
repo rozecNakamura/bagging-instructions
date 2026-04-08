@@ -6,7 +6,7 @@ namespace BaggingInstructions.Api.Entities;
 public class SalesOrderLineAddinfo
 {
     [Column("salesorderlineaddinfoid")]
-    public long SalesOrderLineAddinfoId { get; set; }
+    public long? SalesOrderLineAddinfoId { get; set; }
 
     [Column("salesorderlineid")]
     public long SalesOrderLineId { get; set; }

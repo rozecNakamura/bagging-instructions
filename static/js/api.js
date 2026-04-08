@@ -39,6 +39,96 @@ export async function searchOrders(productionDate, productCode) {
 }
 
 /**
+ * 袋詰用：製造日・品目で合算した検索グループ
+ */
+export async function searchBaggingGroups(productionDate, productCode) {
+    let prddt = productionDate;
+    if (productionDate && productionDate.includes('-')) {
+        prddt = productionDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ prddt, itemcd: productCode || '' });
+    const response = await fetch(`${API_BASE_URL}/search/bagging?${params}`);
+    if (!response.ok) {
+        let detail = '';
+        try {
+            const body = await response.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${response.status}${detail}`);
+    }
+    return await response.json();
+}
+
+/**
+ * 袋詰投入量の取得
+ */
+export async function getBaggingInput(prddt, itemcd, jobordPrkeys) {
+    const params = new URLSearchParams({ prddt, itemcd });
+    for (const pk of jobordPrkeys || []) {
+        params.append('jobord_prkeys', String(pk));
+    }
+    const response = await fetch(`${API_BASE_URL}/bagging/input?${params}`);
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `取得エラー: ${response.status}`);
+    }
+    return await response.json();
+}
+
+/**
+ * 袋詰投入量の登録
+ */
+/**
+ * POST /api/bagging/input/import — body は BaggingInputSaveRequestDto（save と同形）
+ */
+export async function importBaggingInput(body) {
+    const response = await fetch(`${API_BASE_URL}/bagging/input/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+        const b = await response.json().catch(() => ({}));
+        throw new Error(b.detail || `取込エラー: ${response.status}`);
+    }
+    return await response.json();
+}
+
+export async function saveBaggingInput(prddt, itemcd, payload, jobordPrkeys) {
+    const response = await fetch(`${API_BASE_URL}/bagging/input`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            prddt,
+            itemcd,
+            jobord_prkeys: jobordPrkeys || [],
+            payload
+        })
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `登録エラー: ${response.status}`);
+    }
+    return await response.json();
+}
+
+/**
+ * 必要量セット（BOM 既定）
+ */
+export async function fetchBaggingRequiredQuantities(jobordPrkeys) {
+    const response = await fetch(`${API_BASE_URL}/bagging/required-quantities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobord_prkeys: jobordPrkeys })
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `エラー: ${response.status}`);
+    }
+    return await response.json();
+}
+
+/**
  * 汁仕分表 PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
  * @param {Array<{ delvedt: string, shptmDisplay: string, jobordmernm: string, shpctrnm: string, jobordqun: number, addinfo02: string }>} rows
  * @returns {Promise<Blob>}
@@ -539,7 +629,7 @@ export async function searchOrdersDetail(prkeys) {
 /**
  * 袋詰指示書・ラベルデータを計算
  */
-export async function calculateBagging(jobordPrkeys, printType) {
+export async function calculateBagging(jobordPrkeys, printType, useSavedInput = false) {
     try {
         const response = await fetch(`${API_BASE_URL}/bagging/calculate`, {
             method: 'POST',
@@ -548,7 +638,8 @@ export async function calculateBagging(jobordPrkeys, printType) {
             },
             body: JSON.stringify({
                 jobord_prkeys: jobordPrkeys,
-                print_type: printType
+                print_type: printType,
+                use_saved_input: useSavedInput
             })
         });
         

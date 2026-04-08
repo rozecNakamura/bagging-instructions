@@ -481,7 +481,12 @@ WHERE sol.planneddeliverydate = {date.Value}
                   b.yieldpercent,
                   COALESCE(ci.itemname, '') AS child_itemname,
                   COALESCE(u.unitname, '') AS child_unitname,
-                  COALESCE(ia.std, '') AS child_std
+                  COALESCE(
+                    NULLIF(TRIM(COALESCE(ia.std1, '')), ''),
+                    NULLIF(TRIM(COALESCE(ia.std2, '')), ''),
+                    NULLIF(TRIM(COALESCE(ia.std3, '')), ''),
+                    ''
+                  ) AS child_std
                 FROM bom b
                 LEFT JOIN item ci ON ci.itemcode = b.childitemcode
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0

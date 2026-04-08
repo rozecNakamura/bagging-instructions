@@ -260,14 +260,29 @@ function injectHeaderData(container, data) {
         'kitName': sourceData.jobordmernm || '',
         'cookingType': '',
         'grade': (() => {
-            const std = parseFloat(item?.std);
+            const specParts = [
+                item?.classification1_code ?? item?.spec1,
+                item?.classification2_code ?? item?.spec2,
+                item?.classification3_code ?? item?.spec3,
+            ].filter(Boolean);
+            if (specParts.length) return specParts.join(' / ');
+            for (const key of ['std1', 'std2', 'std3']) {
+                const v = item?.[key];
+                const n = parseFloat(v);
+                if (!isNaN(n) && n > 0) return String(v).trim();
+            }
             const car = parseFloat(item?.car);
-            if (!isNaN(std) && std > 0) return item.std;
-            if (!isNaN(car) && car > 0) return item.car;
+            if (!isNaN(car) && car > 0) return String(item.car);
             return '1';
         })(),
         'sterilizationTemp': formatSterilizationTemp(item?.steritemprange, item?.steritime),
-        'mealCount': sourceData.jobordqun || '',
+        'mealCount': (() => {
+            const ins = sourceData.quantity_for_instruction_total ?? sourceData.quantity_for_instruction;
+            const pln = sourceData.quantity_for_inventory_total ?? sourceData.quantity_for_inventory ?? sourceData.planned_quantity;
+            if (ins != null && pln != null && Number(ins) !== Number(pln))
+                return `${ins}（指示） / ${pln}（受注）`;
+            return ins ?? sourceData.adjusted_quantity ?? pln ?? sourceData.planned_quantity ?? '';
+        })(),
         'stockQuantity': sourceData.current_stock?.toFixed(2) || '',
         'orderNumber': sourceData.jobordno || '',
         'coolingEquipment': '□ﾁﾗｰ水槽 □ﾌﾞﾗｽﾄﾁﾗｰ',
@@ -459,6 +474,38 @@ function injectIngredientsTableData(container, data) {
     // commonInfo または最初のitem
     const sourceData = data.commonInfo || (data.items && data.items.length > 0 ? data.items[0] : null);
     const mboms = sourceData?.mboms || [];
+    const displayRows = data.ingredient_display_rows;
+
+    // 投入量登録反映：API の ingredient_display_rows で右上を上書き
+    if (displayRows && displayRows.length > 0) {
+        const rows = tbody.querySelectorAll('tr');
+        const dataRows = Array.from(rows).slice(0, -1);
+        dataRows.forEach((row, i) => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 6) return;
+            const dr = displayRows[i];
+            const mbom = mboms[i];
+            const childRout = mbom?.child_item?.routs?.[0];
+            cells[0].textContent = childRout?.workc?.wcnm || '';
+            cells[1].textContent = childRout?.ware?.whnm || '';
+            cells[2].textContent = mbom?.child_item?.itemnm || dr?.citemcd || '';
+            if (dr) {
+                cells[3].textContent = dr.spec_qty != null && dr.spec_qty !== '' ? formatNumber(dr.spec_qty) : '';
+                cells[4].textContent = dr.total_qty != null ? formatNumber(dr.total_qty) : '';
+                cells[5].textContent = dr.unit_name || mbom?.child_item?.uni?.uninm || '';
+            }
+        });
+        const totalRow = tbody.querySelector('tr:last-child');
+        if (totalRow) {
+            const totalStandardBagsCell = totalRow.querySelector('#totalStandardBagsTop');
+            const totalIrregularBagsCell = totalRow.querySelector('#totalIrregularBagsTop');
+            if (totalStandardBagsCell)
+                totalStandardBagsCell.textContent = data.totals?.standard_bags || '0';
+            if (totalIrregularBagsCell)
+                totalIrregularBagsCell.textContent = data.totals?.irregular_bags || '0';
+        }
+        return;
+    }
     
     // 品目全体の合計数量を使用（totalsから取得）
     const totalOrderQuantity = data.totals?.grand_total || 0;
@@ -539,7 +586,7 @@ function calculateItemTotals(items) {
         if ((item.irregular_quantity || 0) > 0) {
             totalIrregularBags += 1;
         }
-        grandTotal += item.adjusted_quantity || item.planned_quantity || 0;
+        grandTotal += (item.quantity_for_instruction ?? item.adjusted_quantity ?? item.planned_quantity) || 0;
         
         // 調味液の列ごとの合計を計算
         const seasoningAmounts = item.seasoning_amounts || [];
@@ -567,10 +614,12 @@ function calculateItemTotals(items) {
  */
 export function prepareBaggingInstructionData(apiResponse) {
     const items = apiResponse.items || [];
+    const ingredientDisplayRows = apiResponse.ingredient_display_rows || null;
     
     if (items.length === 0) {
         return [{
             items: [],
+            ingredient_display_rows: ingredientDisplayRows,
             totals: {
                 standard_bags: 0,
                 irregular_bags: 0,
@@ -607,6 +656,8 @@ export function prepareBaggingInstructionData(apiResponse) {
                 current_stock: item.current_stock || 0,
                 planned_quantity: item.planned_quantity,
                 adjusted_quantity: item.adjusted_quantity,
+                quantity_for_inventory: item.quantity_for_inventory,
+                quantity_for_instruction: item.quantity_for_instruction,
                 // リレーション情報
                 item: item.item,
                 shpctr: item.shpctr,
@@ -624,6 +675,11 @@ export function prepareBaggingInstructionData(apiResponse) {
         const itemList = group.items;
         const commonInfo = group.commonInfo;
         
+        const qtyInvTotal = itemList.reduce((s, x) => s + (Number(x.quantity_for_inventory) || Number(x.planned_quantity) || 0), 0);
+        const qtyInsTotal = itemList.reduce((s, x) => s + (Number(x.quantity_for_instruction) || Number(x.adjusted_quantity) || 0), 0);
+        commonInfo.quantity_for_inventory_total = qtyInvTotal;
+        commonInfo.quantity_for_instruction_total = qtyInsTotal;
+
         // 品目全体の合計値を計算（全ページで使用）
         const itemTotals = calculateItemTotals(itemList);
         
@@ -673,6 +729,8 @@ export function prepareBaggingInstructionData(apiResponse) {
                 // このページのデータ
                 items: processedItems,
                 
+                ingredient_display_rows: ingredientDisplayRows,
+
                 // 合計値（品目全体の合計）
                 totals: {
                     standard_bags: itemTotals.standard_bags,
@@ -694,15 +752,75 @@ export function prepareBaggingInstructionData(apiResponse) {
  * @param {Object} apiResponse - APIレスポンスデータ
  * @returns {Object} ラベル用データ
  */
+/**
+ * API POST /api/bagging/calculate print_type=label → LabelResponseDto（label_type, count, …）。
+ * 従来の袋詰指示書形 items（standard_bags）も互換で受ける。
+ */
 export function prepareLabelData(apiResponse) {
     const items = apiResponse.items || [];
     const labels = [];
-    
+
+    if (items.length === 0) {
+        return { labels };
+    }
+
+    const first = items[0];
+    const isLabelResponse =
+        first.label_type !== undefined ||
+        first.labelType !== undefined;
+
+    if (isLabelResponse) {
+        items.forEach(it => {
+            const lt = it.label_type || it.labelType || 'standard';
+            const count = Math.max(0, Number(it.count) || 0);
+            const fill =
+                it.standard_fill_qty != null && it.standard_fill_qty !== ''
+                    ? Number(it.standard_fill_qty)
+                    : it.kikunip != null
+                      ? Number(it.kikunip)
+                      : null;
+
+            if (lt === 'standard') {
+                for (let i = 0; i < count; i++) {
+                    labels.push({
+                        type: 'standard',
+                        product_name: it.itemnm || '',
+                        product_code: it.itemcd || '',
+                        eating_date: it.delvedt || '',
+                        eating_time: it.shptm || '',
+                        expiry_date: it.expiry_date || '',
+                        strtemp: it.strtemp || '',
+                        steritime: it.steritime != null ? Number(it.steritime) : null,
+                        standard_fill_qty: fill,
+                        facility_name: it.shpctrnm || ''
+                    });
+                }
+            } else if (lt === 'irregular') {
+                const iq = it.irregular_quantity != null ? Number(it.irregular_quantity) : 0;
+                if (iq > 0) {
+                    labels.push({
+                        type: 'irregular',
+                        product_name: it.itemnm || '',
+                        product_code: it.itemcd || '',
+                        eating_date: it.delvedt || '',
+                        eating_time: it.shptm || '',
+                        expiry_date: it.expiry_date || '',
+                        strtemp: it.strtemp || '',
+                        steritime: it.steritime != null ? Number(it.steritime) : null,
+                        irregular_quantity: iq,
+                        facility_name: it.shpctrnm || ''
+                    });
+                }
+            }
+        });
+        return { labels };
+    }
+
+    // Legacy: 指示書計算結果と同形の items
     items.forEach(item => {
         const standardBags = item.standard_bags || 0;
         const irregularQuantity = item.irregular_quantity || 0;
-        
-        // 規格品ラベル
+
         for (let i = 0; i < standardBags; i++) {
             labels.push({
                 type: 'standard',
@@ -711,12 +829,13 @@ export function prepareLabelData(apiResponse) {
                 eating_date: item.delvedt || item.eating_date || '',
                 eating_time: item.shptm || item.eating_time || '',
                 expiry_date: item.expiry_date || '',
+                strtemp: '',
+                standard_fill_qty: null,
                 standard_quantity: item.adjusted_quantity || item.planned_quantity || 0,
                 facility_name: item.shpctrnm || item.facility_name || ''
             });
         }
-        
-        // 端数ラベル
+
         if (irregularQuantity > 0) {
             labels.push({
                 type: 'irregular',
@@ -725,13 +844,30 @@ export function prepareLabelData(apiResponse) {
                 eating_date: item.delvedt || item.eating_date || '',
                 eating_time: item.shptm || item.eating_time || '',
                 expiry_date: item.expiry_date || '',
+                strtemp: '',
                 irregular_quantity: irregularQuantity,
                 facility_name: item.shpctrnm || item.facility_name || ''
             });
         }
     });
-    
+
     return { labels };
+}
+
+/** @param {number|null|undefined} seconds */
+function formatSteriMinutesFromSeconds(seconds) {
+    if (seconds == null || Number.isNaN(seconds) || seconds <= 0) return '';
+    const minutes = Math.round(seconds / 60);
+    return minutes > 0 ? `${minutes}分` : '';
+}
+
+function escapeLabelHtml(s) {
+    if (s == null || s === '') return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 /**
@@ -763,47 +899,73 @@ export function injectLabelData(templateHtml, data) {
         labelDiv.className = `label label-type-${label.type}`;
         
         if (label.type === 'standard') {
+            const specQty =
+                label.standard_fill_qty != null && !Number.isNaN(label.standard_fill_qty)
+                    ? formatNumber(label.standard_fill_qty)
+                    : label.standard_quantity != null
+                      ? formatNumber(label.standard_quantity)
+                      : '-';
+            const st = escapeLabelHtml(label.strtemp);
+            const stMin = escapeLabelHtml(formatSteriMinutesFromSeconds(label.steritime));
             labelDiv.innerHTML = `
                 <div class="label-header">規格品</div>
                 <div class="label-row">
                     <span class="label-title">品目:</span>
-                    <span class="label-value">${label.product_name} (${label.product_code})</span>
+                    <span class="label-value">${escapeLabelHtml(label.product_name)} (${escapeLabelHtml(label.product_code)})</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">喫食日:</span>
-                    <span class="label-value">${label.eating_date} ${label.eating_time}</span>
+                    <span class="label-value">${escapeLabelHtml(label.eating_date)} ${escapeLabelHtml(label.eating_time)}</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">賞味期限:</span>
-                    <span class="label-value">${label.expiry_date || '-'}</span>
+                    <span class="label-value">${escapeLabelHtml(label.expiry_date) || '-'}</span>
+                </div>
+                <div class="label-row">
+                    <span class="label-title">殺菌温度:</span>
+                    <span class="label-value">${st || '-'}</span>
+                </div>
+                <div class="label-row">
+                    <span class="label-title">殺菌時間:</span>
+                    <span class="label-value">${stMin || '-'}</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">規格量:</span>
-                    <span class="label-value">${formatNumber(label.standard_quantity)} g</span>
+                    <span class="label-value">${specQty}</span>
                 </div>
             `;
         } else {
+            const st = escapeLabelHtml(label.strtemp);
+            const stMin = escapeLabelHtml(formatSteriMinutesFromSeconds(label.steritime));
             labelDiv.innerHTML = `
                 <div class="label-header">端数</div>
                 <div class="label-row">
                     <span class="label-title">品目:</span>
-                    <span class="label-value">${label.product_name} (${label.product_code})</span>
+                    <span class="label-value">${escapeLabelHtml(label.product_name)} (${escapeLabelHtml(label.product_code)})</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">喫食日:</span>
-                    <span class="label-value">${label.eating_date} ${label.eating_time}</span>
+                    <span class="label-value">${escapeLabelHtml(label.eating_date)} ${escapeLabelHtml(label.eating_time)}</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">賞味期限:</span>
-                    <span class="label-value">${label.expiry_date || '-'}</span>
+                    <span class="label-value">${escapeLabelHtml(label.expiry_date) || '-'}</span>
+                </div>
+                <div class="label-row">
+                    <span class="label-title">殺菌温度:</span>
+                    <span class="label-value">${st || '-'}</span>
+                </div>
+                <div class="label-row">
+                    <span class="label-title">殺菌時間:</span>
+                    <span class="label-value">${stMin || '-'}</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">施設:</span>
-                    <span class="label-value">${label.facility_name}</span>
+                    <span class="label-value">${escapeLabelHtml(label.facility_name)}</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">端数:</span>
-                    <span class="label-value">${formatNumber(label.irregular_quantity)} g</span>
+                    <span class="label-value">${formatNumber(label.irregular_quantity)}</span>
                 </div>
             `;
         }

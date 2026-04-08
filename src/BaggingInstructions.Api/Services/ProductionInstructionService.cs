@@ -27,15 +27,15 @@ public sealed class ProductionInstructionService
     /// </summary>
     public async Task<List<ProductionInstructionWorkcenterOptionDto>> ListWorkcentersAsync(CancellationToken ct = default)
     {
-        return await _db.Workcenters.AsNoTracking()
+        var rows = await _db.Workcenters.AsNoTracking()
             .OrderBy(w => w.SortOrder ?? int.MaxValue)
             .ThenBy(w => w.WorkcenterName ?? "")
-            .Select(w => new ProductionInstructionWorkcenterOptionDto
-            {
-                Id = w.WorkcenterId,
-                Name = w.WorkcenterName ?? ""
-            })
             .ToListAsync(ct);
+        return rows.ConvertAll(w => new ProductionInstructionWorkcenterOptionDto
+        {
+            Id = w.WorkcenterId ?? 0,
+            Name = w.WorkcenterName ?? ""
+        });
     }
 
     /// <summary>
@@ -112,7 +112,9 @@ ORDER BY slotcode
                   ot.qtyuni3,
                   COALESCE(u0.unitname, ''),
                   u1.unitname,
-                  ia.std,
+                  ia.std1,
+                  ia.std2,
+                  ia.std3,
                   ia.car0,
                   i.conversionvalue1,
                   i.conversionvalue2,
@@ -163,15 +165,17 @@ ORDER BY slotcode
                 var qtyUni3 = ReadDecimalNullable(reader, 9);
                 var parentUnit0 = reader.GetString(10);
                 var procurementUnit = reader.IsDBNull(11) ? null : reader.GetString(11);
-                var iaStd = reader.IsDBNull(12) ? null : reader.GetString(12);
-                var iaCar0 = ReadDecimalNullable(reader, 13);
-                var cv1 = ReadDecimalNullable(reader, 14);
-                var cv2 = ReadDecimalNullable(reader, 15);
-                var cv3 = ReadDecimalNullable(reader, 16);
+                var iaStd1 = reader.IsDBNull(12) ? null : reader.GetString(12);
+                var iaStd2 = reader.IsDBNull(13) ? null : reader.GetString(13);
+                var iaStd3 = reader.IsDBNull(14) ? null : reader.GetString(14);
+                var iaCar0 = ReadDecimalNullable(reader, 15);
+                var cv1 = ReadDecimalNullable(reader, 16);
+                var cv2 = ReadDecimalNullable(reader, 17);
+                var cv3 = ReadDecimalNullable(reader, 18);
 
                 var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
                     rawQty, qtyUni0, qtyUni1, qtyUni2, qtyUni3,
-                    iaStd, iaCar0, cv1, cv2, cv3);
+                    iaStd1, iaStd2, iaStd3, iaCar0, cv1, cv2, cv3);
                 var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
                     qtyU0, qtyUni1, procurementUnit, parentUnit0, cv1);
                 var qtyStr = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
@@ -230,7 +234,9 @@ ORDER BY slotcode
                 h.QtyUni1,
                 h.QtyUni2,
                 h.QtyUni3,
-                h.IaStd,
+                h.IaStd1,
+                h.IaStd2,
+                h.IaStd3,
                 h.IaCar0,
                 h.ConversionValue1,
                 h.ConversionValue2,
@@ -320,7 +326,9 @@ ORDER BY slotcode
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(u0.unitname, '') AS parent_unitname,
                   u1.unitname AS procurement_u_name,
-                  ia.std AS ia_std,
+                  ia.std1 AS ia_std1,
+                  ia.std2 AS ia_std2,
+                  ia.std3 AS ia_std3,
                   ia.car0 AS ia_car0,
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
@@ -376,30 +384,32 @@ ORDER BY slotcode
                     ParentItemname = reader.GetString(7),
                     ParentUnitName = reader.GetString(8),
                     ProcurementUnitName = reader.IsDBNull(9) ? null : reader.GetString(9),
-                    IaStd = reader.IsDBNull(10) ? null : reader.GetString(10),
-                    IaCar0 = ReadDecimalNullable(reader, 11),
-                    ConversionValue1 = ReadDecimalNullable(reader, 12),
-                    ConversionValue2 = ReadDecimalNullable(reader, 13),
-                    ConversionValue3 = ReadDecimalNullable(reader, 14),
-                    SlotDisplay = reader.GetString(15),
-                    NeedDate = ReadDateNullable(reader, 16),
-                    ReleaseDate = ReadDateNullable(reader, 17),
-                    OrderNo = reader.GetString(18),
-                    IaAddinfo05 = reader.GetString(19),
-                    IaAddinfo06 = reader.GetString(20),
-                    IaAddinfo07 = reader.GetString(21),
-                    IaAddinfo08 = reader.GetString(22),
-                    IaAddinfo09 = reader.GetString(23),
-                    IaAddinfo10 = reader.GetString(24),
-                    IaAddinfo11 = reader.GetString(25),
-                    IaAddinfo12 = reader.GetString(26),
-                    IaAddinfo13 = reader.GetString(27),
-                    IaAddinfo14 = reader.GetString(28),
-                    IaAddinfo15 = reader.GetString(29),
-                    IaAddinfo16 = reader.GetString(30),
-                    IaAddinfo17 = reader.GetString(31),
-                    IaSterItemPrange = ReadDecimalFlexible(reader, 32),
-                    IaSteriTime = ReadDecimalFlexible(reader, 33)
+                    IaStd1 = reader.IsDBNull(10) ? null : reader.GetString(10),
+                    IaStd2 = reader.IsDBNull(11) ? null : reader.GetString(11),
+                    IaStd3 = reader.IsDBNull(12) ? null : reader.GetString(12),
+                    IaCar0 = ReadDecimalNullable(reader, 13),
+                    ConversionValue1 = ReadDecimalNullable(reader, 14),
+                    ConversionValue2 = ReadDecimalNullable(reader, 15),
+                    ConversionValue3 = ReadDecimalNullable(reader, 16),
+                    SlotDisplay = reader.GetString(17),
+                    NeedDate = ReadDateNullable(reader, 18),
+                    ReleaseDate = ReadDateNullable(reader, 19),
+                    OrderNo = reader.GetString(20),
+                    IaAddinfo05 = reader.GetString(21),
+                    IaAddinfo06 = reader.GetString(22),
+                    IaAddinfo07 = reader.GetString(23),
+                    IaAddinfo08 = reader.GetString(24),
+                    IaAddinfo09 = reader.GetString(25),
+                    IaAddinfo10 = reader.GetString(26),
+                    IaAddinfo11 = reader.GetString(27),
+                    IaAddinfo12 = reader.GetString(28),
+                    IaAddinfo13 = reader.GetString(29),
+                    IaAddinfo14 = reader.GetString(30),
+                    IaAddinfo15 = reader.GetString(31),
+                    IaAddinfo16 = reader.GetString(32),
+                    IaAddinfo17 = reader.GetString(33),
+                    IaSterItemPrange = ReadDecimalFlexible(reader, 34),
+                    IaSteriTime = ReadDecimalFlexible(reader, 35)
                 });
             }
 
@@ -436,7 +446,12 @@ ORDER BY slotcode
                     NULLIF(TRIM(u.unitname), ''),
                     ''
                   ) AS child_unitname,
-                  COALESCE(ia.std, '') AS child_spec
+                  COALESCE(
+                    NULLIF(TRIM(COALESCE(ia.std1, '')), ''),
+                    NULLIF(TRIM(COALESCE(ia.std2, '')), ''),
+                    NULLIF(TRIM(COALESCE(ia.std3, '')), ''),
+                    ''
+                  ) AS child_spec
                 FROM bom b
                 LEFT JOIN item ci ON ci.itemcode = b.childitemcode
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
@@ -564,7 +579,9 @@ internal sealed class ProductionInstructionLineHeaderRow
     public string ParentItemname { get; set; } = "";
     public string ParentUnitName { get; set; } = "";
     public string? ProcurementUnitName { get; set; }
-    public string? IaStd { get; set; }
+    public string? IaStd1 { get; set; }
+    public string? IaStd2 { get; set; }
+    public string? IaStd3 { get; set; }
     public decimal? IaCar0 { get; set; }
     public decimal? ConversionValue1 { get; set; }
     public decimal? ConversionValue2 { get; set; }

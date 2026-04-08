@@ -37,6 +37,28 @@ public class SearchController : ControllerBase
         }
     }
 
+    /// <summary>袋詰用：製造日・品目で受注明細を合算したグループ一覧。</summary>
+    [HttpGet("search/bagging")]
+    public async Task<ActionResult<BaggingSearchResponseDto>> SearchBagging(
+        [FromQuery] string prddt,
+        [FromQuery] string? itemcd,
+        CancellationToken ct)
+    {
+        try
+        {
+            var groups = await _searchService.SearchBaggingGroupedAsync(prddt, itemcd, ct);
+            return Ok(new BaggingSearchResponseDto { Total = groups.Count, Groups = groups });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"検索エラー: {ex.Message}" });
+        }
+    }
+
     /// <summary>汁仕分表用：喫食日・品目コードで検索。喫食日・喫食時間・品目でグループ化して返す。</summary>
     [HttpGet("search/juice")]
     public async Task<ActionResult<JuiceSearchGroupResponseDto>> SearchJuice(

@@ -22,9 +22,35 @@ public static class AggregationRuleService
         ["夕"] = "dinner",
     };
 
-    public static string GetAggregationMethod(string? cuscd, string? shptm)
+    /// <summary>
+    /// addinfo01（時刻コード等）と addinfo01name（朝/昼/夕）から集計用の喫食キーを決定する。
+    /// </summary>
+    public static string ResolveMealPeriodKey(string? addinfo01, string? addinfo01Name)
     {
-        var eatingKey = EatingTimeMap.GetValueOrDefault(shptm ?? "", "lunch");
+        var name = addinfo01Name ?? "";
+        foreach (var kv in EatingTimeMap.OrderByDescending(x => x.Key.Length))
+        {
+            if (name.Contains(kv.Key, StringComparison.Ordinal))
+                return kv.Value;
+        }
+
+        var code = (addinfo01 ?? "").Trim();
+        if (code.Length >= 2 && int.TryParse(code.AsSpan(0, 2), out var hour))
+        {
+            if (hour < 10) return "morning";
+            if (hour < 15) return "lunch";
+            return "dinner";
+        }
+
+        if (EatingTimeMap.TryGetValue(code, out var mapped))
+            return mapped;
+
+        return "lunch";
+    }
+
+    public static string GetAggregationMethod(string? cuscd, string? shptm, string? shptmName = null)
+    {
+        var eatingKey = ResolveMealPeriodKey(shptm, shptmName);
         if (!AggregationRules.TryGetValue(cuscd ?? "", out var rule))
             return "by_facility";
         return rule.GetValueOrDefault(eatingKey, "by_facility") ?? "by_facility";
@@ -36,10 +62,11 @@ public static class AggregationRuleService
         var grouped = new Dictionary<string, List<BaggingDetailRow>>();
         foreach (var row in rows.OrderBy(r => r.Prkey))
         {
-            var method = GetAggregationMethod(row.Cuscd, row.Shptm);
+            var method = GetAggregationMethod(row.Cuscd, row.Shptm, row.ShptmName);
+            var dv = row.Delvedt ?? "";
             var key = method == "by_facility"
-                ? $"{row.Itemcd}_{row.Shpctrcd}_{row.Shptm}"
-                : $"{row.Itemcd}_CATERING_{row.Shptm}";
+                ? $"{row.Itemcd}_{row.Shpctrcd}_{row.Shptm}_{dv}"
+                : $"{row.Itemcd}_CATERING_{row.Shptm}_{dv}";
             if (!grouped.ContainsKey(key))
                 grouped[key] = new List<BaggingDetailRow>();
             grouped[key].Add(row);

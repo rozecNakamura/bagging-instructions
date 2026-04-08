@@ -61,6 +61,40 @@ public class SearchResponseDto
     public List<JobordItemDto> Items { get; set; } = new();
 }
 
+/// <summary>袋詰検索：製造日・品目で合算した1行。</summary>
+public class BaggingSearchGroupDto
+{
+    [JsonPropertyName("prddt")]
+    public string Prddt { get; set; } = "";
+
+    [JsonPropertyName("itemcd")]
+    public string Itemcd { get; set; } = "";
+
+    [JsonPropertyName("itemnm")]
+    public string? Itemnm { get; set; }
+
+    [JsonPropertyName("total_jobordqun")]
+    public decimal TotalJobordqun { get; set; }
+
+    [JsonPropertyName("unit_code")]
+    public string? UnitCode { get; set; }
+
+    [JsonPropertyName("unit_name")]
+    public string? UnitName { get; set; }
+
+    [JsonPropertyName("line_prkeys")]
+    public List<long> LinePrkeys { get; set; } = new();
+}
+
+public class BaggingSearchResponseDto
+{
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("groups")]
+    public List<BaggingSearchGroupDto> Groups { get; set; } = new();
+}
+
 // 詳細検索用ネスト DTO（API 契約の snake_case）
 public class UniDetailDto
 {
@@ -271,8 +305,14 @@ public class ItemDetailDto
     [JsonPropertyName("itemnm")]
     public string Itemnm { get; set; } = "";
 
-    [JsonPropertyName("std")]
-    public string? Std { get; set; }
+    [JsonPropertyName("std1")]
+    public string? Std1 { get; set; }
+
+    [JsonPropertyName("std2")]
+    public string? Std2 { get; set; }
+
+    [JsonPropertyName("std3")]
+    public string? Std3 { get; set; }
 
     [JsonPropertyName("uni0")]
     public string? Uni0 { get; set; }
@@ -286,8 +326,32 @@ public class ItemDetailDto
     [JsonPropertyName("strtemp")]
     public string? Strtemp { get; set; }
 
+    /// <summary>殺菌温度レンジ（表示用、DB steritemprange と同値）。</summary>
+    [JsonPropertyName("steritemprange")]
+    public string? Steritemprange { get; set; }
+
+    /// <summary>殺菌時間（秒、DB steritime）。</summary>
+    [JsonPropertyName("steritime")]
+    public decimal? Steritime { get; set; }
+
     [JsonPropertyName("kikunip")]
     public decimal? Kikunip { get; set; }
+
+    /// <summary>分類1コード（品目付加情報・classification1 code）。</summary>
+    [JsonPropertyName("classification1_code")]
+    public string? Classification1Code { get; set; }
+
+    /// <summary>分類2コード（品目付加情報・classification2 code）。</summary>
+    [JsonPropertyName("classification2_code")]
+    public string? Classification2Code { get; set; }
+
+    /// <summary>分類3コード（品目付加情報・classification3 code）。</summary>
+    [JsonPropertyName("classification3_code")]
+    public string? Classification3Code { get; set; }
+
+    /// <summary>品目コード先頭が55のとき液体として扱う。</summary>
+    [JsonPropertyName("is_liquid")]
+    public bool IsLiquid { get; set; }
 
     [JsonPropertyName("uni")]
     public UniDetailDto? Uni { get; set; }

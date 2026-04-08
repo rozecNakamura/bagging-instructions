@@ -103,14 +103,15 @@
             </div>
         </section>
 
-        <!-- 検索結果エリア -->
+        <!-- 検索結果エリア（製造日・品目ごと合算） -->
         <section class="results-section" id="resultsSection" style="display: none;">
             <h2>検索結果</h2>
             <div class="results-header">
                 <span id="resultCount">0件</span>
                 <div class="checkbox-controls">
-                    <button id="selectAllBtn" class="btn btn-secondary">全選択</button>
-                    <button id="deselectAllBtn" class="btn btn-secondary">全解除</button>
+                    <button type="button" id="selectAllBtn" class="btn btn-secondary">全選択</button>
+                    <button type="button" id="deselectAllBtn" class="btn btn-secondary">全解除</button>
+                    <button type="button" id="openBaggingRegistrationBtn" class="btn btn-primary">袋詰投入量登録を開く</button>
                 </div>
             </div>
             <div class="table-container">
@@ -119,13 +120,10 @@
                         <tr>
                             <th><input type="checkbox" id="headerCheckbox"></th>
                             <th>製造日</th>
-                            <th>喫食日</th>
-                            <th>喫食時間</th>
-                            <th>得意先コード</th>
-                            <th>納入場所コード</th>
                             <th>品目コード</th>
-                            <th>受注商品名称</th>
+                            <th>品目名</th>
                             <th>受注数量</th>
+                            <th>単位</th>
                         </tr>
                     </thead>
                     <tbody id="resultsBody">
@@ -133,25 +131,49 @@
                 </table>
             </div>
         </section>
-
-        <!-- 印刷エリア -->
-        <section class="print-section" id="printSection" style="display: none;">
-            <h2>印刷設定</h2>
-            <div class="print-mode">
-                <label>印刷タイプ:</label>
-                <div class="radio-group">
-                    <label>
-                        <input type="radio" name="printType" value="instruction" checked>
-                        袋詰指示書
-                    </label>
-                    <label>
-                        <input type="radio" name="printType" value="label">
-                        ラベル
-                    </label>
                 </div>
-            </div>
-            <button id="printBtn" class="btn btn-success">PDF印刷</button>
-        </section>
+
+                <!-- 袋詰投入量登録（ポップアップ） -->
+                <div id="baggingRegModal" class="bagging-reg-modal" hidden aria-hidden="true">
+                    <div class="bagging-reg-modal__backdrop" id="baggingRegModalBackdrop" aria-hidden="true"></div>
+                    <div class="bagging-reg-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="baggingRegModalTitle">
+                        <section class="bagging-reg-modal__panel results-section" id="baggingRegistrationSection">
+                            <h2 id="baggingRegModalTitle">袋詰投入量登録</h2>
+                            <p id="baggingRegContext" class="bagging-reg-context"></p>
+                            <div class="table-container bagging-reg-modal__table-wrap">
+                                <table class="bagging-reg-table">
+                                    <thead>
+                                        <tr>
+                                            <th>投入順</th>
+                                            <th>子品目コード</th>
+                                            <th>規格数量</th>
+                                            <th>総数量</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="baggingRegLinesBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="print-mode" style="margin-top:12px;">
+                                <span>印刷タイプ:</span>
+                                <label><input type="radio" name="baggingRegPrintType" value="instruction" checked> 袋詰指示書</label>
+                                <label><input type="radio" name="baggingRegPrintType" value="label"> ラベル</label>
+                            </div>
+                            <p style="margin-top:8px;">
+                                <label><input type="checkbox" id="baggingRegUseSavedInput" checked> 登録済み投入量で印刷（未登録時は受注数ベース）</label>
+                            </p>
+                            <p style="margin-top:8px;">
+                                <label for="baggingRegParentYield">出来高（親・合計）</label>
+                                <input type="number" id="baggingRegParentYield" step="any" style="width:10em;margin-left:6px;" title="登録済み投入量で印刷時のみ、施設別受注比で按分されます（空は従来どおり）">
+                            </p>
+                            <div class="results-header" style="margin-top:12px;">
+                                <button type="button" id="baggingRegRequiredBtn" class="btn btn-secondary">必要量セット</button>
+                                <button type="button" id="baggingRegSaveBtn" class="btn btn-primary">登録</button>
+                                <button type="button" id="baggingRegImportBtn" class="btn btn-secondary" title="POST /api/bagging/input/import と同じボディで取り込み">取込</button>
+                                <button type="button" id="baggingRegPrintBtn" class="btn btn-success">印刷</button>
+                                <button type="button" id="baggingRegCloseBtn" class="btn btn-secondary">閉じる</button>
+                            </div>
+                        </section>
+                    </div>
                 </div>
             </div>
 
@@ -1019,6 +1041,7 @@
     <script type="module" src="/static/js/navigation.js"></script>
     <script type="module" src="/static/js/api.js"></script>
     <script type="module" src="/static/js/search.js"></script>
+    <script type="module" src="/static/js/bagging_registration.js"></script>
     <script type="module" src="/static/js/juice_search.js"></script>
     <script type="module" src="/static/js/juice_print.js"></script>
     <script type="module" src="/static/js/bento_search.js"></script>

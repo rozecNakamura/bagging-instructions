@@ -6,7 +6,7 @@ namespace BaggingInstructions.Api.Entities;
 public class CustomerDeliveryLocationAddinfo
 {
     [Column("deliverylocationaddinfoid")]
-    public long CustomerDeliveryLocationAddinfoId { get; set; }
+    public long? CustomerDeliveryLocationAddinfoId { get; set; }
 
     [Column("deliverylocationid")]
     public long DeliveryLocationId { get; set; }

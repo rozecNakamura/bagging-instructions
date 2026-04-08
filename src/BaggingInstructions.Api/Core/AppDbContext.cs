@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
     public DbSet<MajorClassification> MajorClassifications => Set<MajorClassification>();
     public DbSet<MiddleClassification> MiddleClassifications => Set<MiddleClassification>();
+    public DbSet<BaggingInputRegistration> BaggingInputRegistrations => Set<BaggingInputRegistration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,10 +49,30 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Bom>().Property(e => e.StartDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<Bom>().Property(e => e.EndDate).HasConversion(dateOnlyNullableConverter);
 
-        // Unit（item.unitcode0 → unit.unitcode 参照のため code を alternate key に）
-        modelBuilder.Entity<Unit>().HasAlternateKey(u => u.UnitCode);
+        // Unit（主キー unitcode）
+        modelBuilder.Entity<Unit>().HasKey(u => u.UnitCode);
+        modelBuilder.Entity<Unit>().Property(u => u.UnitCode).HasMaxLength(64);
+
+        // Item（主キー itemcode）
+        modelBuilder.Entity<Item>().HasKey(i => i.ItemCd);
+        modelBuilder.Entity<Item>().Property(i => i.ItemCd).HasMaxLength(128);
+
+        // ItemAdditionalInformation（主キー itemcode）
+        modelBuilder.Entity<ItemAdditionalInformation>().HasKey(ai => ai.ItemCd);
+        modelBuilder.Entity<ItemAdditionalInformation>().Property(ai => ai.ItemCd).HasMaxLength(128);
+
+        // Workcenter（主キー workcentercode）
+        modelBuilder.Entity<Workcenter>().HasKey(w => w.WorkcenterCode);
+        modelBuilder.Entity<Workcenter>().Property(w => w.WorkcenterCode).HasMaxLength(64);
+
+        modelBuilder.Entity<SalesOrderLineAddinfo>().HasKey(a => a.SalesOrderLineId);
 
         // SalesOrder -> Customer（customercode）, CustomerDeliveryLocation（customercode + locationcode）
+        modelBuilder.Entity<SalesOrder>()
+            .HasKey(so => so.SalesOrderId);
+        modelBuilder.Entity<SalesOrderLine>()
+            .HasKey(l => l.SalesOrderLineId);
+
         modelBuilder.Entity<SalesOrder>()
             .HasOne(so => so.Customer)
             .WithMany()
@@ -104,7 +125,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Item>()
             .HasOne(i => i.AdditionalInformation)
             .WithOne(ai => ai.Item)
-            .HasForeignKey<ItemAdditionalInformation>(ai => ai.ItemId);
+            .HasForeignKey<ItemAdditionalInformation>(ai => ai.ItemCd)
+            .HasPrincipalKey<Item>(i => i.ItemCd)
+            .IsRequired(false);
 
         // Item -> ItemWorkCenterMapping (FK: item.itemcode = mapping.itemcode; property ItemCd)
         modelBuilder.Entity<Item>()
@@ -133,17 +156,25 @@ public class AppDbContext : DbContext
             .HasPrincipalKey(i => i.ItemCd)
             .IsRequired(false);
 
-        // Stock -> Item, Warehouse
+        // Stock -> Item, Warehouse（FK: stock.itemcode = item.itemcode）
         modelBuilder.Entity<Stock>()
             .HasOne(s => s.Item)
             .WithMany()
-            .HasForeignKey(s => s.ItemId);
+            .HasForeignKey(s => s.ItemCd)
+            .HasPrincipalKey(i => i.ItemCd)
+            .IsRequired(false);
         modelBuilder.Entity<Stock>()
             .HasOne(s => s.Warehouse)
             .WithMany()
             .HasForeignKey(s => s.WarehouseId);
 
-        // CustomerDeliveryLocation: 主キー明示（EF が DeliveryLocationId を自動認識しないため）
+        // Customer（craftlineax: 主キーは customercode、customerid 列なし）
+        modelBuilder.Entity<Customer>()
+            .HasKey(c => c.CustomerCode);
+        modelBuilder.Entity<Customer>()
+            .Property(c => c.CustomerCode)
+            .HasMaxLength(64);
+
         modelBuilder.Entity<CustomerDeliveryLocation>()
             .HasKey(c => c.DeliveryLocationId);
         // CustomerDeliveryLocation -> Customer（customerdeliverylocation.customercode = customer.customercode）
@@ -159,16 +190,18 @@ public class AppDbContext : DbContext
             .HasForeignKey<CustomerDeliveryLocationAddinfo>(a => a.DeliveryLocationId)
             .IsRequired(false);
 
-        // CustomerItem -> Customer, Item
+        // CustomerItem -> Customer, Item（customer は customercode で結合）
         modelBuilder.Entity<CustomerItem>()
             .HasOne(ci => ci.Customer)
             .WithMany()
-            .HasForeignKey(ci => ci.CustomerId)
+            .HasForeignKey(ci => ci.CustomerCode)
+            .HasPrincipalKey(c => c.CustomerCode)
             .IsRequired(false);
         modelBuilder.Entity<CustomerItem>()
             .HasOne(ci => ci.Item)
             .WithMany()
-            .HasForeignKey(ci => ci.ItemId)
+            .HasForeignKey(ci => ci.ItemCd)
+            .HasPrincipalKey(i => i.ItemCd)
             .IsRequired(false);
 
         modelBuilder.Entity<MajorClassification>()
@@ -182,5 +215,25 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<ReportOutputSetting>()
             .HasKey(r => r.ReportCode);
+
+        modelBuilder.Entity<BaggingInputRegistration>()
+            .HasKey(r => r.BaggingInputRegistrationId);
+        modelBuilder.Entity<BaggingInputRegistration>()
+            .Property(r => r.BaggingInputRegistrationId)
+            .UseIdentityByDefaultColumn();
+        modelBuilder.Entity<BaggingInputRegistration>()
+            .Property(r => r.ItemCode)
+            .HasMaxLength(128);
+        modelBuilder.Entity<BaggingInputRegistration>()
+            .Property(r => r.Payload)
+            .HasColumnType("text");
+        modelBuilder.Entity<BaggingInputRegistration>()
+            .Property(r => r.ProductDate)
+            .HasConversion(
+                v => new DateTime(v.Year, v.Month, v.Day, 0, 0, 0, DateTimeKind.Unspecified),
+                v => DateOnly.FromDateTime(v));
+        modelBuilder.Entity<BaggingInputRegistration>()
+            .HasIndex(r => new { r.ProductDate, r.ItemCode })
+            .IsUnique();
     }
 }

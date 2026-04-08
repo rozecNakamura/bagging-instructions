@@ -25,6 +25,10 @@ public class LabelItemDto
     [JsonPropertyName("strtemp")]
     public string? Strtemp { get; set; }
 
+    /// <summary>殺菌時間（秒）。ラベル印刷で分表示に換算可能。</summary>
+    [JsonPropertyName("steritime")]
+    public decimal? Steritime { get; set; }
+
     [JsonPropertyName("kikunip")]
     public decimal? Kikunip { get; set; }
 
@@ -36,6 +40,10 @@ public class LabelItemDto
 
     [JsonPropertyName("count")]
     public int Count { get; set; } = 1;
+
+    /// <summary>1袋あたりの充填規格量（親品目の規格除算と同じ値）。</summary>
+    [JsonPropertyName("standard_fill_qty")]
+    public decimal? StandardFillQty { get; set; }
 }
 
 public class LabelResponseDto

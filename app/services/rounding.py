@@ -18,19 +18,24 @@ def round_up_quantity_with_seasoning(
         return (jobordqun, 0.0, [])
 
     # ============================================================
-    # 1. 親品目の規格（STD or CAR）を取得
+    # 1. 親品目の規格（std1→std2→std3、互換で std、なければ CAR）を取得
     # ============================================================
     divisor = None
 
-    if hasattr(item, "std") and item.std:
-        try:
-            std = float(item.std)
-            if std > 0:
-                divisor = std
-        except (ValueError, TypeError):
-            pass
+    if item is not None:
+        for attr in ("std1", "std2", "std3", "std"):
+            val = getattr(item, attr, None)
+            if not val:
+                continue
+            try:
+                x = float(val)
+                if x > 0:
+                    divisor = x
+                    break
+            except (ValueError, TypeError):
+                pass
 
-    # STDが使えない場合、CARを試行
+    # 規格文字列が使えない場合、CARを試行
     if divisor is None:
         if hasattr(item, "car") and item.car:
             try:

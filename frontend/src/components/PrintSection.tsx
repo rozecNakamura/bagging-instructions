@@ -86,14 +86,14 @@ export function PrintSection({ selectedPrkeys, onCalculate }: PrintSectionProps)
               </tr>
             </thead>
             <tbody>
-              {items.map((item: Record<string, unknown>, i: number) => (
+              {(items as import('../types/api').BaggingInstructionItem[]).map((item, i) => (
                 <tr key={i}>
-                  <td>{String(item.shpctrnm ?? '')}</td>
-                  <td>{String(item.itemnm ?? '')}</td>
-                  <td>{String(item.delvedt ?? '')}</td>
-                  <td>{Number(item.planned_quantity ?? 0)}</td>
-                  <td>{Number(item.standard_bags ?? 0)}</td>
-                  <td>{Number(item.irregular_quantity ?? 0)}</td>
+                  <td>{item.shpctrnm}</td>
+                  <td>{item.itemnm}</td>
+                  <td>{item.delvedt}</td>
+                  <td>{item.planned_quantity}</td>
+                  <td>{item.standard_bags}</td>
+                  <td>{item.irregular_quantity}</td>
                 </tr>
               ))}
             </tbody>

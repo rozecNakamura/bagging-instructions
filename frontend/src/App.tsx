@@ -1,15 +1,15 @@
 import { useState, useCallback } from 'react';
 import { SearchForm } from './components/SearchForm';
-import { ResultTable } from './components/ResultTable';
-import { PrintSection } from './components/PrintSection';
-import { searchOrders, calculateBagging } from './api/client';
-import type { JobordItem, SearchResponse, BaggingInstructionResponse, LabelResponse } from './types/api';
+import { BaggingGroupTable } from './components/BaggingGroupTable';
+import { BaggingRegistrationPanel } from './components/BaggingRegistrationPanel';
+import { searchBaggingGroups } from './api/client';
+import type { BaggingSearchGroup, BaggingSearchGroupResponse } from './types/api';
 
 export default function App() {
   const [productionDate, setProductionDate] = useState('');
   const [productCode, setProductCode] = useState('');
-  const [items, setItems] = useState<JobordItem[]>([]);
-  const [selectedPrkeys, setSelectedPrkeys] = useState<Set<number>>(new Set());
+  const [groups, setGroups] = useState<BaggingSearchGroup[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<BaggingSearchGroup | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -21,43 +21,25 @@ export default function App() {
     setSearchError(null);
     setSearchLoading(true);
     try {
-      const res: SearchResponse = await searchOrders(productionDate, productCode);
-      setItems(res.items ?? []);
-      setSelectedPrkeys(new Set());
+      const res: BaggingSearchGroupResponse = await searchBaggingGroups(productionDate, productCode);
+      const list = res.groups ?? [];
+      setGroups(list);
+      setSelectedGroup(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '検索に失敗しました';
       setSearchError(msg);
-      setItems([]);
+      setGroups([]);
+      setSelectedGroup(null);
     } finally {
       setSearchLoading(false);
     }
   }, [productionDate, productCode]);
 
-  const togglePrkey = useCallback((prkey: number) => {
-    setSelectedPrkeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(prkey)) next.delete(prkey);
-      else next.add(prkey);
-      return next;
-    });
-  }, []);
+  const selectFirst = useCallback(() => {
+    if (groups.length > 0) setSelectedGroup(groups[0]);
+  }, [groups]);
 
-  const selectAll = useCallback(() => {
-    setSelectedPrkeys(new Set(items.map((i) => i.prkey)));
-  }, [items]);
-
-  const deselectAll = useCallback(() => {
-    setSelectedPrkeys(new Set());
-  }, []);
-
-  const handleCalculate = useCallback(
-    async (printType: 'instruction' | 'label') => {
-      return calculateBagging(Array.from(selectedPrkeys), printType) as Promise<
-        BaggingInstructionResponse | LabelResponse
-      >;
-    },
-    [selectedPrkeys]
-  );
+  const deselectAll = useCallback(() => setSelectedGroup(null), []);
 
   return (
     <div className="container">
@@ -76,20 +58,20 @@ export default function App() {
 
       {searchError && <p className="error-message">{searchError}</p>}
 
-      {items.length > 0 && (
+      {groups.length > 0 && (
         <>
-          <ResultTable
-            items={items}
-            selectedPrkeys={selectedPrkeys}
-            onToggle={togglePrkey}
-            onSelectAll={selectAll}
+          <BaggingGroupTable
+            groups={groups}
+            selected={selectedGroup}
+            onSelect={setSelectedGroup}
+            onSelectAll={selectFirst}
             onDeselectAll={deselectAll}
           />
-          <PrintSection selectedPrkeys={Array.from(selectedPrkeys)} onCalculate={handleCalculate} />
+          <BaggingRegistrationPanel productionDate={productionDate} group={selectedGroup} />
         </>
       )}
 
-      {items.length === 0 && !searchLoading && productionDate && (
+      {groups.length === 0 && !searchLoading && productionDate && (
         <p className="no-results">該当するデータが見つかりませんでした。</p>
       )}
     </div>

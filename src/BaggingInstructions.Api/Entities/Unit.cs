@@ -5,8 +5,9 @@ namespace BaggingInstructions.Api.Entities;
 [Table("unit")]
 public class Unit
 {
+    /// <summary>サロゲート ID（主キーは <see cref="UnitCode"/>）。craftlineax は bigint。</summary>
     [Column("unitid")]
-    public long UnitId { get; set; }
+    public long? UnitId { get; set; }
 
     /// <summary>一意（item.unitcode0 等から参照）。DB に NULL があっても EF 上は空文字で扱う。</summary>
     [Column("unitcode")]

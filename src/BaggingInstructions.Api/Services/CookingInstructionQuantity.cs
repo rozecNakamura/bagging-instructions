@@ -4,7 +4,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// ordertable 製造数: <c>qtyuni0</c> / <c>qtyuni1..3</c> があれば優先（各 <c>qtyuniN</c> は <c>item.conversionvalueN</c> で単位0へ）、
-/// なければ <c>qty</c> を ia.std/car0 で単位0へ。
+/// なければ <c>qty</c> を ia.std1/std2/std3（順に最初の有効値）/car0 で単位0へ。
 /// 表示は <c>qtyuni1</c>＋手配単位名があればそのまま、なければ単位0→手配は <c>conversionvalue1</c> で除算。
 /// </summary>
 public static class CookingInstructionQuantity
@@ -19,7 +19,9 @@ public static class CookingInstructionQuantity
         decimal? qtyUni1,
         decimal? qtyUni2,
         decimal? qtyUni3,
-        string? iaStd,
+        string? iaStd1,
+        string? iaStd2,
+        string? iaStd3,
         decimal? iaCar0,
         decimal? conversionValue1,
         decimal? conversionValue2,
@@ -33,7 +35,7 @@ public static class CookingInstructionQuantity
             return qtyUni2.Value * conversionValue2.Value;
         if (qtyUni3.HasValue && conversionValue3 is > 0)
             return qtyUni3.Value * conversionValue3.Value;
-        return ToParentQtyInUnit0(rawOrdertableQty, iaStd, iaCar0);
+        return ToParentQtyInUnit0(rawOrdertableQty, iaStd1, iaStd2, iaStd3, iaCar0);
     }
 
     /// <summary>
@@ -51,22 +53,19 @@ public static class CookingInstructionQuantity
         return ParentDisplayForPdf(qtyInUnit0, procurementUnitName, unit0Name, conversionValue1);
     }
 
-    /// <summary>Divisor from item additional info (std, then car0), aligned with bagging search detail.</summary>
-    public static decimal DivisorFromItemAddInfo(string? std, decimal? car0)
-    {
-        if (!string.IsNullOrEmpty(std) &&
-            decimal.TryParse(std.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var s) &&
-            s > 0)
-            return s;
-        if (car0 is > 0)
-            return car0.Value;
-        return 1m;
-    }
+    /// <summary>Divisor from item additional info (std1→std2→std3, then car0), aligned with bagging.</summary>
+    public static decimal DivisorFromItemAddInfo(string? std1, string? std2, string? std3, decimal? car0) =>
+        BaggingDivisorResolver.ResolveFromStdsAndCar0(std1, std2, std3, car0);
 
     /// <summary>Manufacturing quantity expressed in parent unit 0.</summary>
-    public static decimal ToParentQtyInUnit0(decimal ordertableQty, string? iaStd, decimal? iaCar0)
+    public static decimal ToParentQtyInUnit0(
+        decimal ordertableQty,
+        string? iaStd1,
+        string? iaStd2,
+        string? iaStd3,
+        decimal? iaCar0)
     {
-        var d = DivisorFromItemAddInfo(iaStd, iaCar0);
+        var d = DivisorFromItemAddInfo(iaStd1, iaStd2, iaStd3, iaCar0);
         if (d == 0) return ordertableQty;
         return ordertableQty / d;
     }

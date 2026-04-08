@@ -1,3 +1,4 @@
+using System.Linq;
 using BaggingInstructions.Api.Entities;
 using BaggingInstructions.Api.DTOs;
 
@@ -11,7 +12,7 @@ public static partial class EntityToDtoMapper
         if (u == null) return null;
         return new UniDetailDto
         {
-            Prkey = u.UnitId,
+            Prkey = u.UnitId ?? 0,
             Unicd = u.UnitCode,
             Uninm = u.UnitName,
             Uniinfnm = u.UnitSymbol,
@@ -50,9 +51,9 @@ public static partial class EntityToDtoMapper
             Ware = null,
             Workc = w == null ? null : new WorkcDetailDto
             {
-                Prkey = w.WorkcenterId,
+                Prkey = w.WorkcenterId ?? 0,
                 Fctcd = null,
-                Wccd = w.WorkcenterId.ToString(),
+                Wccd = w.WorkcenterCode,
                 Wcnm = w.WorkcenterName,
                 Wcinfnm = null,
                 Stdcap = null,
@@ -74,18 +75,26 @@ public static partial class EntityToDtoMapper
             .Select(x => ToRoutDetailDto(x.m, x.w)).ToList();
         return new ItemDetailDto
         {
-            Prkey = i.ItemId,
+            Prkey = i.ItemId ?? 0,
             Fctcd = null,
             Deptcd = null,
             Itemgr = null,
             Itemcd = i.ItemCd ?? "",
             Itemnm = i.ItemName ?? "",
-            Std = addInfo?.Std,
+            Std1 = addInfo?.Std1,
+            Std2 = addInfo?.Std2,
+            Std3 = addInfo?.Std3,
             Uni0 = unit0?.UnitCode,
             // Nwei = addInfo?.Nwei,
             Jouni = i.ShortName,
             Strtemp = addInfo?.SterItemPrange?.ToString(),
+            Steritemprange = addInfo?.SterItemPrange?.ToString(),
+            Steritime = addInfo?.SteriTime,
             Kikunip = addInfo?.Car0,
+            Classification1Code = i.Classification1Code,
+            Classification2Code = i.Classification2Code,
+            Classification3Code = i.Classification3Code,
+            IsLiquid = ItemCodeKind.IsLiquid(i.ItemCd),
             Uni = ToUniDetailDto(unit0),
             Routs = routDtos
         };
@@ -136,7 +145,13 @@ public static partial class EntityToDtoMapper
             Memo = b.Memo,
             Stadt = b.StartDate?.ToString(),
             Enddt = b.EndDate?.ToString(),
-            ChildItem = ToItemDetailDto(childItem, null, childUnit, null)
+            ChildItem = ToItemDetailDto(
+                childItem,
+                childItem?.AdditionalInformation,
+                childUnit,
+                childItem?.WorkCenterMappings is { Count: > 0 } wm
+                    ? wm.Select(m => (m, m.Workcenter)).ToList()
+                    : null)
         };
     }
 
@@ -145,7 +160,7 @@ public static partial class EntityToDtoMapper
         if (ci == null) return null;
         return new CusmcdDetailDto
         {
-            Prkey = ci.CustomerItemId,
+            Prkey = DbTextId.ToInt64(ci.CustomerItemId),
             Merfctcd = null,
             Cuscd = customer?.CustomerCode,
             Cusitemcd = ci.CustomerCode ?? "",
@@ -181,4 +196,5 @@ public static partial class EntityToDtoMapper
             Cusmcd = row.Cusmcd
         };
     }
+
 }

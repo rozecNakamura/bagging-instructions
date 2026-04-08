@@ -9,7 +9,7 @@ namespace BaggingInstructions.Api.Entities;
 public class OrderTable
 {
     [Column("ordertableid")]
-    public long OrderTableId { get; set; }
+    public long? OrderTableId { get; set; }
 
     [Column("salesorderlineid")]
     public long SalesOrderLineId { get; set; }

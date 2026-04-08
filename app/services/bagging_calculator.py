@@ -1,3 +1,5 @@
+"""袋詰計算（参考実装）。本番の契約・挙動の正は C# API（BaggingInstructions.Api）。"""
+
 from sqlalchemy.orm import Session
 from typing import List
 from app.services import search_service, rounding, aggregation_rule, allocation, stock_service
@@ -5,11 +7,12 @@ from app.schemas.bagging_instruction import BaggingInstructionItem, SeasoningAmo
 
 
 # ============================================================
-# 処理の有効/無効フラグ（条件が決まったら切り替え）
+# 処理の有効/無効フラグ（C# BaggingCalculatorService と揃える）
 # ============================================================
 ENABLE_ROUNDING = True  # 処理1: 切り上げ処理
+# C# は品目により AllocationService（floor 袋数）を rounding 後に適用。Python は未実装のため False のまま。
 ENABLE_ALLOCATION = False  # 処理2: 按分処理（規格袋数計算）
-ENABLE_AGGREGATION = False  # 処理3: 集計ルール適用
+ENABLE_AGGREGATION = True  # 処理3: 集計ルール適用（C# と同様に有効）
 
 # 条件が決まったらここに条件判定関数を追加
 # def should_enable_allocation(jobord) -> bool:

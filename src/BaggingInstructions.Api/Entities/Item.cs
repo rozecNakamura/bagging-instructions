@@ -5,11 +5,12 @@ namespace BaggingInstructions.Api.Entities;
 [Table("item")]
 public class Item
 {
+    /// <summary>サロゲート ID（主キーは <see cref="ItemCd"/>）。craftlineax は bigint。</summary>
     [Column("itemid")]
-    public long ItemId { get; set; }
+    public long? ItemId { get; set; }
 
     [Column("itemcode")]
-    public string? ItemCd { get; set; }
+    public string ItemCd { get; set; } = "";
 
     [Column("itemname")]
     public string? ItemName { get; set; }
@@ -59,6 +60,18 @@ public class Item
 
     [Column("salesprice0")]
     public decimal? SalesPrice0 { get; set; }
+
+    /// <summary>分類1コード。DB 列名は craftlineax の綴り classfication（i 欠け）。</summary>
+    [Column("classfication1code")]
+    public string? Classification1Code { get; set; }
+
+    /// <summary>分類2コード（DB: classfication2code）。</summary>
+    [Column("classfication2code")]
+    public string? Classification2Code { get; set; }
+
+    /// <summary>分類3コード（DB: classfication3code）。</summary>
+    [Column("classfication3code")]
+    public string? Classification3Code { get; set; }
 
     public virtual Unit? Unit0 { get; set; }
     public virtual ItemAdditionalInformation? AdditionalInformation { get; set; }
