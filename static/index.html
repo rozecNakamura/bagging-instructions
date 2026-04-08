@@ -108,17 +108,12 @@
             <h2>検索結果</h2>
             <div class="results-header">
                 <span id="resultCount">0件</span>
-                <div class="checkbox-controls">
-                    <button type="button" id="selectAllBtn" class="btn btn-secondary">全選択</button>
-                    <button type="button" id="deselectAllBtn" class="btn btn-secondary">全解除</button>
-                    <button type="button" id="openBaggingRegistrationBtn" class="btn btn-primary">袋詰投入量登録を開く</button>
-                </div>
+                <span class="bagging-results-hint">行をクリックして袋詰投入量登録を開きます</span>
             </div>
             <div class="table-container">
                 <table id="resultsTable">
                     <thead>
                         <tr>
-                            <th><input type="checkbox" id="headerCheckbox"></th>
                             <th>製造日</th>
                             <th>品目コード</th>
                             <th>品目名</th>
@@ -160,10 +155,6 @@
                             </div>
                             <p style="margin-top:8px;">
                                 <label><input type="checkbox" id="baggingRegUseSavedInput" checked> 登録済み投入量で印刷（未登録時は受注数ベース）</label>
-                            </p>
-                            <p style="margin-top:8px;">
-                                <label for="baggingRegParentYield">出来高（親・合計）</label>
-                                <input type="number" id="baggingRegParentYield" step="any" style="width:10em;margin-left:6px;" title="登録済み投入量で印刷時のみ、施設別受注比で按分されます（空は従来どおり）">
                             </p>
                             <div class="results-header" style="margin-top:12px;">
                                 <button type="button" id="baggingRegRequiredBtn" class="btn btn-secondary">必要量セット</button>

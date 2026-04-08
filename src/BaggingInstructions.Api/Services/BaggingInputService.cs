@@ -106,7 +106,6 @@ public class BaggingInputService
         if (rows.Count == 0)
             return (null, null);
 
-        var marker = rows.FirstOrDefault(r => BaggedQuantityParentYieldMarker.IsMarkerRow(r.ChildItemCode));
         var lineRows = rows.Where(r => !BaggedQuantityParentYieldMarker.IsMarkerRow(r.ChildItemCode)).ToList();
 
         var payload = new BaggingInputPayloadDto
@@ -117,8 +116,7 @@ public class BaggingInputService
                 InputOrder = r.InputOrder,
                 SpecQty = r.StandardQuantity,
                 TotalQty = r.TotalQuantity
-            }).ToList(),
-            ParentYieldQuantity = marker?.TotalQuantity
+            }).ToList()
         };
         var updatedAt = rows.Max(r => r.UpdatedAt);
         return (payload, updatedAt);
@@ -207,20 +205,6 @@ public class BaggingInputService
             });
         }
 
-        if (payload?.ParentYieldQuantity is decimal py && py > 0)
-        {
-            _otherDb.BaggedQuantities.Add(new BaggedQuantity
-            {
-                ProductDate = productDate,
-                ParentItemCode = parentItemCode,
-                ChildItemCode = BaggedQuantityParentYieldMarker.ChildItemCode,
-                InputOrder = 0,
-                StandardQuantity = null,
-                TotalQuantity = py,
-                UpdatedAt = now
-            });
-        }
-
         await _otherDb.SaveChangesAsync(ct);
     }
 
@@ -236,7 +220,7 @@ public class BaggingInputService
         if (jobordPrkeys is { Count: > 0 })
         {
             var (payload, _) = await LoadFromBaggedQuantityAsync(date.Value, itemcd.Trim(), ct);
-            if (payload != null && (payload.Lines.Count > 0 || payload.ParentYieldQuantity.HasValue))
+            if (payload != null && payload.Lines.Count > 0)
                 return payload;
         }
 

@@ -41,8 +41,6 @@ export interface BaggingInputLine {
 
 export interface BaggingInputPayload {
   lines: BaggingInputLine[];
-  /** 親完成品出来高（合計）。登録済み投入量で印刷時に施設別按分に使用 */
-  parent_yield_quantity?: number | null;
 }
 
 export interface BaggingInputGetResponse {
@@ -66,7 +64,7 @@ export interface BaggingInstructionItem {
   shptm: string | null;
   planned_quantity: number;
   adjusted_quantity: number;
-  /** 在庫・出来高用（受注合算） */
+  /** 在庫用（受注合算） */
   quantity_for_inventory?: number;
   /** 指示書用（切上げ後等） */
   quantity_for_instruction?: number;

@@ -68,7 +68,7 @@ public class BaggingInstructionItemDto
     [JsonPropertyName("adjusted_quantity")]
     public decimal AdjustedQuantity { get; set; }
 
-    /// <summary>在庫・出来高用（受注合算のまま）。</summary>
+    /// <summary>在庫用（受注合算のまま）。</summary>
     [JsonPropertyName("quantity_for_inventory")]
     public decimal QuantityForInventory { get; set; }
 
@@ -140,10 +140,6 @@ public class BaggingInputPayloadDto
 {
     [JsonPropertyName("lines")]
     public List<BaggingInputLineDto> Lines { get; set; } = new();
-
-    /// <summary>親完成品の出来高（合計）。指定時、登録済み投入量で印刷では施設別受注比で <see cref="BaggingInstructionItemDto.PlannedQuantity"/> を按分してから袋詰計算する。</summary>
-    [JsonPropertyName("parent_yield_quantity")]
-    public decimal? ParentYieldQuantity { get; set; }
 }
 
 public class BaggingInputLineDto

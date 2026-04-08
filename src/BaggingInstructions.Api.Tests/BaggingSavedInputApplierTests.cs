@@ -105,7 +105,7 @@ public class BaggingSavedInputApplierTests
     }
 
     [Fact]
-    public void ParentYieldScale_then_ApplySavedInputPerFacilityRounding_uses_scaled_planned_quantities()
+    public void ApplySavedInputPerFacilityRounding_uses_planned_quantities_and_global_split()
     {
         var seasoningBoms = new List<SeasoningBomRow>
         {
@@ -123,13 +123,9 @@ public class BaggingSavedInputApplierTests
         };
         var items = new List<BaggingInstructionItemDto>
         {
-            new() { PlannedQuantity = 30m },
-            new() { PlannedQuantity = 70m }
+            new() { PlannedQuantity = 15m },
+            new() { PlannedQuantity = 35m }
         };
-
-        BaggingYieldScaler.ApplyParentYieldToPlannedQuantities(items, 50m);
-        Assert.Equal(15m, items[0].PlannedQuantity);
-        Assert.Equal(35m, items[1].PlannedQuantity);
 
         var globals = new List<decimal> { 100m };
         BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(items, 10m, seasoningBoms, mboms, globals);

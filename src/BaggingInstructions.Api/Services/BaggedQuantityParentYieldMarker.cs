@@ -1,7 +1,7 @@
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// craftlineaxother.baggedquantity 上で親出来高のみを保持する行の子品目コード（実 BOM とは重ならない値）。
+/// Legacy: 旧「親出来高」行の子品目コード。読込時のみ除外し、実 BOM 行と混ざらないようにする（新規保存はしない）。
 /// </summary>
 public static class BaggedQuantityParentYieldMarker
 {

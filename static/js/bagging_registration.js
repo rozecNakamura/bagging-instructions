@@ -10,8 +10,6 @@ import {
     normalizePrddt
 } from './api.js';
 import { generateInstructionPDF, generateLabelPDF } from './pdf_generator.js';
-import { getSelectedBaggingGroup } from './search.js';
-
 /** @typedef {{ prddt: string, itemcd: string, itemnm?: string, total_jobordqun: number, unit_name?: string, line_prkeys: number[] }} BaggingSearchGroup */
 
 /** @type {BaggingSearchGroup | null} */
@@ -20,13 +18,23 @@ let activeGroup = null;
 /** @type {{ input_order: number, citemcd: string, spec_qty: string, total_qty: string }[]} */
 let lineEditors = [];
 
+/** BOM / 必要量行の input_order（1 始まり）。未指定時は行インデックス + 1。 */
+function inputOrderForReqLine(reqLine, zeroBasedIndex) {
+    return reqLine.input_order != null ? reqLine.input_order : zeroBasedIndex + 1;
+}
+
 function matchSavedLine(savedLines, reqLine, index) {
-    const io = reqLine.input_order != null ? reqLine.input_order : index + 1;
+    const io = inputOrderForReqLine(reqLine, index);
     if (!savedLines?.length) return null;
     return savedLines.find((sl) => {
         if (sl.input_order != null) return sl.input_order === io && sl.citemcd === reqLine.citemcd;
         return sl.citemcd === reqLine.citemcd;
     });
+}
+
+function prddtFromFormOrGroup(group) {
+    const prodEl = document.getElementById('productionDate');
+    return normalizePrddt(prodEl?.value) || group.prddt;
 }
 
 function getModalRoot() {
@@ -112,31 +120,20 @@ function renderLineInputs() {
     });
 }
 
-function readParentYieldFromUi() {
-    const el = document.getElementById('baggingRegParentYield');
-    const v = el?.value?.trim();
-    if (v === '' || v == null) return null;
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 function buildPayloadFromEditors() {
-    const py = readParentYieldFromUi();
     return {
         lines: lineEditors.map(l => ({
             citemcd: l.citemcd,
             input_order: l.input_order,
             spec_qty: l.spec_qty === '' ? null : Number(l.spec_qty),
             total_qty: l.total_qty === '' ? null : Number(l.total_qty)
-        })),
-        ...(py != null ? { parent_yield_quantity: py } : {})
+        }))
     };
 }
 
 async function loadRegistrationUi(group) {
     activeGroup = group;
-    const prodEl = document.getElementById('productionDate');
-    const prddt = normalizePrddt(prodEl?.value) || group.prddt;
+    const prddt = prddtFromFormOrGroup(group);
 
     const ctx = document.getElementById('baggingRegContext');
     if (ctx) {
@@ -155,7 +152,7 @@ async function loadRegistrationUi(group) {
 
     const reqLines = required.lines || [];
     lineEditors = reqLines.map((reqLine, j) => {
-        const io = reqLine.input_order != null ? reqLine.input_order : j + 1;
+        const io = inputOrderForReqLine(reqLine, j);
         const sl = matchSavedLine(savedPayload?.lines, reqLine, j);
         return {
             input_order: io,
@@ -166,26 +163,24 @@ async function loadRegistrationUi(group) {
     });
 
     renderLineInputs();
-    const pyEl = document.getElementById('baggingRegParentYield');
-    if (pyEl) {
-        const py = savedPayload?.parent_yield_quantity;
-        pyEl.value = py != null && py !== '' ? String(py) : '';
-    }
     openSection();
 }
 
-document.getElementById('openBaggingRegistrationBtn')?.addEventListener('click', async () => {
-    const g = getSelectedBaggingGroup();
-    if (!g) {
-        alert('袋詰投入量登録を開くには、検索結果で1件だけ選択してください。');
+/**
+ * 検索結果行クリックから呼ぶ。投入量登録モーダルを開きデータを読み込む。
+ * @param {BaggingSearchGroup} group
+ */
+export async function openBaggingRegistrationForGroup(group) {
+    if (!group?.line_prkeys?.length) {
+        alert('この行には受注明細がありません。');
         return;
     }
     try {
-        await loadRegistrationUi(g);
+        await loadRegistrationUi(group);
     } catch (e) {
         alert('データの取得に失敗しました: ' + e.message);
     }
-});
+}
 
 document.getElementById('baggingRegCloseBtn')?.addEventListener('click', () => closeSection());
 
@@ -203,7 +198,7 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
         const required = await fetchBaggingRequiredQuantities(activeGroup.line_prkeys);
         const reqLines = required.lines || [];
         lineEditors = reqLines.map((reqLine, j) => ({
-            input_order: reqLine.input_order != null ? reqLine.input_order : j + 1,
+            input_order: inputOrderForReqLine(reqLine, j),
             citemcd: reqLine.citemcd || '',
             spec_qty: '',
             total_qty: reqLine.total_qty != null ? String(reqLine.total_qty) : ''
@@ -216,8 +211,7 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
 
 document.getElementById('baggingRegSaveBtn')?.addEventListener('click', async () => {
     if (!activeGroup) return;
-    const prodEl = document.getElementById('productionDate');
-    const prddt = normalizePrddt(prodEl?.value) || activeGroup.prddt;
+    const prddt = prddtFromFormOrGroup(activeGroup);
     try {
         await saveBaggingInput(prddt, activeGroup.itemcd, buildPayloadFromEditors(), activeGroup.line_prkeys);
         alert('登録しました。');

@@ -1,5 +1,5 @@
 /**
- * 袋詰：製造日・品目合算検索・チェックボックス
+ * 袋詰：製造日・品目合算検索（行クリックで投入量登録を開く）
  */
 
 import { searchBaggingGroups } from './api.js';
@@ -48,9 +48,12 @@ async function displayResults(groups) {
 
     groups.forEach((g, index) => {
         const row = tbody.insertRow();
+        row.classList.add('bagging-result-row');
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', `袋詰投入量登録を開く: ${g.itemcd || ''}`);
         const unitLabel = g.unit_name || g.unit_code || '-';
         row.innerHTML = `
-            <td><input type="checkbox" class="bagging-group-checkbox" data-group-index="${index}"></td>
             <td>${formatPrddtDisplay(g.prddt)}</td>
             <td>${g.itemcd || '-'}</td>
             <td>${g.itemnm || '-'}</td>
@@ -58,37 +61,29 @@ async function displayResults(groups) {
             <td>${unitLabel}</td>
         `;
         row.style.cursor = 'pointer';
-        row.addEventListener('click', (e) => {
-            if (e.target.classList.contains('bagging-group-checkbox')) return;
-            const cb = row.querySelector('.bagging-group-checkbox');
-            if (cb) cb.checked = !cb.checked;
+        row.dataset.groupIndex = String(index);
+
+        const openForRow = async () => {
+            tbody.querySelectorAll('.bagging-result-row--active').forEach((r) => {
+                r.classList.remove('bagging-result-row--active');
+            });
+            row.classList.add('bagging-result-row--active');
+            const group = baggingSearchGroups[index];
+            if (!group) return;
+            const { openBaggingRegistrationForGroup } = await import('./bagging_registration.js');
+            await openBaggingRegistrationForGroup(group);
+        };
+
+        row.addEventListener('click', () => {
+            void openForRow();
+        });
+        row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void openForRow();
+            }
         });
     });
 
     resultsSection.style.display = 'block';
-}
-
-document.getElementById('headerCheckbox').addEventListener('change', (e) => {
-    document.querySelectorAll('.bagging-group-checkbox').forEach(cb => {
-        cb.checked = e.target.checked;
-    });
-});
-
-document.getElementById('selectAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('.bagging-group-checkbox').forEach(cb => { cb.checked = true; });
-    document.getElementById('headerCheckbox').checked = true;
-});
-
-document.getElementById('deselectAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('.bagging-group-checkbox').forEach(cb => { cb.checked = false; });
-    document.getElementById('headerCheckbox').checked = false;
-});
-
-/** 選択されたグループ（単一）の line_prkeys。複数選択時は null */
-export function getSelectedBaggingGroup() {
-    const checked = Array.from(document.querySelectorAll('.bagging-group-checkbox:checked'));
-    if (checked.length !== 1) return null;
-    const idx = parseInt(checked[0].dataset.groupIndex, 10);
-    if (Number.isNaN(idx) || !baggingSearchGroups[idx]) return null;
-    return baggingSearchGroups[idx];
 }

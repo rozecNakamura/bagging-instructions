@@ -21,6 +21,13 @@ async function jsonErrorDetailSuffix(response) {
     }
 }
 
+/** Bagging JSON APIs: use server `detail` when present. */
+async function throwIfBaggingJsonNotOk(response, fallbackLabel) {
+    if (response.ok) return;
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `${fallbackLabel}: ${response.status}`);
+}
+
 /**
  * 受注明細を検索
  */
@@ -69,10 +76,7 @@ export async function getBaggingInput(prddt, itemcd, jobordPrkeys) {
         params.append('jobord_prkeys', String(pk));
     }
     const response = await fetch(`${API_BASE_URL}/bagging/input?${params}`);
-    if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `取得エラー: ${response.status}`);
-    }
+    await throwIfBaggingJsonNotOk(response, '取得エラー');
     return await response.json();
 }
 
@@ -90,10 +94,7 @@ export async function saveBaggingInput(prddt, itemcd, payload, jobordPrkeys) {
             payload
         })
     });
-    if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `登録エラー: ${response.status}`);
-    }
+    await throwIfBaggingJsonNotOk(response, '登録エラー');
     return await response.json();
 }
 
@@ -106,10 +107,7 @@ export async function fetchBaggingRequiredQuantities(jobordPrkeys) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobord_prkeys: jobordPrkeys })
     });
-    if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `エラー: ${response.status}`);
-    }
+    await throwIfBaggingJsonNotOk(response, 'エラー');
     return await response.json();
 }
 

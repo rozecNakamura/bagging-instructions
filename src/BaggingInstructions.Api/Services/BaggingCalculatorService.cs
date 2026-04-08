@@ -46,8 +46,6 @@ public class BaggingCalculatorService
         if (mboms.Count == 0)
             return new BaggingCalculateResult { Items = items, IngredientDisplayRows = null };
 
-        BaggingYieldScaler.ApplyParentYieldToPlannedQuantities(items, payload.ParentYieldQuantity);
-
         var q = items.Sum(x => x.PlannedQuantity);
         var globalTotals = BaggingSavedInputApplier.ResolveGlobalTotals(q, mboms, payload);
 
