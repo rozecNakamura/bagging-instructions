@@ -12,13 +12,14 @@ public class StockService
         _db = db;
     }
 
-    /// <summary>指定品目の現在在庫数を取得（全倉庫の quantityonhand 合計）。新DBでは日付条件なし。</summary>
-    public async Task<decimal> GetItemStockByItemIdAsync(long? itemId, CancellationToken ct = default)
+    /// <summary>指定品目の現在在庫数を取得（全倉庫の quantityonhand 合計）。stock は itemcode で item と紐づく。</summary>
+    public async Task<decimal> GetItemStockByItemCodeAsync(string? itemCode, CancellationToken ct = default)
     {
-        if (itemId == null) return 0;
+        if (string.IsNullOrWhiteSpace(itemCode)) return 0;
+        var code = itemCode.Trim();
         var total = await _db.Stocks
             .AsNoTracking()
-            .Where(s => s.ItemId == itemId.Value)
+            .Where(s => s.ItemCd == code)
             .SumAsync(s => s.QuantityOnHand, ct);
         return total;
     }

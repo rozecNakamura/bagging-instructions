@@ -5,11 +5,8 @@ namespace BaggingInstructions.Api.Entities;
 [Table("customer")]
 public class Customer
 {
-    [Column("customerid")]
-    public long CustomerId { get; set; }
-
     [Column("customercode")]
-    public string? CustomerCode { get; set; }
+    public string CustomerCode { get; set; } = "";
 
     [Column("customername")]
     public string? CustomerName { get; set; }

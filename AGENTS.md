@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-All commentary returned by the agent should be in Japanese.
+All commentary returned by the agent should be in English.
 
 First, review the user instructions:
 <instructions>

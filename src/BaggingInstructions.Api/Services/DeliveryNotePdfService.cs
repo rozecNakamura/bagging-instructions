@@ -38,7 +38,7 @@ public class DeliveryNotePdfService
         // customerdeliverylocation（info02=locationcode かつ 得意先一致）＋ customer（craftlineax）
         var loc = ResolveLocation(locationCode, customerCode);
         var customer = loc?.Customer;
-        var custId = loc?.Customer?.CustomerId ?? 0;
+        var custCd = customer?.CustomerCode ?? customerCode ?? "";
         var address1 = loc?.Address1 ?? "";
         var address2 = loc?.Address2 ?? "";
         var customerLoc = (address1 + (address2 ?? "")).Trim();
@@ -123,7 +123,7 @@ public class DeliveryNotePdfService
         {
             for (int f = 0; f < FormsPerSheet; f++)
             {
-                tags[$"CUSTOMERCD_{f}"] = custId.ToString(CultureInfo.InvariantCulture);
+                tags[$"CUSTOMERCD_{f}"] = custCd;
                 tags[$"CUSTOMERLOC_{f}"] = customerLoc;
                 tags[$"CUSTOMERNM_{f}"] = customerNm;
                 tags[$"CUSTOMERTEL_{f}"] = customerTel;

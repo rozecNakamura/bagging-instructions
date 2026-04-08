@@ -1,26 +1,24 @@
+"""袋詰計算（参考実装）。本番の契約・挙動の正は C# API（BaggingInstructions.Api）。"""
+
 from sqlalchemy.orm import Session
 from typing import List
-from app.services import search_service, rounding, aggregation_rule, allocation, stock_service
+from app.services import (
+    search_service,
+    rounding,
+    aggregation_rule,
+    allocation,
+    stock_service,
+    bagging_bag_count_resolver,
+)
 from app.schemas.bagging_instruction import BaggingInstructionItem, SeasoningAmount
 
 
 # ============================================================
-# 処理の有効/無効フラグ（条件が決まったら切り替え）
+# 処理の有効/無効フラグ（C# BaggingCalculatorService と揃える）
 # ============================================================
 ENABLE_ROUNDING = True  # 処理1: 切り上げ処理
-ENABLE_ALLOCATION = False  # 処理2: 按分処理（規格袋数計算）
-ENABLE_AGGREGATION = False  # 処理3: 集計ルール適用
-
-# 条件が決まったらここに条件判定関数を追加
-# def should_enable_allocation(jobord) -> bool:
-#     """按分処理を有効にする条件"""
-#     # 例: 特定の品目コードや得意先の場合のみ按分
-#     return jobord.itemcd.startswith("10")
-#
-# def should_enable_aggregation(jobord) -> bool:
-#     """集計ルールを有効にする条件"""
-#     # 例: 特定の得意先コードの場合のみ集計
-#     return jobord.cuscd in ["200", "210", "240", "300", "310"]
+ENABLE_AGGREGATION = True  # 処理3: 集計ルール適用（C# と同様に有効）
+# 規格袋 floor は C# と同様に bagging_bag_count_resolver + allocation（ENABLE_ROUNDING 内）
 
 
 def calculate(db: Session, jobord_prkeys: List[int]) -> List[BaggingInstructionItem]:
@@ -41,7 +39,7 @@ def calculate(db: Session, jobord_prkeys: List[int]) -> List[BaggingInstructionI
         return []
 
     # ============================================================
-    # 処理3: 集計ルールを適用してグルーピング（現在無効化）
+    # 処理3: 集計ルールを適用してグルーピング
     # ============================================================
     if ENABLE_AGGREGATION:
         grouped = aggregation_rule.apply_aggregation_rule(jobords)
@@ -93,28 +91,24 @@ def calculate(db: Session, jobord_prkeys: List[int]) -> List[BaggingInstructionI
 
             # 調味液情報をPydanticモデルに変換
             seasoning_amounts = [SeasoningAmount(**s) for s in seasoning_list]
+
+            # C# BaggingBagCountResolver: 液体・個数単位以外は rounding 後に car0（なければ除数）で floor 袋数
+            if bagging_bag_count_resolver.use_floor_bags_from_car0(first_jobord.item):
+                div = rounding.resolve_parent_divisor(first_jobord.item)
+                car = float(getattr(first_jobord.item, "car", None) or 0)
+                kikunip = car if car > 0 else div
+                if kikunip > 0:
+                    standard_bags = allocation.calculate_standard_bags(
+                        adjusted_quantity, kikunip
+                    )
+                    irregular_quantity = allocation.calculate_irregular_quantity(
+                        adjusted_quantity, kikunip
+                    )
         else:
             adjusted_quantity = total_order
             standard_bags = 0
             irregular_quantity = 0
             seasoning_amounts = []
-
-        # ============================================================
-        # 処理2: 規格袋数と端数を計算（現在無効化）
-        # ============================================================
-        if ENABLE_ALLOCATION:
-            # itemのkikunip（規格量）を使用
-            kikunip = (
-                first_jobord.item.kikunip
-                if first_jobord.item and hasattr(first_jobord.item, "kikunip")
-                else 1.0
-            )
-            standard_bags = allocation.calculate_standard_bags(
-                adjusted_quantity, kikunip
-            )
-            irregular_quantity = allocation.calculate_irregular_quantity(
-                adjusted_quantity, kikunip
-            )
 
         # 納入場所名の決定
         if ENABLE_AGGREGATION and "_CATERING_" in key:

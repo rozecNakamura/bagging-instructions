@@ -57,22 +57,61 @@ public static class LabelGeneratorService
     }
 
     /// <summary>DTO の値から規格品ラベルを生成（ラベル出力用）</summary>
-    public static List<LabelItemDto> GenerateStandardLabelsFromDto(string itemcd, string itemnm, string? strtemp, decimal? kikunip, string delvedt, string? shptm, int standardBags)
+    public static List<LabelItemDto> GenerateStandardLabelsFromDto(
+        string itemcd,
+        string itemnm,
+        string? strtemp,
+        decimal? kikunip,
+        string delvedt,
+        string? shptm,
+        int standardBags,
+        decimal? standardFillQty = null)
     {
         if (standardBags <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
         {
-            new LabelItemDto { LabelType = "standard", Delvedt = delvedt, Shptm = shptm, Itemcd = itemcd, Itemnm = itemnm, ExpiryDate = CalculateExpiryDate(delvedt), Strtemp = strtemp, Kikunip = kikunip, Count = standardBags }
+            new LabelItemDto
+            {
+                LabelType = "standard",
+                Delvedt = delvedt,
+                Shptm = shptm,
+                Itemcd = itemcd,
+                Itemnm = itemnm,
+                ExpiryDate = CalculateExpiryDate(delvedt),
+                Strtemp = strtemp,
+                Kikunip = kikunip,
+                StandardFillQty = standardFillQty,
+                Count = standardBags
+            }
         };
     }
 
     /// <summary>DTO の値から端数ラベルを生成（ラベル出力用）</summary>
-    public static List<LabelItemDto> GenerateIrregularLabelsFromDto(string itemcd, string itemnm, string? strtemp, string delvedt, string? shptm, string shpctrnm, decimal irregularQuantity)
+    public static List<LabelItemDto> GenerateIrregularLabelsFromDto(
+        string itemcd,
+        string itemnm,
+        string? strtemp,
+        string delvedt,
+        string? shptm,
+        string shpctrnm,
+        decimal irregularQuantity)
     {
         if (irregularQuantity <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
         {
-            new LabelItemDto { LabelType = "irregular", Delvedt = delvedt, Shptm = shptm, Itemcd = itemcd, Itemnm = itemnm, ExpiryDate = CalculateExpiryDate(delvedt), Strtemp = strtemp, Shpctrnm = shpctrnm, IrregularQuantity = irregularQuantity, Count = 1 }
+            new LabelItemDto
+            {
+                LabelType = "irregular",
+                Delvedt = delvedt,
+                Shptm = shptm,
+                Itemcd = itemcd,
+                Itemnm = itemnm,
+                ExpiryDate = CalculateExpiryDate(delvedt),
+                Strtemp = strtemp,
+                Shpctrnm = shpctrnm,
+                IrregularQuantity = irregularQuantity,
+                Count = 1
+            }
         };
     }
 }

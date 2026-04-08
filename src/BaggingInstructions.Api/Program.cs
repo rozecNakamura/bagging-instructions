@@ -34,6 +34,7 @@ builder.Services.AddDbContext<CstmeatDbContext>(options =>
 
 builder.Services.AddScoped<SearchService>();
 builder.Services.AddScoped<StockService>();
+builder.Services.AddScoped<BaggingInputService>();
 builder.Services.AddScoped<BaggingCalculatorService>();
 builder.Services.AddScoped<JuicePdfService>();
 builder.Services.AddScoped<PreparationWorkService>();

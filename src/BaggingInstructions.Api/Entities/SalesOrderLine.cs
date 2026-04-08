@@ -14,7 +14,7 @@ public class SalesOrderLine
     [Column("lineno")]
     public int LineNo { get; set; }
 
-    /// <summary>品目コード（item.itemcode へ FK。craftlineax では明細は itemcode で紐づく）。</summary>
+    /// <summary>品目コード（item.itemcode へ FK）。</summary>
     [Column("itemcode")]
     public string? ItemCd { get; set; }
 
@@ -51,8 +51,9 @@ public class SalesOrderLine
     [Column("productdate")]
     public DateOnly? ProductDate { get; set; }
 
+    /// <summary>得意先品目（customeritem.customeritemid。text の DB あり）。</summary>
     [Column("customeritemid")]
-    public long? CustomerItemId { get; set; }
+    public string? CustomerItemId { get; set; }
 
     [Column("status")]
     public string? Status { get; set; }

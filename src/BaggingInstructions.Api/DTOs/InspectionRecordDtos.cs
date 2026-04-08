@@ -65,7 +65,7 @@ public sealed class InspectionRecordPdfLineModel
     public string ItemCode { get; set; } = "";
     public string ItemName { get; set; } = "";
 
-    /// <summary>規格（itemadditionalinformation.std）。</summary>
+    /// <summary>規格（itemadditionalinformation.std1→std2→std3 の先頭非空）。</summary>
     public string Spec { get; set; } = "";
 
     /// <summary>単位0換算数量の表示文字列。</summary>

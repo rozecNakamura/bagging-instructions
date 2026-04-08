@@ -31,7 +31,7 @@ public class SortingInquiryServiceTests
         await using var app = CreateAppDb();
 
         var d = new DateOnly(2025, 7, 10);
-        app.Customers.Add(new Customer { CustomerId = 1, CustomerCode = "CUST1", CustomerName = "得意先1" });
+        app.Customers.Add(new Customer { CustomerCode = "CUST1", CustomerName = "得意先1" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
@@ -122,8 +122,8 @@ public class SortingInquiryServiceTests
         await using var app = CreateAppDb();
         var d = new DateOnly(2025, 7, 10);
 
-        app.Customers.Add(new Customer { CustomerId = 1, CustomerCode = "CUST1", CustomerName = "得意先Ａ" });
-        app.Customers.Add(new Customer { CustomerId = 2, CustomerCode = "CUST2", CustomerName = "得意先Ｂ" });
+        app.Customers.Add(new Customer { CustomerCode = "CUST1", CustomerName = "得意先Ａ" });
+        app.Customers.Add(new Customer { CustomerCode = "CUST2", CustomerName = "得意先Ｂ" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
@@ -212,8 +212,8 @@ public class SortingInquiryServiceTests
         await using var app = CreateAppDb();
         var d = new DateOnly(2026, 3, 30);
 
-        app.Customers.Add(new Customer { CustomerId = 1, CustomerCode = "CUS003", CustomerName = "四川飯店" });
-        app.Customers.Add(new Customer { CustomerId = 2, CustomerCode = "CUS004", CustomerName = "別得意先" });
+        app.Customers.Add(new Customer { CustomerCode = "CUS003", CustomerName = "四川飯店" });
+        app.Customers.Add(new Customer { CustomerCode = "CUS004", CustomerName = "別得意先" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
@@ -288,8 +288,8 @@ public class SortingInquiryServiceTests
         await using var app = CreateAppDb();
         var d = new DateOnly(2025, 8, 1);
 
-        app.Customers.Add(new Customer { CustomerId = 1, CustomerCode = "C_A", CustomerName = "客A" });
-        app.Customers.Add(new Customer { CustomerId = 2, CustomerCode = "C_B", CustomerName = "客B" });
+        app.Customers.Add(new Customer { CustomerCode = "C_A", CustomerName = "客A" });
+        app.Customers.Add(new Customer { CustomerCode = "C_B", CustomerName = "客B" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
@@ -365,7 +365,7 @@ public class SortingInquiryServiceTests
         await using var app = CreateAppDb();
         var d = new DateOnly(2025, 9, 1);
 
-        app.Customers.Add(new Customer { CustomerId = 1, CustomerCode = "C1", CustomerName = "同一客" });
+        app.Customers.Add(new Customer { CustomerCode = "C1", CustomerName = "同一客" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,

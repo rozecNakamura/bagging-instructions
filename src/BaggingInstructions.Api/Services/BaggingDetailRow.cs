@@ -9,6 +9,8 @@ public class BaggingDetailRow
     public string? Prddt { get; set; }
     public string? Delvedt { get; set; }
     public string? Shptm { get; set; }
+    /// <summary>喫食時間名称（addinfo01name）。集計ルール判定に使用。</summary>
+    public string? ShptmName { get; set; }
     public string? Cuscd { get; set; }
     public string? Shpctrcd { get; set; }
     public string? Itemcd { get; set; }
@@ -17,7 +19,7 @@ public class BaggingDetailRow
     public string? Jobordno { get; set; }
     public long? ItemId { get; set; }
     public string? Shpctrnm { get; set; }
-    /// <summary>端数処理の除数（std 優先、未設定時 car0）</summary>
+    /// <summary>端数処理の除数（std1→std2→std3 の順で最初の有効値、未設定時 car0）</summary>
     public decimal Divisor { get; set; } = 1;
     /// <summary>規格袋数計算用（car0）</summary>
     public decimal Car0 { get; set; } = 1;

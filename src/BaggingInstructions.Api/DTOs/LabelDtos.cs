@@ -36,6 +36,10 @@ public class LabelItemDto
 
     [JsonPropertyName("count")]
     public int Count { get; set; } = 1;
+
+    /// <summary>1袋あたりの充填規格量（親品目の規格除算と同じ値）。</summary>
+    [JsonPropertyName("standard_fill_qty")]
+    public decimal? StandardFillQty { get; set; }
 }
 
 public class LabelResponseDto

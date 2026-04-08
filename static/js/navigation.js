@@ -6,9 +6,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const screens = document.querySelectorAll('.screen');
 
     menuBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const targetId = btn.dataset.screen;
             if (!targetId) return;
+
+            const wasBagging = document.getElementById('screen-bagging')?.classList.contains('active');
+            if (wasBagging && targetId !== 'bagging') {
+                const { closeBaggingRegistration } = await import('./bagging_registration.js');
+                closeBaggingRegistration();
+            }
 
             menuBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');

@@ -1,38 +1,31 @@
 /**
- * API クライアント（契約: prddt, itemcd, jobord_prkeys, print_type）
+ * API client (bagging search only; registration/print use static UI — see App.tsx).
  */
 
 const API_BASE = '/api';
 
-function toPrddt(dateStr: string): string {
-  if (!dateStr) return '';
-  return dateStr.replace(/-/g, '');
+/** YYYYMMDD for API (matches static `normalizePrddt` in api.js). */
+export function normalizePrddt(value: string): string {
+  if (!value) return '';
+  return value.includes('-') ? value.replace(/-/g, '') : value;
 }
 
-export async function searchOrders(productionDate: string, productCode: string) {
-  const prddt = toPrddt(productionDate);
+async function jsonErrorDetailSuffix(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: string };
+    return body.detail ? ` - ${body.detail}` : '';
+  } catch {
+    return '';
+  }
+}
+
+export async function searchBaggingGroups(productionDate: string, productCode: string) {
+  const prddt = normalizePrddt(productionDate);
   const params = new URLSearchParams({ prddt, itemcd: productCode || '' });
-  const res = await fetch(`${API_BASE}/search?${params}`);
-  if (!res.ok) throw new Error(`検索エラー: ${res.status}`);
-  return res.json();
-}
-
-export async function searchOrdersDetail(prkeys: number[]) {
-  const res = await fetch(`${API_BASE}/search/detail`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prkeys }),
-  });
-  if (!res.ok) throw new Error(`詳細検索エラー: ${res.status}`);
-  return res.json();
-}
-
-export async function calculateBagging(jobordPrkeys: number[], printType: 'instruction' | 'label') {
-  const res = await fetch(`${API_BASE}/bagging/calculate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jobord_prkeys: jobordPrkeys, print_type: printType }),
-  });
-  if (!res.ok) throw new Error(`計算エラー: ${res.status}`);
+  const res = await fetch(`${API_BASE}/search/bagging?${params}`);
+  if (!res.ok) {
+    const detail = await jsonErrorDetailSuffix(res);
+    throw new Error(`検索エラー: ${res.status}${detail}`);
+  }
   return res.json();
 }

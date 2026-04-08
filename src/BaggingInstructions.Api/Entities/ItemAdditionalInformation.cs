@@ -5,14 +5,22 @@ namespace BaggingInstructions.Api.Entities;
 [Table("itemadditionalinformation")]
 public class ItemAdditionalInformation
 {
+    /// <summary>サロゲート ID。DB が text の場合あり（EF 主キーは <see cref="ItemCd"/>）。</summary>
     [Column("itemadditionalinformationid")]
-    public long ItemAdditionalInformationId { get; set; }
+    public string? ItemAdditionalInformationId { get; set; }
 
-    [Column("itemid")]
-    public long ItemId { get; set; }
+    /// <summary>品目コード（item.itemcode へ。主キー）。</summary>
+    [Column("itemcode")]
+    public string ItemCd { get; set; } = "";
 
-    [Column("std")]
-    public string? Std { get; set; }
+    [Column("std1")]
+    public string? Std1 { get; set; }
+
+    [Column("std2")]
+    public string? Std2 { get; set; }
+
+    [Column("std3")]
+    public string? Std3 { get; set; }
 
     [Column("car0")]
     public decimal? Car0 { get; set; }

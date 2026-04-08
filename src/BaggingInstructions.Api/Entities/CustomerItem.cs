@@ -5,14 +5,13 @@ namespace BaggingInstructions.Api.Entities;
 [Table("customeritem")]
 public class CustomerItem
 {
+    /// <summary>主キー。craftlineax では text 列の場合あり。</summary>
     [Column("customeritemid")]
-    public long CustomerItemId { get; set; }
+    public string CustomerItemId { get; set; } = "";
 
-    [Column("customerid")]
-    public long CustomerId { get; set; }
-
-    [Column("itemid")]
-    public long ItemId { get; set; }
+    /// <summary>品目コード（item.itemcode へ。craftlineax は itemid 列なし）。</summary>
+    [Column("itemcode")]
+    public string? ItemCd { get; set; }
 
     [Column("customercode")]
     public string? CustomerCode { get; set; }

@@ -33,23 +33,63 @@ public class SearchService
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
 
-        var list = await query
+        var lines = await query
             .OrderBy(l => l.SalesOrderLineId)
-            .Select(l => new JobordItemDto
-            {
-                Prkey = l.SalesOrderLineId,
-                Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
-                Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
-                Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
-                Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
-                Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
-                Itemcd = l.Item != null ? l.Item.ItemCd : null,
-                Jobordmernm = l.Item != null ? l.Item.ItemName : null,
-                Jobordqun = l.Quantity
-            })
             .ToListAsync(ct);
 
-        return list;
+        return lines.Select(l => new JobordItemDto
+        {
+            Prkey = l.SalesOrderLineId,
+            Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
+            Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
+            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
+            Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
+            Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
+            Itemcd = l.Item != null ? l.Item.ItemCd : null,
+            Jobordmernm = l.Item != null ? l.Item.ItemName : null,
+            Jobordqun = l.Quantity
+        }).ToList();
+    }
+
+    /// <summary>袋詰用：製造日・品目コードで受注明細を検索し、製造日×品目で合算したグループを返す。</summary>
+    public async Task<List<BaggingSearchGroupDto>> SearchBaggingGroupedAsync(string prddt, string? itemcd, CancellationToken ct = default)
+    {
+        var prddtDate = ParseProductDate(prddt);
+        if (!prddtDate.HasValue)
+            throw new ArgumentException("製造日はYYYYMMDD形式（8桁）で指定してください。", nameof(prddt));
+
+        var query = _db.SalesOrderLines.AsNoTracking()
+            .Include(l => l.Item!)
+                .ThenInclude(i => i!.Unit0)
+            .Where(l => l.ProductDate == prddtDate);
+
+        if (!string.IsNullOrEmpty(itemcd))
+            query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
+
+        var lines = await query
+            .OrderBy(l => l.SalesOrderLineId)
+            .ToListAsync(ct);
+
+        return lines
+            .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
+            .GroupBy(l => l.Item!.ItemCd!)
+            .Select(g =>
+            {
+                var first = g.First();
+                var item = first.Item!;
+                return new BaggingSearchGroupDto
+                {
+                    Prddt = prddtDate.Value.ToString("yyyyMMdd"),
+                    Itemcd = g.Key,
+                    Itemnm = item.ItemName,
+                    TotalJobordqun = g.Sum(x => x.Quantity),
+                    UnitCode = item.Unit0?.UnitCode,
+                    UnitName = item.Unit0?.UnitName,
+                    LinePrkeys = g.Select(x => x.SalesOrderLineId).OrderBy(id => id).ToList()
+                };
+            })
+            .OrderBy(x => x.Itemcd, StringComparer.Ordinal)
+            .ToList();
     }
 
     /// <summary>汁仕分表用：喫食日・品目コードで検索。delvedt は YYYYMMDD、itemcd は部分一致。</summary>
@@ -70,26 +110,25 @@ public class SearchService
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
 
-        var list = await query
+        var linesJuice = await query
             .OrderBy(l => l.SalesOrderLineId)
-            .Select(l => new JobordItemDto
-            {
-                Prkey = l.SalesOrderLineId,
-                Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
-                Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
-                Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
-                ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
-                Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
-                Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
-                Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
-                Itemcd = l.Item != null ? l.Item.ItemCd : null,
-                Jobordmernm = l.Item != null ? l.Item.ItemName : null,
-                Jobordqun = l.Quantity,
-                Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null
-            })
             .ToListAsync(ct);
 
-        return list;
+        return linesJuice.Select(l => new JobordItemDto
+        {
+            Prkey = l.SalesOrderLineId,
+            Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
+            Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
+            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
+            ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+            Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
+            Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
+            Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
+            Itemcd = l.Item != null ? l.Item.ItemCd : null,
+            Jobordmernm = l.Item != null ? l.Item.ItemName : null,
+            Jobordqun = l.Quantity,
+            Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null
+        }).ToList();
     }
 
     /// <summary>汁仕分表用：喫食日・品目コードで検索し、喫食日・喫食時間・品目でグループ化して返す。</summary>
@@ -145,30 +184,27 @@ public class SearchService
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
 
-        var list = await query
+        var linesBento = await query
             .OrderBy(l => l.SalesOrderLineId)
-            .Select(l => new JobordItemDto
-            {
-                Prkey = l.SalesOrderLineId,
-                Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
-                Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
-                Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
-                ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
-                Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
-                Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
-                Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
-                Itemcd = l.Item != null ? l.Item.ItemCd : null,
-                Jobordmernm = l.Item != null ? l.Item.ItemName : null,
-                // PACK用: ordertable.qty があればそれ、なければ salesorderline.quantity
-                Jobordqun = l.OrderTable != null ? l.OrderTable.Qty : l.Quantity,
-                Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null,
-                Addinfo01Item = l.Item != null && l.Item.AdditionalInformation != null ? l.Item.AdditionalInformation.Addinfo01 : null,
-                // GRAM用: salesorderline.quantity / salesorderlineaddinfo.addinfo02
-                Quantity = l.Quantity
-            })
             .ToListAsync(ct);
 
-        return list;
+        return linesBento.Select(l => new JobordItemDto
+        {
+            Prkey = l.SalesOrderLineId,
+            Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
+            Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
+            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
+            ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+            Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
+            Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
+            Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
+            Itemcd = l.Item != null ? l.Item.ItemCd : null,
+            Jobordmernm = l.Item != null ? l.Item.ItemName : null,
+            Jobordqun = l.OrderTable != null ? l.OrderTable.Qty : l.Quantity,
+            Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null,
+            Addinfo01Item = l.Item != null && l.Item.AdditionalInformation != null ? l.Item.AdditionalInformation.Addinfo01 : null,
+            Quantity = l.Quantity
+        }).ToList();
     }
 
     /// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索し、喫食日・喫食時間・品目でグループ化して返す。</summary>
@@ -202,15 +238,16 @@ public class SearchService
         return grouped;
     }
 
-    /// <summary>salesorderlineid で受注明細を取得（全リレーション付き）。Bom は parentitemcd で別取得。</summary>
+    /// <summary>salesorderlineid で受注明細を取得（全リレーション付き）。Bom は parentitemcode で別取得。</summary>
     public async Task<List<BaggingDetailRow>> SearchDetailByPrkeysAsync(IReadOnlyList<long> prkeys, CancellationToken ct = default)
     {
         if (prkeys == null || prkeys.Count == 0)
             return new List<BaggingDetailRow>();
 
+        var idSet = prkeys.ToHashSet();
         var lines = await _db.SalesOrderLines
             .AsNoTracking()
-            .Where(l => prkeys.Contains(l.SalesOrderLineId))
+            .Where(l => idSet.Contains(l.SalesOrderLineId))
             .Include(l => l.SalesOrder!)
                 .ThenInclude(so => so!.Customer)
             .Include(l => l.SalesOrder!)
@@ -239,6 +276,8 @@ public class SearchService
                 .Where(b => b.ParentItemCd == itemCd)
                 .Include(b => b.ChildItem)
                     .ThenInclude(c => c!.Unit0)
+                .Include(b => b.ChildItem)
+                    .ThenInclude(c => c!.AdditionalInformation)
                 .ToListAsync(ct);
             var list = boms.Select(b => (b, b.ChildItem, b.ChildItem?.Unit0)).ToList();
             bomsByParent[itemCd] = list;
@@ -252,12 +291,14 @@ public class SearchService
             var so = l.SalesOrder;
             var cust = so?.Customer;
             var loc = so?.CustomerDeliveryLocation;
-            var divisor = GetDivisor(addInfo);
+            var divisor = BaggingDivisorResolver.ResolveFromAddInfo(addInfo);
             var car0 = addInfo?.Car0 ?? 1m;
 
             var seasoningBoms = new List<SeasoningBomRow>();
+            var bomListResolved = new List<(Bom b, Item? child, Unit? unit)>();
             if (item != null && bomsByParent.TryGetValue(item.ItemCd ?? "", out var bomList))
             {
+                bomListResolved = bomList;
                 foreach (var (b, child, unit) in bomList)
                 {
                     seasoningBoms.Add(new SeasoningBomRow
@@ -280,12 +321,13 @@ public class SearchService
                 Prddt = l.ProductDate?.ToString("yyyyMMdd"),
                 Delvedt = l.PlannedDeliveryDate?.ToString("yyyyMMdd"),
                 Shptm = l.Addinfo?.Addinfo01,
+                ShptmName = l.Addinfo?.Addinfo01Name,
                 Cuscd = cust?.CustomerCode,
                 Shpctrcd = loc?.LocationCode,
                 Itemcd = item?.ItemCd,
                 Jobordqun = l.Quantity,
                 Jobordmernm = item?.ItemName,
-                Jobordno = so?.SalesOrderNo.ToString(),
+                Jobordno = so?.SalesOrderNo,
                 ItemId = item?.ItemId,
                 Shpctrnm = loc?.LocationName ?? loc?.LocationCode ?? "未指定",
                 Divisor = divisor,
@@ -294,15 +336,7 @@ public class SearchService
                 Item = EntityToDtoMapper.ToItemDetailDto(item, addInfo, item?.Unit0, routs),
                 Shpctr = EntityToDtoMapper.ToShpctrDetailDto(loc, cust),
                 Cusmcd = EntityToDtoMapper.ToCusmcdDetailDto(l.CustomerItem, l.CustomerItem?.Customer),
-                Mboms = seasoningBoms.Select(s => new MbomDetailDto
-                {
-                    Prkey = 0,
-                    Pitemcd = item?.ItemCd,
-                    Citemcd = s.ChildItemCd ?? "",
-                    Amu = s.Amu,
-                    Otp = s.Otp,
-                    ChildItem = null
-                }).ToList()
+                Mboms = bomListResolved.Select(t => EntityToDtoMapper.ToMbomDetailDto(t.b, t.child, t.unit)).ToList()
             });
         }
 
@@ -373,12 +407,4 @@ public class SearchService
         return null;
     }
 
-    private static decimal GetDivisor(ItemAdditionalInformation? addInfo)
-    {
-        if (addInfo != null && !string.IsNullOrEmpty(addInfo.Std) && decimal.TryParse(addInfo.Std, out var std) && std > 0)
-            return std;
-        if (addInfo?.Car0 != null && addInfo.Car0 > 0)
-            return addInfo.Car0.Value;
-        return 1m;
-    }
 }
