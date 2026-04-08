@@ -76,24 +76,8 @@ export async function getBaggingInput(prddt, itemcd, jobordPrkeys) {
 }
 
 /**
- * 袋詰投入量の登録
+ * 袋詰投入量の登録（jobord_prkeys 付きで craftlineaxother.baggedquantity へ保存）
  */
-/**
- * POST /api/bagging/input/import — body は BaggingInputSaveRequestDto（save と同形）
- */
-export async function importBaggingInput(body) {
-    const response = await fetch(`${API_BASE_URL}/bagging/input/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    if (!response.ok) {
-        const b = await response.json().catch(() => ({}));
-        throw new Error(b.detail || `取込エラー: ${response.status}`);
-    }
-    return await response.json();
-}
-
 export async function saveBaggingInput(prddt, itemcd, payload, jobordPrkeys) {
     const response = await fetch(`${API_BASE_URL}/bagging/input`, {
         method: 'PUT',

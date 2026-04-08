@@ -278,9 +278,6 @@ public class SearchService
                     .ThenInclude(c => c!.Unit0)
                 .Include(b => b.ChildItem)
                     .ThenInclude(c => c!.AdditionalInformation)
-                .Include(b => b.ChildItem)
-                    .ThenInclude(c => c!.WorkCenterMappings!)
-                    .ThenInclude(m => m.Workcenter)
                 .ToListAsync(ct);
             var list = boms.Select(b => (b, b.ChildItem, b.ChildItem?.Unit0)).ToList();
             bomsByParent[itemCd] = list;

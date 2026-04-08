@@ -5,7 +5,6 @@
 import {
     getBaggingInput,
     saveBaggingInput,
-    importBaggingInput,
     fetchBaggingRequiredQuantities,
     calculateBagging
 } from './api.js';
@@ -216,37 +215,6 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
         renderLineInputs();
     } catch (e) {
         alert('必要量セットに失敗しました: ' + e.message);
-    }
-});
-
-document.getElementById('baggingRegImportBtn')?.addEventListener('click', async () => {
-    if (!activeGroup) return;
-    const raw = window.prompt(
-        'BaggingInputSaveRequestDto 形式の JSON（prddt / itemcd / jobord_prkeys / payload）を貼り付け。現在の画面の製造日・品目・選択行で上書きします。'
-    );
-    if (raw == null || !String(raw).trim()) return;
-    let body;
-    try {
-        body = JSON.parse(String(raw).trim());
-    } catch (e) {
-        alert('JSON の解析に失敗しました: ' + e.message);
-        return;
-    }
-    const prodEl = document.getElementById('productionDate');
-    const prddt = prddtForApi(prodEl?.value) || activeGroup.prddt;
-    body.prddt = prddt;
-    body.itemcd = activeGroup.itemcd;
-    body.jobord_prkeys = activeGroup.line_prkeys;
-    if (!body.payload?.lines?.length) {
-        alert('payload.lines が必要です。');
-        return;
-    }
-    try {
-        await importBaggingInput(body);
-        alert('取込みました。');
-        await loadRegistrationUi(activeGroup);
-    } catch (e) {
-        alert('取込に失敗しました: ' + e.message);
     }
 });
 

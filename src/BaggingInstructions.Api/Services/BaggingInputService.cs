@@ -43,8 +43,6 @@ public class BaggingInputService
         if (jobordPrkeys is { Count: > 0 })
         {
             var (payload, updatedAt) = await LoadFromBaggedQuantityAsync(date.Value, itemTrim, ct);
-            if (payload != null)
-                await MergeParentYieldFromRegistrationAsync(date.Value, itemTrim, payload, ct);
             return new BaggingInputGetResponseDto
             {
                 Prddt = prddt,
@@ -108,20 +106,28 @@ public class BaggingInputService
         if (rows.Count == 0)
             return (null, null);
 
+        var marker = rows.FirstOrDefault(r => BaggedQuantityParentYieldMarker.IsMarkerRow(r.ChildItemCode));
+        var lineRows = rows.Where(r => !BaggedQuantityParentYieldMarker.IsMarkerRow(r.ChildItemCode)).ToList();
+
         var payload = new BaggingInputPayloadDto
         {
-            Lines = rows.Select(r => new BaggingInputLineDto
+            Lines = lineRows.Select(r => new BaggingInputLineDto
             {
                 Citemcd = r.ChildItemCode,
                 InputOrder = r.InputOrder,
                 SpecQty = r.StandardQuantity,
                 TotalQty = r.TotalQuantity
-            }).ToList()
+            }).ToList(),
+            ParentYieldQuantity = marker?.TotalQuantity
         };
         var updatedAt = rows.Max(r => r.UpdatedAt);
         return (payload, updatedAt);
     }
 
+    /// <summary>
+    /// 袋詰 UI からは <c>jobord_prkeys</c> 付きで呼ばれ、craftlineaxother の <see cref="BaggedQuantity"/> に保存する。
+    /// キーなしは AppDb の JSON のみ（別用途）。
+    /// </summary>
     public async Task SaveAsync(BaggingInputSaveRequestDto request, CancellationToken ct = default)
     {
         var date = ParsePrddt(request.Prddt)
@@ -132,18 +138,9 @@ public class BaggingInputService
         var itemCodeTrim = request.Itemcd.Trim();
         var keys = request.JobordPrkeys?.Where(k => k != 0).Distinct().ToList();
 
-        var bomChildCodes = await _db.Boms.AsNoTracking()
-            .Where(b => b.ParentItemCd == itemCodeTrim)
-            .Select(b => b.ChildItemCd ?? "")
-            .Where(c => c != "")
-            .Distinct()
-            .ToListAsync(ct);
-        BaggingInputPayloadValidator.ValidateLinesAgainstBom(bomChildCodes, request.Payload);
-
         if (keys is { Count: > 0 })
         {
             await SaveToBaggedQuantityAsync(date, itemCodeTrim, request.Payload, ct);
-            await UpsertParentYieldSidecarAsync(date, itemCodeTrim, request.Payload?.ParentYieldQuantity, ct);
             return;
         }
 
@@ -210,63 +207,21 @@ public class BaggingInputService
             });
         }
 
-        await _otherDb.SaveChangesAsync(ct);
-    }
-
-    private async Task MergeParentYieldFromRegistrationAsync(
-        DateOnly date,
-        string itemTrim,
-        BaggingInputPayloadDto payload,
-        CancellationToken ct)
-    {
-        var row = await _db.BaggingInputRegistrations.AsNoTracking()
-            .FirstOrDefaultAsync(r => r.ProductDate == date && r.ItemCode == itemTrim, ct);
-        if (row == null) return;
-        try
+        if (payload?.ParentYieldQuantity is decimal py && py > 0)
         {
-            var side = JsonSerializer.Deserialize<BaggingInputPayloadDto>(row.Payload, JsonOptions);
-            if (side?.ParentYieldQuantity.HasValue == true)
-                payload.ParentYieldQuantity = side.ParentYieldQuantity;
-        }
-        catch
-        {
-            // ignore malformed sidecar
-        }
-    }
-
-    /// <summary>jobord 指定保存時、出来高は app 側 JSON テーブルにのみ保持（行は craftlineaxother.baggedquantity）。</summary>
-    private async Task UpsertParentYieldSidecarAsync(
-        DateOnly date,
-        string itemCode,
-        decimal? parentYield,
-        CancellationToken ct)
-    {
-        var sidecar = new BaggingInputPayloadDto
-        {
-            ParentYieldQuantity = parentYield,
-            Lines = new List<BaggingInputLineDto>()
-        };
-        var json = JsonSerializer.Serialize(sidecar, JsonOptions);
-        var now = DateTime.UtcNow;
-        var existing = await _db.BaggingInputRegistrations
-            .FirstOrDefaultAsync(r => r.ProductDate == date && r.ItemCode == itemCode, ct);
-        if (existing == null)
-        {
-            _db.BaggingInputRegistrations.Add(new BaggingInputRegistration
+            _otherDb.BaggedQuantities.Add(new BaggedQuantity
             {
-                ProductDate = date,
-                ItemCode = itemCode,
-                Payload = json,
+                ProductDate = productDate,
+                ParentItemCode = parentItemCode,
+                ChildItemCode = BaggedQuantityParentYieldMarker.ChildItemCode,
+                InputOrder = 0,
+                StandardQuantity = null,
+                TotalQuantity = py,
                 UpdatedAt = now
             });
         }
-        else
-        {
-            existing.Payload = json;
-            existing.UpdatedAt = now;
-        }
 
-        await _db.SaveChangesAsync(ct);
+        await _otherDb.SaveChangesAsync(ct);
     }
 
     public async Task<BaggingInputPayloadDto?> TryGetPayloadAsync(
@@ -281,11 +236,8 @@ public class BaggingInputService
         if (jobordPrkeys is { Count: > 0 })
         {
             var (payload, _) = await LoadFromBaggedQuantityAsync(date.Value, itemcd.Trim(), ct);
-            if (payload?.Lines is { Count: > 0 })
-            {
-                await MergeParentYieldFromRegistrationAsync(date.Value, itemcd.Trim(), payload, ct);
+            if (payload != null && (payload.Lines.Count > 0 || payload.ParentYieldQuantity.HasValue))
                 return payload;
-            }
         }
 
         var row = await _db.BaggingInputRegistrations.AsNoTracking()

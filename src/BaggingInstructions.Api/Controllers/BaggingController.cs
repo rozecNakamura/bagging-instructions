@@ -31,24 +31,11 @@ public class BaggingController : ControllerBase
         return r == null ? BadRequest(new { detail = "製造日の形式が不正です。" }) : Ok(r);
     }
 
-    /// <summary>外部（中間品完成量等）から投入行を取り込み、<see cref="SaveInput"/> と同様に保存する。</summary>
-    [HttpPost("input/import")]
-    public async Task<IActionResult> ImportInput([FromBody] BaggingInputSaveRequestDto body, CancellationToken ct)
-    {
-        if (body.Payload?.Lines == null || body.Payload.Lines.Count == 0)
-            return BadRequest(new { detail = "payload.lines に1行以上指定してください。" });
-        try
-        {
-            await _baggingInputService.SaveAsync(body, ct);
-            return Ok(new { ok = true, imported_lines = body.Payload.Lines.Count });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { detail = ex.Message });
-        }
-    }
-
-    /// <summary>投入量を登録（UPSERT）。</summary>
+    /// <summary>
+    /// 投入量を登録（UPSERT）。
+    /// <c>jobord_prkeys</c> が1件以上ある場合は craftlineaxother の <c>baggedquantity</c> へ保存（袋詰画面の通常動作）。
+    /// キーなしの場合のみ AppDb の JSON 登録へ保存する。
+    /// </summary>
     [HttpPut("input")]
     public async Task<IActionResult> SaveInput([FromBody] BaggingInputSaveRequestDto body, CancellationToken ct)
     {
@@ -75,7 +62,7 @@ public class BaggingController : ControllerBase
         return Ok(r);
     }
 
-    /// <summary>袋詰指示書またはラベルデータを計算。ラベルは殺菌温度・時間（steritime 秒）を含む。</summary>
+    /// <summary>袋詰指示書またはラベルデータを計算。ラベルは殺菌温度（strtemp）を含む。</summary>
     [HttpPost("calculate")]
     public async Task<IActionResult> Calculate(
         [FromBody] CalculateRequestDto request,
@@ -98,11 +85,10 @@ public class BaggingController : ControllerBase
             {
                 var fillQty = BaggingDivisorResolver.ResolveFromItemDetail(item.Item);
                 var st = item.Item?.Strtemp ?? item.Item?.Steritemprange;
-                var steri = item.Item?.Steritime;
                 labelItems.AddRange(LabelGeneratorService.GenerateStandardLabelsFromDto(
-                    item.Itemcd, item.Itemnm, st, steri, item.Item?.Kikunip, item.Delvedt, item.Shptm, item.StandardBags, fillQty));
+                    item.Itemcd, item.Itemnm, st, item.Item?.Kikunip, item.Delvedt, item.Shptm, item.StandardBags, fillQty));
                 labelItems.AddRange(LabelGeneratorService.GenerateIrregularLabelsFromDto(
-                    item.Itemcd, item.Itemnm, st, steri, item.Delvedt, item.Shptm, item.Shpctrnm, item.IrregularQuantity));
+                    item.Itemcd, item.Itemnm, st, item.Delvedt, item.Shptm, item.Shpctrnm, item.IrregularQuantity));
             }
             return Ok(new LabelResponseDto { Items = labelItems });
         }

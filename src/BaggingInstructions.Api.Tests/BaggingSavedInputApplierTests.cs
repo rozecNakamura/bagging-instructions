@@ -138,6 +138,7 @@ public class BaggingSavedInputApplierTests
         Assert.Equal(5m, items[0].IrregularQuantity);
         Assert.Equal(3, items[1].StandardBags);
         Assert.Equal(5m, items[1].IrregularQuantity);
-        Assert.Equal(40m, items[0].SeasoningAmounts[0].CalculatedAmount + items[1].SeasoningAmounts[0].CalculatedAmount);
+        Assert.Equal(30m, items[0].SeasoningAmounts[0].CalculatedAmount);
+        Assert.Equal(70m, items[1].SeasoningAmounts[0].CalculatedAmount);
     }
 }

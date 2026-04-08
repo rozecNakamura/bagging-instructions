@@ -25,10 +25,6 @@ public class LabelItemDto
     [JsonPropertyName("strtemp")]
     public string? Strtemp { get; set; }
 
-    /// <summary>殺菌時間（秒）。ラベル印刷で分表示に換算可能。</summary>
-    [JsonPropertyName("steritime")]
-    public decimal? Steritime { get; set; }
-
     [JsonPropertyName("kikunip")]
     public decimal? Kikunip { get; set; }
 

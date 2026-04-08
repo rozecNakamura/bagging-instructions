@@ -145,13 +145,7 @@ public static partial class EntityToDtoMapper
             Memo = b.Memo,
             Stadt = b.StartDate?.ToString(),
             Enddt = b.EndDate?.ToString(),
-            ChildItem = ToItemDetailDto(
-                childItem,
-                childItem?.AdditionalInformation,
-                childUnit,
-                childItem?.WorkCenterMappings is { Count: > 0 } wm
-                    ? wm.Select(m => (m, m.Workcenter)).ToList()
-                    : null)
+            ChildItem = ToItemDetailDto(childItem, childItem?.AdditionalInformation, childUnit, null)
         };
     }
 

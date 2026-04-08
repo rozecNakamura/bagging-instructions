@@ -4,22 +4,8 @@ from app.models.item import Item
 from app.models.mbom import Mbom
 
 
-def round_up_quantity_with_seasoning(
-    jobordqun: float, item: Item | None, mboms: List[Mbom] = None
-) -> tuple[float, float, List[Dict[str, Any]]]:
-    """
-    個数単位の品目で、受注量を親品目の規格で割った余りがある場合は切り上げ、
-    子部品の単位に応じて切り上げ処理または調味液計算を実施
-    """
-    mboms = mboms or []
-
-    # mboms が空の場合はスキップ
-    if not mboms:
-        return (jobordqun, 0.0, [])
-
-    # ============================================================
-    # 1. 親品目の規格（std1→std2→std3、互換で std、なければ CAR）を取得
-    # ============================================================
+def resolve_parent_divisor(item: Item | None) -> float:
+    """親の規格除数（std1→std3→std→car、なければ 1）。C# BaggingDivisorResolver と同系。"""
     divisor = None
 
     if item is not None:
@@ -35,8 +21,7 @@ def round_up_quantity_with_seasoning(
             except (ValueError, TypeError):
                 pass
 
-    # 規格文字列が使えない場合、CARを試行
-    if divisor is None:
+    if divisor is None and item is not None:
         if hasattr(item, "car") and item.car:
             try:
                 car = float(item.car)
@@ -45,9 +30,28 @@ def round_up_quantity_with_seasoning(
             except (ValueError, TypeError):
                 pass
 
-    # どちらも使えない場合はデフォルト値1を使用
     if divisor is None:
         divisor = 1.0
+    return float(divisor)
+
+
+def round_up_quantity_with_seasoning(
+    jobordqun: float, item: Item | None, mboms: List[Mbom] = None
+) -> tuple[float, float, List[Dict[str, Any]]]:
+    """
+    個数単位の品目で、受注量を親品目の規格で割った余りがある場合は切り上げ、
+    子部品の単位に応じて切り上げ処理または調味液計算を実施
+    """
+    mboms = mboms or []
+
+    # mboms が空の場合はスキップ
+    if not mboms:
+        return (jobordqun, 0.0, [])
+
+    # ============================================================
+    # 1. 親品目の規格（std1→std2→std3、互換で std、なければ CAR）
+    # ============================================================
+    divisor = resolve_parent_divisor(item)
 
     # ============================================================
     # 2. 受注数の計算: JOBORDQUN / (STD or CAR) = 整数部分 + 余り

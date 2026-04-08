@@ -104,8 +104,6 @@ export interface LabelItem {
   itemnm: string;
   expiry_date?: string | null;
   strtemp?: string | null;
-  /** 殺菌時間（秒） */
-  steritime?: number | null;
   kikunip?: number | null;
   standard_fill_qty?: number | null;
   count?: number;

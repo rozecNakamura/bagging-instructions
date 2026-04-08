@@ -1,9 +1,12 @@
 import { useState, useCallback } from 'react';
 import { SearchForm } from './components/SearchForm';
 import { BaggingGroupTable } from './components/BaggingGroupTable';
-import { BaggingRegistrationPanel } from './components/BaggingRegistrationPanel';
 import { searchBaggingGroups } from './api/client';
 import type { BaggingSearchGroup, BaggingSearchGroupResponse } from './types/api';
+
+/** Static bagging UI (投入量登録・印刷). Vite dev has no /static proxy — default API origin. */
+const staticBaggingUrl =
+  import.meta.env.VITE_STATIC_BAGGING_URL ?? 'http://localhost:8000/static/index.html';
 
 export default function App() {
   const [productionDate, setProductionDate] = useState('');
@@ -58,6 +61,14 @@ export default function App() {
 
       {searchError && <p className="error-message">{searchError}</p>}
 
+      <p className="no-results" style={{ marginTop: 12 }}>
+        袋詰の<strong>投入量登録・印刷</strong>は静的 UI で行います。C# API を起動したうえで{' '}
+        <a href={staticBaggingUrl} target="_blank" rel="noopener noreferrer">
+          袋詰画面を開く
+        </a>
+        （別タブ）。開発時は URL が異なる場合は環境変数 <code>VITE_STATIC_BAGGING_URL</code> を設定してください。
+      </p>
+
       {groups.length > 0 && (
         <>
           <BaggingGroupTable
@@ -67,7 +78,11 @@ export default function App() {
             onSelectAll={selectFirst}
             onDeselectAll={deselectAll}
           />
-          <BaggingRegistrationPanel productionDate={productionDate} group={selectedGroup} />
+          {selectedGroup != null && (
+            <p className="results-section" style={{ marginTop: 12 }}>
+              選択中: {selectedGroup.itemcd}（{selectedGroup.prddt}）— 登録・印刷は上記リンクの静的画面で行ってください。
+            </p>
+          )}
         </>
       )}
 

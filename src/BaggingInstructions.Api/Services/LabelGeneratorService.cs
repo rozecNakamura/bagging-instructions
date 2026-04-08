@@ -61,7 +61,6 @@ public static class LabelGeneratorService
         string itemcd,
         string itemnm,
         string? strtemp,
-        decimal? steritime,
         decimal? kikunip,
         string delvedt,
         string? shptm,
@@ -80,7 +79,6 @@ public static class LabelGeneratorService
                 Itemnm = itemnm,
                 ExpiryDate = CalculateExpiryDate(delvedt),
                 Strtemp = strtemp,
-                Steritime = steritime,
                 Kikunip = kikunip,
                 StandardFillQty = standardFillQty,
                 Count = standardBags
@@ -93,7 +91,6 @@ public static class LabelGeneratorService
         string itemcd,
         string itemnm,
         string? strtemp,
-        decimal? steritime,
         string delvedt,
         string? shptm,
         string shpctrnm,
@@ -111,7 +108,6 @@ public static class LabelGeneratorService
                 Itemnm = itemnm,
                 ExpiryDate = CalculateExpiryDate(delvedt),
                 Strtemp = strtemp,
-                Steritime = steritime,
                 Shpctrnm = shpctrnm,
                 IrregularQuantity = irregularQuantity,
                 Count = 1

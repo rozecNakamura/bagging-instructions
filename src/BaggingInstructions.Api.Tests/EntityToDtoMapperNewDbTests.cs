@@ -39,35 +39,4 @@ public class EntityToDtoMapperNewDbTests
         Assert.Null(dto.ChildItem.Std3);
         Assert.Equal(5m, dto.ChildItem.Kikunip);
     }
-
-    [Fact]
-    public void ToMbomDetailDto_maps_child_item_work_center_routs()
-    {
-        var wc = new Workcenter { WorkcenterId = 9, WorkcenterCode = "WC1", WorkcenterName = "Line A" };
-        var child = new Item
-        {
-            ItemCd = "CHILD02",
-            ItemName = "Child",
-            Unit0 = new Unit { UnitCode = "U", UnitName = "ｇ" },
-            WorkCenterMappings = new List<ItemWorkCenterMapping>
-            {
-                new() { ItemCd = "CHILD02", WorkcenterCode = "WC1", Workcenter = wc }
-            }
-        };
-        var bom = new Bom
-        {
-            BomId = 2,
-            ParentItemCd = "PARENT",
-            ChildItemCd = "CHILD02",
-            InputQty = 1,
-            OutputQty = 1
-        };
-
-        var dto = EntityToDtoMapper.ToMbomDetailDto(bom, child, child.Unit0);
-
-        Assert.NotNull(dto.ChildItem?.Routs);
-        Assert.NotEmpty(dto.ChildItem!.Routs);
-        Assert.Equal("WC1", dto.ChildItem.Routs[0].Workc?.Wccd);
-        Assert.Equal("Line A", dto.ChildItem.Routs[0].Workc?.Wcnm);
-    }
 }

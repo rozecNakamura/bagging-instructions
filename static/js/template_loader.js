@@ -194,27 +194,13 @@ export function injectData(templateHtml, data) {
     return wrapper;
 }
 /**
- * 殺菌温度を整形（例：95℃ 45分）
+ * 殺菌温度（袋詰仕様：温度のみ表示）
  * @param {string} steritemprange - 殺菌温度範囲（例：95℃）
- * @param {number} steritime - 殺菌時間（秒数）
- * @returns {string} 整形された殺菌温度文字列
+ * @returns {string}
  */
-function formatSterilizationTemp(steritemprange, steritime) {
-    if (!steritemprange && !steritime) {
-        return '';
-    }
-    
-    let result = steritemprange || '';
-    
-    if (steritime) {
-        // 秒数を分に変換
-        const minutes = Math.round(steritime / 60);
-        if (minutes > 0) {
-            result += (result ? ' ' : '') + `${minutes}分`;
-        }
-    }
-    
-    return result;
+function formatSterilizationTemp(steritemprange) {
+    if (!steritemprange) return '';
+    return String(steritemprange);
 }
 
 /**
@@ -275,7 +261,7 @@ function injectHeaderData(container, data) {
             if (!isNaN(car) && car > 0) return String(item.car);
             return '1';
         })(),
-        'sterilizationTemp': formatSterilizationTemp(item?.steritemprange, item?.steritime),
+        'sterilizationTemp': formatSterilizationTemp(item?.steritemprange),
         'mealCount': (() => {
             const ins = sourceData.quantity_for_instruction_total ?? sourceData.quantity_for_instruction;
             const pln = sourceData.quantity_for_inventory_total ?? sourceData.quantity_for_inventory ?? sourceData.planned_quantity;
@@ -790,7 +776,6 @@ export function prepareLabelData(apiResponse) {
                         eating_time: it.shptm || '',
                         expiry_date: it.expiry_date || '',
                         strtemp: it.strtemp || '',
-                        steritime: it.steritime != null ? Number(it.steritime) : null,
                         standard_fill_qty: fill,
                         facility_name: it.shpctrnm || ''
                     });
@@ -806,7 +791,6 @@ export function prepareLabelData(apiResponse) {
                         eating_time: it.shptm || '',
                         expiry_date: it.expiry_date || '',
                         strtemp: it.strtemp || '',
-                        steritime: it.steritime != null ? Number(it.steritime) : null,
                         irregular_quantity: iq,
                         facility_name: it.shpctrnm || ''
                     });
@@ -854,13 +838,6 @@ export function prepareLabelData(apiResponse) {
     return { labels };
 }
 
-/** @param {number|null|undefined} seconds */
-function formatSteriMinutesFromSeconds(seconds) {
-    if (seconds == null || Number.isNaN(seconds) || seconds <= 0) return '';
-    const minutes = Math.round(seconds / 60);
-    return minutes > 0 ? `${minutes}分` : '';
-}
-
 function escapeLabelHtml(s) {
     if (s == null || s === '') return '';
     return String(s)
@@ -906,7 +883,6 @@ export function injectLabelData(templateHtml, data) {
                       ? formatNumber(label.standard_quantity)
                       : '-';
             const st = escapeLabelHtml(label.strtemp);
-            const stMin = escapeLabelHtml(formatSteriMinutesFromSeconds(label.steritime));
             labelDiv.innerHTML = `
                 <div class="label-header">規格品</div>
                 <div class="label-row">
@@ -926,17 +902,12 @@ export function injectLabelData(templateHtml, data) {
                     <span class="label-value">${st || '-'}</span>
                 </div>
                 <div class="label-row">
-                    <span class="label-title">殺菌時間:</span>
-                    <span class="label-value">${stMin || '-'}</span>
-                </div>
-                <div class="label-row">
                     <span class="label-title">規格量:</span>
                     <span class="label-value">${specQty}</span>
                 </div>
             `;
         } else {
             const st = escapeLabelHtml(label.strtemp);
-            const stMin = escapeLabelHtml(formatSteriMinutesFromSeconds(label.steritime));
             labelDiv.innerHTML = `
                 <div class="label-header">端数</div>
                 <div class="label-row">
@@ -954,10 +925,6 @@ export function injectLabelData(templateHtml, data) {
                 <div class="label-row">
                     <span class="label-title">殺菌温度:</span>
                     <span class="label-value">${st || '-'}</span>
-                </div>
-                <div class="label-row">
-                    <span class="label-title">殺菌時間:</span>
-                    <span class="label-value">${stMin || '-'}</span>
                 </div>
                 <div class="label-row">
                     <span class="label-title">施設:</span>
