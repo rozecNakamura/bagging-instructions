@@ -305,14 +305,14 @@ public class ItemDetailDto
     [JsonPropertyName("itemnm")]
     public string Itemnm { get; set; } = "";
 
-    [JsonPropertyName("std1")]
-    public string? Std1 { get; set; }
+    [JsonPropertyName("car1")]
+    public decimal? Car1 { get; set; }
 
-    [JsonPropertyName("std2")]
-    public string? Std2 { get; set; }
+    [JsonPropertyName("car2")]
+    public decimal? Car2 { get; set; }
 
-    [JsonPropertyName("std3")]
-    public string? Std3 { get; set; }
+    [JsonPropertyName("car3")]
+    public decimal? Car3 { get; set; }
 
     [JsonPropertyName("uni0")]
     public string? Uni0 { get; set; }

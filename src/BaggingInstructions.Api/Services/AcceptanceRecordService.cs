@@ -10,7 +10,7 @@ using BaggingInstructions.Api.Entities;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。数量は ordertable.qty のみ（salesorderline.quantity は使わない）。ordertype=MO の行のみ。
+/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。数量は salesorderline.quantity。ordertable は使用しない。
 /// </summary>
 public sealed class AcceptanceRecordService
 {
@@ -53,7 +53,7 @@ public sealed class AcceptanceRecordService
     }
 
     /// <summary>
-    /// 納品日必須。出荷日・店舗（納入場所）は任意。ordertype=MO の ordertable のみ。1 行 = 1 salesorderline（MO 行が複数のときは ordertableid 最小を採用）。
+    /// 納品日必須。出荷日・店舗（納入場所）は任意。1 行 = 1 salesorderline。ordertable は参照しない。
     /// storePairs は「customerCode + TAB + locationCode」。空のときは店舗で絞り込まない。
     /// </summary>
     public async Task<List<AcceptanceRecordSearchRowDto>> SearchAsync(
@@ -118,31 +118,25 @@ public sealed class AcceptanceRecordService
         {
             await using var cmd = new NpgsqlCommand(
                 """
-                SELECT DISTINCT ON (sol.salesorderlineid)
+                SELECT
                   sol.salesorderlineid,
-                  TO_CHAR(
-                    COALESCE(ot.needdate, sol.planneddeliverydate),
-                    'YYYYMMDD'
-                  ),
+                  TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD'),
                   COALESCE(ds.slotname, ds.slotcode, ''),
                   COALESCE(i.itemcode, ''),
                   COALESCE(i.itemname, ''),
                   COALESCE(u0.unitname, ''),
-                  ot.qty,
+                  sol.quantity,
                   COALESCE(a.addinfo02, '')
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
                   ON cdl.locationcode IS NOT DISTINCT FROM so.customerdeliverylocationcode
                   AND cdl.customercode IS NOT DISTINCT FROM so.customercode
-                INNER JOIN ordertable ot
-                  ON ot.salesorderlineid = sol.salesorderlineid
-                  AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                 INNER JOIN item i ON i.itemcode = sol.itemcode
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
-                WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = @deliveryDate
+                WHERE sol.planneddeliverydate = @deliveryDate
                   AND (@shipStr = '' OR TO_CHAR(sol.plannedshipdate, 'YYYYMMDD') = @shipStr)
                   AND (
                     NOT @filterByStore
@@ -153,7 +147,7 @@ public sealed class AcceptanceRecordService
                         AND cdl.locationcode IS NOT DISTINCT FROM t.lc
                     )
                   )
-                ORDER BY sol.salesorderlineid, ot.ordertableid
+                ORDER BY sol.salesorderlineid
                 """, conn);
 
             cmd.Parameters.AddWithValue("deliveryDate", deliveryDate);
@@ -195,7 +189,7 @@ public sealed class AcceptanceRecordService
         }
     }
 
-    /// <summary>PDF 用。lineIds は salesorderlineid。ordertable は MO 行の先頭（ordertableid 昇順）を使用。</summary>
+    /// <summary>PDF 用。lineIds は salesorderlineid。ordertable は参照しない。</summary>
     public async Task<List<AcceptanceRecordPdfLineModel>> BuildPdfLineModelsAsync(
         IReadOnlyList<long> lineIds,
         CancellationToken ct = default)
@@ -213,22 +207,14 @@ public sealed class AcceptanceRecordService
                 """
                 SELECT
                   sol.salesorderlineid,
-                  COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date,
+                  sol.planneddeliverydate AS need_date,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
                   COALESCE(i.itemcode, '') AS itemcode,
                   COALESCE(i.itemname, '') AS itemname,
                   COALESCE(u0.unitname, '') AS unitname,
-                  ot.qty AS mo_qty,
+                  sol.quantity AS line_qty,
                   COALESCE(a.addinfo02, '') AS addinfo02
                 FROM salesorderline sol
-                LEFT JOIN LATERAL (
-                  SELECT ot2.qty, ot2.needdate
-                  FROM ordertable ot2
-                  WHERE ot2.salesorderlineid = sol.salesorderlineid
-                    AND UPPER(TRIM(COALESCE(ot2.ordertype, ''))) = 'MO'
-                  ORDER BY ot2.ordertableid
-                  LIMIT 1
-                ) ot ON true
                 INNER JOIN item i ON i.itemcode = sol.itemcode
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
@@ -249,7 +235,7 @@ public sealed class AcceptanceRecordService
                 var needDate = ReadDateNullable(reader, 1);
                 var itemCode = reader.GetString(3);
                 var itemName = reader.GetString(4);
-                var moQty = reader.GetDecimal(6);
+                var lineQty = reader.GetDecimal(6);
                 var addinfo02 = reader.IsDBNull(7) ? "" : reader.GetString(7);
 
                 var childText = string.IsNullOrEmpty(itemCode)
@@ -262,8 +248,8 @@ public sealed class AcceptanceRecordService
                     EatDateDisplay = needDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = reader.GetString(2),
                     ChildItemText = childText,
-                    MealCountDisplay = BentoPdfService.FormatMealCountDisplay(moQty, addinfo02),
-                    TotalQtyDisplay = moQty.ToString("0.###", CultureInfo.InvariantCulture),
+                    MealCountDisplay = BentoPdfService.FormatMealCountDisplay(lineQty, addinfo02),
+                    TotalQtyDisplay = lineQty.ToString("0.###", CultureInfo.InvariantCulture),
                     UnitName = reader.GetString(5)
                 });
             }
@@ -348,9 +334,9 @@ internal sealed class AcceptanceRecordSearchSqlRow
     public string? ItemCode { get; set; }
     public string? ItemName { get; set; }
     public string? UnitName { get; set; }
-    /// <summary>ordertable（MO 行）の qty。食数・総量の両方に使用。</summary>
+    /// <summary>salesorderline.quantity。食数・総量の両方に使用。</summary>
     public decimal LineQuantity { get; set; }
     public string? Addinfo02 { get; set; }
-    /// <summary>表示用総量。LineQuantity と同じ ordertable.qty。</summary>
+    /// <summary>表示用総量。LineQuantity と同じ salesorderline.quantity。</summary>
     public decimal TotalQty { get; set; }
 }

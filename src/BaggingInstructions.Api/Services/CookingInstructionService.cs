@@ -121,7 +121,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 
     /// <summary>
     /// PDF 行生成。ids は ordertableid。
-    /// 予定製造量: ordertable.qtyuni0 / qtyuni1..3（item.conversionvalue1..3 で単位0）優先、無ければ qty を単位0換算（ia.std1/std2/std3 / car0）。表示は qtyuni1＋手配単位または conversionvalue1 で手配表示。
+    /// 予定製造量: ordertable.qtyuni0 / qtyuni1..3（item.conversionvalue1..3 で単位0）優先、無ければ qty を単位0換算（ia.car1/car2/car3 / car0）。表示は qtyuni1＋手配単位または conversionvalue1 で手配表示。
     /// 子品目: 当該親の有効 BOM の子品目コード・名称のみ。
     /// 予定使用量: 上記単位0換算後の製造数 × BOM（input/output/yield）による子所要量。
     /// </summary>
@@ -154,9 +154,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 h.QtyUni1,
                 h.QtyUni2,
                 h.QtyUni3,
-                h.IaStd1,
-                h.IaStd2,
-                h.IaStd3,
+                h.IaCar1,
+                h.IaCar2,
+                h.IaCar3,
                 h.IaCar0,
                 h.ConversionValue1,
                 h.ConversionValue2,
@@ -280,9 +280,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(u0.unitname, '') AS parent_u0_name,
                   u1.unitname AS procurement_u_name,
-                  ia.std1 AS ia_std1,
-                  ia.std2 AS ia_std2,
-                  ia.std3 AS ia_std3,
+                  ia.car1 AS ia_car1,
+                  ia.car2 AS ia_car2,
+                  ia.car3 AS ia_car3,
                   ia.car0 AS ia_car0,
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
@@ -328,9 +328,9 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     ParentItemname = reader.GetString(7),
                     Unit0Name = reader.GetString(8),
                     ProcurementUnitName = reader.IsDBNull(9) ? null : reader.GetString(9),
-                    IaStd1 = reader.IsDBNull(10) ? null : reader.GetString(10),
-                    IaStd2 = reader.IsDBNull(11) ? null : reader.GetString(11),
-                    IaStd3 = reader.IsDBNull(12) ? null : reader.GetString(12),
+                    IaCar1 = ReadDecimalNullable(reader, 10),
+                    IaCar2 = ReadDecimalNullable(reader, 11),
+                    IaCar3 = ReadDecimalNullable(reader, 12),
                     IaCar0 = ReadDecimalNullable(reader, 13),
                     ConversionValue1 = ReadDecimalNullable(reader, 14),
                     ConversionValue2 = ReadDecimalNullable(reader, 15),
@@ -465,9 +465,9 @@ internal sealed class CookingInstructionLineHeaderRow
     public string ParentItemname { get; set; } = "";
     public string Unit0Name { get; set; } = "";
     public string? ProcurementUnitName { get; set; }
-    public string? IaStd1 { get; set; }
-    public string? IaStd2 { get; set; }
-    public string? IaStd3 { get; set; }
+    public decimal? IaCar1 { get; set; }
+    public decimal? IaCar2 { get; set; }
+    public decimal? IaCar3 { get; set; }
     public decimal? IaCar0 { get; set; }
     public decimal? ConversionValue1 { get; set; }
     public decimal? ConversionValue2 { get; set; }

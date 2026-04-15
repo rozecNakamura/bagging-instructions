@@ -112,9 +112,9 @@ ORDER BY slotcode
                   ot.qtyuni3,
                   COALESCE(u0.unitname, ''),
                   u1.unitname,
-                  ia.std1,
-                  ia.std2,
-                  ia.std3,
+                  ia.car1,
+                  ia.car2,
+                  ia.car3,
                   ia.car0,
                   i.conversionvalue1,
                   i.conversionvalue2,
@@ -165,9 +165,9 @@ ORDER BY slotcode
                 var qtyUni3 = ReadDecimalNullable(reader, 9);
                 var parentUnit0 = reader.GetString(10);
                 var procurementUnit = reader.IsDBNull(11) ? null : reader.GetString(11);
-                var iaStd1 = reader.IsDBNull(12) ? null : reader.GetString(12);
-                var iaStd2 = reader.IsDBNull(13) ? null : reader.GetString(13);
-                var iaStd3 = reader.IsDBNull(14) ? null : reader.GetString(14);
+                var iaCar1 = ReadDecimalNullable(reader, 12);
+                var iaCar2 = ReadDecimalNullable(reader, 13);
+                var iaCar3 = ReadDecimalNullable(reader, 14);
                 var iaCar0 = ReadDecimalNullable(reader, 15);
                 var cv1 = ReadDecimalNullable(reader, 16);
                 var cv2 = ReadDecimalNullable(reader, 17);
@@ -175,7 +175,7 @@ ORDER BY slotcode
 
                 var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
                     rawQty, qtyUni0, qtyUni1, qtyUni2, qtyUni3,
-                    iaStd1, iaStd2, iaStd3, iaCar0, cv1, cv2, cv3);
+                    iaCar1, iaCar2, iaCar3, iaCar0, cv1, cv2, cv3);
                 var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
                     qtyU0, qtyUni1, procurementUnit, parentUnit0, cv1);
                 var qtyStr = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
@@ -234,9 +234,9 @@ ORDER BY slotcode
                 h.QtyUni1,
                 h.QtyUni2,
                 h.QtyUni3,
-                h.IaStd1,
-                h.IaStd2,
-                h.IaStd3,
+                h.IaCar1,
+                h.IaCar2,
+                h.IaCar3,
                 h.IaCar0,
                 h.ConversionValue1,
                 h.ConversionValue2,
@@ -326,9 +326,9 @@ ORDER BY slotcode
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(u0.unitname, '') AS parent_unitname,
                   u1.unitname AS procurement_u_name,
-                  ia.std1 AS ia_std1,
-                  ia.std2 AS ia_std2,
-                  ia.std3 AS ia_std3,
+                  ia.car1 AS ia_car1,
+                  ia.car2 AS ia_car2,
+                  ia.car3 AS ia_car3,
                   ia.car0 AS ia_car0,
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
@@ -384,9 +384,9 @@ ORDER BY slotcode
                     ParentItemname = reader.GetString(7),
                     ParentUnitName = reader.GetString(8),
                     ProcurementUnitName = reader.IsDBNull(9) ? null : reader.GetString(9),
-                    IaStd1 = reader.IsDBNull(10) ? null : reader.GetString(10),
-                    IaStd2 = reader.IsDBNull(11) ? null : reader.GetString(11),
-                    IaStd3 = reader.IsDBNull(12) ? null : reader.GetString(12),
+                    IaCar1 = ReadDecimalNullable(reader, 10),
+                    IaCar2 = ReadDecimalNullable(reader, 11),
+                    IaCar3 = ReadDecimalNullable(reader, 12),
                     IaCar0 = ReadDecimalNullable(reader, 13),
                     ConversionValue1 = ReadDecimalNullable(reader, 14),
                     ConversionValue2 = ReadDecimalNullable(reader, 15),
@@ -447,9 +447,9 @@ ORDER BY slotcode
                     ''
                   ) AS child_unitname,
                   COALESCE(
-                    NULLIF(TRIM(COALESCE(ia.std1, '')), ''),
-                    NULLIF(TRIM(COALESCE(ia.std2, '')), ''),
-                    NULLIF(TRIM(COALESCE(ia.std3, '')), ''),
+                    CASE WHEN ia.car1 IS NOT NULL AND ia.car1 > 0 THEN ia.car1::text END,
+                    CASE WHEN ia.car2 IS NOT NULL AND ia.car2 > 0 THEN ia.car2::text END,
+                    CASE WHEN ia.car3 IS NOT NULL AND ia.car3 > 0 THEN ia.car3::text END,
                     ''
                   ) AS child_spec
                 FROM bom b
@@ -579,9 +579,9 @@ internal sealed class ProductionInstructionLineHeaderRow
     public string ParentItemname { get; set; } = "";
     public string ParentUnitName { get; set; } = "";
     public string? ProcurementUnitName { get; set; }
-    public string? IaStd1 { get; set; }
-    public string? IaStd2 { get; set; }
-    public string? IaStd3 { get; set; }
+    public decimal? IaCar1 { get; set; }
+    public decimal? IaCar2 { get; set; }
+    public decimal? IaCar3 { get; set; }
     public decimal? IaCar0 { get; set; }
     public decimal? ConversionValue1 { get; set; }
     public decimal? ConversionValue2 { get; set; }

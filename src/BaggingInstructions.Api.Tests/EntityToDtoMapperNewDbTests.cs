@@ -7,7 +7,7 @@ namespace BaggingInstructions.Api.Tests;
 public class EntityToDtoMapperNewDbTests
 {
     [Fact]
-    public void ToMbomDetailDto_maps_child_item_additional_information_std_fields()
+    public void ToMbomDetailDto_maps_child_item_additional_information_car_fields()
     {
         var child = new Item
         {
@@ -17,8 +17,8 @@ public class EntityToDtoMapperNewDbTests
             AdditionalInformation = new ItemAdditionalInformation
             {
                 ItemCd = "CHILD01",
-                Std1 = "10",
-                Std2 = "20",
+                Car1 = 10m,
+                Car2 = 20m,
                 Car0 = 5m
             }
         };
@@ -34,9 +34,9 @@ public class EntityToDtoMapperNewDbTests
         var dto = EntityToDtoMapper.ToMbomDetailDto(bom, child, child.Unit0);
 
         Assert.NotNull(dto.ChildItem);
-        Assert.Equal("10", dto.ChildItem!.Std1);
-        Assert.Equal("20", dto.ChildItem.Std2);
-        Assert.Null(dto.ChildItem.Std3);
+        Assert.Equal(10m, dto.ChildItem!.Car1);
+        Assert.Equal(20m, dto.ChildItem.Car2);
+        Assert.Null(dto.ChildItem.Car3);
         Assert.Equal(5m, dto.ChildItem.Kikunip);
     }
 }

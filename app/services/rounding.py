@@ -5,11 +5,11 @@ from app.models.mbom import Mbom
 
 
 def resolve_parent_divisor(item: Item | None) -> float:
-    """親の規格除数（std1→std3→std→car、なければ 1）。C# BaggingDivisorResolver と同系。"""
+    """親の規格除数（car1→car3→std→car、なければ 1）。C# BaggingDivisorResolver と同系。"""
     divisor = None
 
     if item is not None:
-        for attr in ("std1", "std2", "std3", "std"):
+        for attr in ("car1", "car2", "car3", "std"):
             val = getattr(item, attr, None)
             if not val:
                 continue
@@ -49,7 +49,7 @@ def round_up_quantity_with_seasoning(
         return (jobordqun, 0.0, [])
 
     # ============================================================
-    # 1. 親品目の規格（std1→std2→std3、互換で std、なければ CAR）
+    # 1. 親品目の規格（car1→car2→car3、互換で std、なければ CAR）
     # ============================================================
     divisor = resolve_parent_divisor(item)
 

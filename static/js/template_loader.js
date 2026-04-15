@@ -252,11 +252,13 @@ function injectHeaderData(container, data) {
                 item?.classification3_code ?? item?.spec3,
             ].filter(Boolean);
             if (specParts.length) return specParts.join(' / ');
-            for (const key of ['std1', 'std2', 'std3']) {
+            for (const key of ['car1', 'car2', 'car3']) {
                 const v = item?.[key];
                 const n = parseFloat(v);
                 if (!isNaN(n) && n > 0) return String(v).trim();
             }
+            const kikunip = parseFloat(item?.kikunip);
+            if (!isNaN(kikunip) && kikunip > 0) return String(item.kikunip);
             const car = parseFloat(item?.car);
             if (!isNaN(car) && car > 0) return String(item.car);
             return '1';

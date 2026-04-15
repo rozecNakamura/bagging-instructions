@@ -5,23 +5,23 @@ namespace BaggingInstructions.Api.Tests;
 public class CookingInstructionQuantityTests
 {
     [Fact]
-    public void ToParentQtyInUnit0_divides_by_std_when_set()
+    public void ToParentQtyInUnit0_divides_by_car1_when_set()
     {
-        var q = CookingInstructionQuantity.ToParentQtyInUnit0(100m, "4", null, null, null);
+        var q = CookingInstructionQuantity.ToParentQtyInUnit0(100m, 4m, null, null, null);
         Assert.Equal(25m, q);
     }
 
     [Fact]
-    public void ToParentQtyInUnit0_divides_by_car0_when_std_missing()
+    public void ToParentQtyInUnit0_divides_by_car0_when_car123_missing()
     {
         var q = CookingInstructionQuantity.ToParentQtyInUnit0(100m, null, null, null, 5m);
         Assert.Equal(20m, q);
     }
 
     [Fact]
-    public void ToParentQtyInUnit0_uses_std2_when_std1_empty()
+    public void ToParentQtyInUnit0_uses_car2_when_car1_missing()
     {
-        var q = CookingInstructionQuantity.ToParentQtyInUnit0(100m, "", "5", null, null);
+        var q = CookingInstructionQuantity.ToParentQtyInUnit0(100m, null, 5m, null, null);
         Assert.Equal(20m, q);
     }
 

@@ -59,7 +59,7 @@ public class SearchController : ControllerBase
         }
     }
 
-    /// <summary>汁仕分表用：喫食日・品目コードで検索。喫食日・喫食時間・品目でグループ化して返す。</summary>
+    /// <summary>汁仕分表用：喫食日・品目コードで検索。item の中分類コードが 50 または 51 のみ。喫食日・喫食時間・品目でグループ化して返す。</summary>
     [HttpGet("search/juice")]
     public async Task<ActionResult<JuiceSearchGroupResponseDto>> SearchJuice(
         [FromQuery] string delvedt,

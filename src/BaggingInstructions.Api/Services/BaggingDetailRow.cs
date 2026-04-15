@@ -19,7 +19,7 @@ public class BaggingDetailRow
     public string? Jobordno { get; set; }
     public long? ItemId { get; set; }
     public string? Shpctrnm { get; set; }
-    /// <summary>端数処理の除数（std1→std2→std3 の順で最初の有効値、未設定時 car0）</summary>
+    /// <summary>端数処理の除数（car1→car2→car3 の順で最初の有効値、未設定時 car0）</summary>
     public decimal Divisor { get; set; } = 1;
     /// <summary>規格袋数計算用（car0）</summary>
     public decimal Car0 { get; set; } = 1;

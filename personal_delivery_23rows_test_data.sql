@@ -12,13 +12,15 @@
 --   (2026-03-04, 朝, 01) の 1 行に 25 件がまとまり、出力で 25 行＝2ページになる。「2)」は実行しないこと。
 
 -- 1) 納入場所に「配送エリア 01」を設定（検索結果で「配送エリア 01」にまとめるため）
-INSERT INTO customerdeliverylocationaddinfo (deliverylocationid, addinfo01)
-SELECT d.deliverylocationid, '01'
+--    craftlineax: customerdeliverylocationaddinfo は deliverylocationid ではなく (customercode, deliverylocationcode) で紐づく
+INSERT INTO customerdeliverylocationaddinfo (customercode, deliverylocationcode, addinfo01)
+SELECT d.customercode, d.locationcode, '01'
 FROM customerdeliverylocation d
 WHERE d.deliverylocationid BETWEEN 4 AND 26
   AND NOT EXISTS (
     SELECT 1 FROM customerdeliverylocationaddinfo a
-    WHERE a.deliverylocationid = d.deliverylocationid
+    WHERE a.customercode IS NOT DISTINCT FROM d.customercode
+      AND a.deliverylocationcode IS NOT DISTINCT FROM d.locationcode
   );
 
 -- 2) 【受注・明細がまだ無い場合のみ】同じ (配送日, 喫食時間, 配送エリア) で 23 件の受注＋明細を追加

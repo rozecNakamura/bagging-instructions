@@ -73,6 +73,10 @@ public class Item
     [Column("classfication3code")]
     public string? Classification3Code { get; set; }
 
+    /// <summary>中分類コード（DB 列名は middleclassficationcode）。middleclassification.middleclassificationcode と対応。</summary>
+    [Column("middleclassficationcode")]
+    public string? MiddleClassificationCode { get; set; }
+
     public virtual Unit? Unit0 { get; set; }
     public virtual ItemAdditionalInformation? AdditionalInformation { get; set; }
     public virtual ICollection<ItemWorkCenterMapping> WorkCenterMappings { get; set; } = new List<ItemWorkCenterMapping>();

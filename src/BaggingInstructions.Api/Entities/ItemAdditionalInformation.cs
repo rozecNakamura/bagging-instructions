@@ -13,15 +13,6 @@ public class ItemAdditionalInformation
     [Column("itemcode")]
     public string ItemCd { get; set; } = "";
 
-    [Column("std1")]
-    public string? Std1 { get; set; }
-
-    [Column("std2")]
-    public string? Std2 { get; set; }
-
-    [Column("std3")]
-    public string? Std3 { get; set; }
-
     [Column("car0")]
     public decimal? Car0 { get; set; }
 
@@ -33,6 +24,10 @@ public class ItemAdditionalInformation
 
     [Column("car3")]
     public decimal? Car3 { get; set; }
+
+    /// <summary>規格（text）。</summary>
+    [Column("std")]
+    public string? Std { get; set; }
 
     [Column("steritemprange")]
     public decimal? SterItemPrange { get; set; }

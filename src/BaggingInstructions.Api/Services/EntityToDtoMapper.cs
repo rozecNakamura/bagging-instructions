@@ -1,3 +1,4 @@
+using System.Globalization;
 using BaggingInstructions.Api.Entities.Legacy;
 using BaggingInstructions.Api.DTOs;
 
@@ -69,9 +70,9 @@ public static partial class EntityToDtoMapper
             Itemgr = i.Itemgr,
             Itemcd = i.Itemcd ?? "",
             Itemnm = i.Itemnm ?? "",
-            Std1 = i.Std,
-            Std2 = null,
-            Std3 = null,
+            Car1 = LegacyStdToPositiveDecimal(i.Std),
+            Car2 = null,
+            Car3 = null,
             Uni0 = i.Uni0,
             Nwei = i.Nwei,
             Jouni = i.Jouni,
@@ -150,5 +151,13 @@ public static partial class EntityToDtoMapper
             Mboms = j.Mboms.Select(ToMbomDetailDto).ToList(),
             Cusmcd = ToCusmcdDetailDto(j.Cusmcd)
         };
+    }
+
+    private static decimal? LegacyStdToPositiveDecimal(string? std)
+    {
+        if (string.IsNullOrWhiteSpace(std)) return null;
+        return decimal.TryParse(std.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var d) && d > 0
+            ? d
+            : null;
     }
 }

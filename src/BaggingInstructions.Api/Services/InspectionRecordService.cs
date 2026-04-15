@@ -11,8 +11,8 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 検品記録簿用の検索・PDF 行生成サービス。
 /// ordertable（ordertype=PO、suppliercode、itemcode）→ supplier マスタ、item、itemadditionalinformation、unit を用いる。
-/// PDF・検索の数量は単位0換算（<c>qtyuni0</c> 優先、無ければ <c>qtyuniN×item.conversionvalueN</c>、無ければ <c>qty</c> を ia.std1/std2/std3/car0 で換算）。
-/// 規格表示は <c>itemadditionalinformation.std1→std2→std3</c> の先頭非空、単位名は <c>unit.unitname</c>（unitcode0）。
+/// PDF・検索の数量は単位0換算（<c>qtyuni0</c> 優先、無ければ <c>qtyuniN×item.conversionvalueN</c>、無ければ <c>qty</c> を ia.car1/car2/car3/car0 で換算）。
+/// 規格（PDF）は <c>itemadditionalinformation.std</c>。単位名は <c>unit.unitname</c>（unitcode0）。
 /// </summary>
 public sealed class InspectionRecordService
 {
@@ -150,9 +150,9 @@ public sealed class InspectionRecordService
                   COALESCE(i.itemname, ''),
                   COALESCE(u0.unitname, ''),
                   COALESCE(ot.qty, 0),
-                  ia.std1,
-                  ia.std2,
-                  ia.std3,
+                  ia.car1,
+                  ia.car2,
+                  ia.car3,
                   ia.car0,
                   ot.qtyuni0,
                   ot.qtyuni1,
@@ -186,9 +186,9 @@ public sealed class InspectionRecordService
             while (await reader.ReadAsync(ct))
             {
                 var qtyRaw = reader.IsDBNull(8) ? 0m : reader.GetDecimal(8);
-                var iaStd1 = reader.IsDBNull(9) ? null : reader.GetString(9);
-                var iaStd2 = reader.IsDBNull(10) ? null : reader.GetString(10);
-                var iaStd3 = reader.IsDBNull(11) ? null : reader.GetString(11);
+                decimal? iaCar1 = reader.IsDBNull(9) ? null : reader.GetDecimal(9);
+                decimal? iaCar2 = reader.IsDBNull(10) ? null : reader.GetDecimal(10);
+                decimal? iaCar3 = reader.IsDBNull(11) ? null : reader.GetDecimal(11);
                 decimal? iaCar0 = reader.IsDBNull(12) ? null : reader.GetDecimal(12);
                 decimal? qtyUni0 = reader.IsDBNull(13) ? null : reader.GetDecimal(13);
                 decimal? qtyUni1 = reader.IsDBNull(14) ? null : reader.GetDecimal(14);
@@ -198,7 +198,7 @@ public sealed class InspectionRecordService
                 decimal? cv2 = reader.IsDBNull(18) ? null : reader.GetDecimal(18);
                 decimal? cv3 = reader.IsDBNull(19) ? null : reader.GetDecimal(19);
                 var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
-                    qtyRaw, qtyUni0, qtyUni1, qtyUni2, qtyUni3, iaStd1, iaStd2, iaStd3, iaCar0, cv1, cv2, cv3);
+                    qtyRaw, qtyUni0, qtyUni1, qtyUni2, qtyUni3, iaCar1, iaCar2, iaCar3, iaCar0, cv1, cv2, cv3);
 
                 list.Add(new InspectionRecordSearchSqlRow
                 {
@@ -241,17 +241,12 @@ public sealed class InspectionRecordService
                   ot.needdate AS need_date,
                   COALESCE(i.itemcode, '') AS item_code,
                   COALESCE(i.itemname, '') AS item_name,
-                  COALESCE(
-                    NULLIF(TRIM(COALESCE(ia.std1, '')), ''),
-                    NULLIF(TRIM(COALESCE(ia.std2, '')), ''),
-                    NULLIF(TRIM(COALESCE(ia.std3, '')), ''),
-                    ''
-                  ) AS spec,
+                  COALESCE(BTRIM(ia.std), '') AS spec,
                   COALESCE(u0.unitname, '') AS unit_name,
                   COALESCE(ot.qty, 0) AS qty,
-                  ia.std1,
-                  ia.std2,
-                  ia.std3,
+                  ia.car1,
+                  ia.car2,
+                  ia.car3,
                   ia.car0,
                   ot.qtyuni0,
                   ot.qtyuni1,
@@ -278,9 +273,9 @@ public sealed class InspectionRecordService
             while (await reader.ReadAsync(ct))
             {
                 var qtyRaw = reader.GetDecimal(7);
-                var iaStd1 = reader.IsDBNull(8) ? null : reader.GetString(8);
-                var iaStd2 = reader.IsDBNull(9) ? null : reader.GetString(9);
-                var iaStd3 = reader.IsDBNull(10) ? null : reader.GetString(10);
+                decimal? iaCar1 = reader.IsDBNull(8) ? null : reader.GetDecimal(8);
+                decimal? iaCar2 = reader.IsDBNull(9) ? null : reader.GetDecimal(9);
+                decimal? iaCar3 = reader.IsDBNull(10) ? null : reader.GetDecimal(10);
                 decimal? iaCar0 = reader.IsDBNull(11) ? null : reader.GetDecimal(11);
                 decimal? qtyUni0 = reader.IsDBNull(12) ? null : reader.GetDecimal(12);
                 decimal? qtyUni1 = reader.IsDBNull(13) ? null : reader.GetDecimal(13);
@@ -290,7 +285,7 @@ public sealed class InspectionRecordService
                 decimal? cv2 = reader.IsDBNull(17) ? null : reader.GetDecimal(17);
                 decimal? cv3 = reader.IsDBNull(18) ? null : reader.GetDecimal(18);
                 var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
-                    qtyRaw, qtyUni0, qtyUni1, qtyUni2, qtyUni3, iaStd1, iaStd2, iaStd3, iaCar0, cv1, cv2, cv3);
+                    qtyRaw, qtyUni0, qtyUni1, qtyUni2, qtyUni3, iaCar1, iaCar2, iaCar3, iaCar0, cv1, cv2, cv3);
 
                 list.Add(new InspectionRecordHeaderRow
                 {

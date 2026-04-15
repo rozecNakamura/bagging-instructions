@@ -482,9 +482,9 @@ WHERE sol.planneddeliverydate = {date.Value}
                   COALESCE(ci.itemname, '') AS child_itemname,
                   COALESCE(u.unitname, '') AS child_unitname,
                   COALESCE(
-                    NULLIF(TRIM(COALESCE(ia.std1, '')), ''),
-                    NULLIF(TRIM(COALESCE(ia.std2, '')), ''),
-                    NULLIF(TRIM(COALESCE(ia.std3, '')), ''),
+                    CASE WHEN ia.car1 IS NOT NULL AND ia.car1 > 0 THEN ia.car1::text END,
+                    CASE WHEN ia.car2 IS NOT NULL AND ia.car2 > 0 THEN ia.car2::text END,
+                    CASE WHEN ia.car3 IS NOT NULL AND ia.car3 > 0 THEN ia.car3::text END,
                     ''
                   ) AS child_std
                 FROM bom b

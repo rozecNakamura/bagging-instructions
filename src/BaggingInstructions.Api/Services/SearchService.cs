@@ -92,7 +92,7 @@ public class SearchService
             .ToList();
     }
 
-    /// <summary>汁仕分表用：喫食日・品目コードで検索。delvedt は YYYYMMDD、itemcd は部分一致。</summary>
+    /// <summary>汁仕分表用：喫食日・品目コードで検索。delvedt は YYYYMMDD、itemcd は部分一致。item.middleclassficationcode が 50 または 51 の品目のみ。</summary>
     public async Task<List<JobordItemDto>> SearchByDeliveryDateAsync(string delvedt, string? itemcd, CancellationToken ct = default)
     {
         var delvedtDate = ParseProductDate(delvedt);
@@ -105,7 +105,10 @@ public class SearchService
                 .ThenInclude(so => so!.CustomerDeliveryLocation)
             .Include(l => l.Addinfo)
             .Include(l => l.Item)
-            .Where(l => l.PlannedDeliveryDate == delvedtDate);
+            .Where(l => l.PlannedDeliveryDate == delvedtDate)
+            .Where(l => l.Item != null
+                && l.Item.MiddleClassificationCode != null
+                && (l.Item.MiddleClassificationCode == "50" || l.Item.MiddleClassificationCode == "51"));
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));

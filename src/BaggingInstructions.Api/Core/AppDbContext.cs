@@ -168,7 +168,7 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(s => s.WarehouseId);
 
-        // Customer（craftlineax: 主キーは customercode、customerid 列なし）
+        // Customer（craftlineax: 本プロジェクトでは customercode を主キーとしてマッピング）
         modelBuilder.Entity<Customer>()
             .HasKey(c => c.CustomerCode);
         modelBuilder.Entity<Customer>()
@@ -183,11 +183,18 @@ public class AppDbContext : DbContext
             .WithMany(c => c.DeliveryLocations)
             .HasForeignKey(l => l.CustomerCode)
             .HasPrincipalKey(c => c.CustomerCode);
-        // CustomerDeliveryLocation -> CustomerDeliveryLocationAddinfo (1:1)
+        // CustomerDeliveryLocation -> CustomerDeliveryLocationAddinfo（FK は customercode + deliverylocationcode）
+        modelBuilder.Entity<CustomerDeliveryLocationAddinfo>()
+            .HasKey(a => a.AddinfoId);
         modelBuilder.Entity<CustomerDeliveryLocation>()
             .HasOne(c => c.Addinfo)
             .WithOne(a => a.CustomerDeliveryLocation)
-            .HasForeignKey<CustomerDeliveryLocationAddinfo>(a => a.DeliveryLocationId)
+            .HasForeignKey<CustomerDeliveryLocationAddinfo>(
+                nameof(CustomerDeliveryLocationAddinfo.CustomerCode),
+                nameof(CustomerDeliveryLocationAddinfo.LocationCode))
+            .HasPrincipalKey<CustomerDeliveryLocation>(
+                nameof(CustomerDeliveryLocation.CustomerCode),
+                nameof(CustomerDeliveryLocation.LocationCode))
             .IsRequired(false);
 
         // CustomerItem -> Customer, Item（customer は customercode で結合）

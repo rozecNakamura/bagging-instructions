@@ -188,9 +188,9 @@ SELECT
   i.conversionvalue1 AS ""ConversionValue1"",
   i.conversionvalue2 AS ""ConversionValue2"",
   i.conversionvalue3 AS ""ConversionValue3"",
-  ia.std1 AS ""ItemStd1"",
-  ia.std2 AS ""ItemStd2"",
-  ia.std3 AS ""ItemStd3"",
+  ia.car1 AS ""ItemIaCar1"",
+  ia.car2 AS ""ItemIaCar2"",
+  ia.car3 AS ""ItemIaCar3"",
   ia.car0 AS ""ItemCar0""
 FROM salesorderline s
 LEFT JOIN item i ON s.itemcode = i.itemcode
@@ -213,9 +213,9 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             r.QuantityUni1,
             r.QuantityUni2,
             r.QuantityUni3,
-            r.ItemStd1,
-            r.ItemStd2,
-            r.ItemStd3,
+            r.ItemIaCar1,
+            r.ItemIaCar2,
+            r.ItemIaCar3,
             r.ItemCar0,
             r.ConversionValue1,
             r.ConversionValue2,
@@ -259,9 +259,9 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             l.QtyUni1,
             l.QtyUni2,
             l.QtyUni3,
-            l.Item?.AdditionalInformation?.Std1,
-            l.Item?.AdditionalInformation?.Std2,
-            l.Item?.AdditionalInformation?.Std3,
+            l.Item?.AdditionalInformation?.Car1,
+            l.Item?.AdditionalInformation?.Car2,
+            l.Item?.AdditionalInformation?.Car3,
             l.Item?.AdditionalInformation?.Car0,
             l.Item?.ConversionValue1,
             l.Item?.ConversionValue2,
@@ -526,9 +526,9 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         decimal? quantityUni1,
         decimal? quantityUni2,
         decimal? quantityUni3,
-        string? itemStd1,
-        string? itemStd2,
-        string? itemStd3,
+        decimal? itemIaCar1,
+        decimal? itemIaCar2,
+        decimal? itemIaCar3,
         decimal? itemCar0,
         decimal? conversionValue1,
         decimal? conversionValue2,
@@ -548,9 +548,9 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             quantityUni1,
             quantityUni2,
             quantityUni3,
-            itemStd1,
-            itemStd2,
-            itemStd3,
+            itemIaCar1,
+            itemIaCar2,
+            itemIaCar3,
             itemCar0,
             conversionValue1,
             conversionValue2,
@@ -614,9 +614,9 @@ internal sealed class SortingInquiryLineSqlRow
     public decimal? ConversionValue1 { get; set; }
     public decimal? ConversionValue2 { get; set; }
     public decimal? ConversionValue3 { get; set; }
-    public string? ItemStd1 { get; set; }
-    public string? ItemStd2 { get; set; }
-    public string? ItemStd3 { get; set; }
+    public decimal? ItemIaCar1 { get; set; }
+    public decimal? ItemIaCar2 { get; set; }
+    public decimal? ItemIaCar3 { get; set; }
     public decimal? ItemCar0 { get; set; }
 }
 
