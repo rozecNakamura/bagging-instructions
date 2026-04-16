@@ -79,7 +79,7 @@ function displaySortingInquiryResults(data) {
     const storeHeaderDeliveryCodes = data.storeHeaderDeliveryCodes || {};
     const storeHeaderDeliveryNames = data.storeHeaderDeliveryNames || {};
 
-    /** 店舗列の 3 段ヘッダー（1:得意先コード 2:納入場所コード 3:納入場所名）。Excel の 4 行目列見出し行とは別レイアウト。 */
+    /** 店舗列の 3 段ヘッダー（1:納入場所コード 2:得意先コード 3:得意先名）。Excel の 4 行目列見出しは納入場所表示。 */
     const headerStackRowCount = 3;
 
     thead.innerHTML = '';
@@ -93,7 +93,7 @@ function displaySortingInquiryResults(data) {
     });
     storeKeys.forEach((key) => {
         const th = document.createElement('th');
-        th.textContent = storeHeaderCodes[key] || key;
+        th.textContent = storeHeaderCodes[key] || storeHeaderDeliveryCodes[key] || key;
         tr1.appendChild(th);
     });
     const thSum = document.createElement('th');

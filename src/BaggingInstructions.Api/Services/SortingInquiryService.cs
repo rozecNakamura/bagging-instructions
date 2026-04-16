@@ -9,16 +9,20 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 仕分け照会: salesorderline を喫食日（planneddeliverydate）・便（slotcode）で検索し、
-/// 品目×食種×得意先コード別に数量を集計する（同一得意先の複数納入場所は合算）。一覧・Excel は品目コード・品目名称・食種のあと、
-/// 検索結果に現れる各得意先コードを1列とし、列見出しは <c>customer</c> マスタの得意先名（正式名優先、無ければ略称、無ければ得意先コード）。
-/// 同一品目×食種行で複数得意先列が並び、同日に複数得意先が同一品目を取引したことが分かる。
+/// 品目×食種×（得意先コード＋納入場所コード）別に数量を集計する（同一納入場所キーに複数明細は合算）。
+/// 一覧・Excel は品目コード・品目名称・食種のあと、検索結果に現れる各納入場所列を1列とする（列キーは得意先と納入場所コードの合成）。
+/// 列見出し4段目は納入場所表示（名称優先、無ければコード。重複時は得意先コードで区別）。
+/// 同一品目×食種行で複数納入場所列が並び、同日に複数拠点が同一品目を取引したことが分かる。
 /// 最後に合計列とする。行データの食種キーは addinfo（<see cref="SalesOrderLineAddinfo.Addinfo02Name"/>／<see cref="SalesOrderLineAddinfo.Addinfo02"/>）。Excel の列見出しのみ「適用」とする。
-/// 仕訳表 Excel 用に <see cref="SortingInquirySearchResponseDto.StoreHeaderDeliveryCodes"/>／StoreHeaderDeliveryNames を付与する。
+/// 仕訳表 Excel の 1〜2 行目は <see cref="SortingInquirySearchResponseDto.StoreHeaderCodes"/>／<see cref="SortingInquirySearchResponseDto.StoreHeaders"/>（納入場所コード・表示名）。
 /// 仕訳表用の列別収容は、明細ごとの単位0換算数量（<see cref="CookingInstructionQuantity.ResolveParentQtyInUnit0"/>）を
-/// <see cref="SalesOrderLineAddinfo.Addinfo01"/> は DB 上は文字列だが、仕訳表の収容計算では正の数値としてパースして除算し、得意先列ごとに合算する。
+/// <see cref="SalesOrderLineAddinfo.Addinfo01"/> は DB 上は文字列だが、仕訳表の収容計算では正の数値としてパースして除算し、納入場所列ごとに合算する。
 /// </summary>
 public sealed class SortingInquiryService
 {
+    /// <summary>列キー用: 得意先コードと納入場所コードの区切り（JSON/API に含まれるが通常データに含まれない）。</summary>
+    private const char DeliveryColumnKeySeparator = '\u001e';
+
     private readonly AppDbContext _db;
 
     public SortingInquiryService(AppDbContext db)
@@ -276,6 +280,13 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             l.Addinfo?.Addinfo02Name)).ToList();
     }
 
+    private static string SortingInquiryDeliveryColumnKey(string customerCode, string locationCode)
+    {
+        var c = (customerCode ?? "").Trim();
+        var l = (locationCode ?? "").Trim();
+        return c + DeliveryColumnKeySeparator + l;
+    }
+
     private static SortingInquirySearchResponseDto BuildSearchResponse(
         IReadOnlyList<SortingInquiryLineMaterial> lines,
         IReadOnlyDictionary<string, string> customersOnDate)
@@ -294,77 +305,49 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
                 headerLabelByCustomer[cust] = cust;
         }
 
-        var nameLabelCounts = headerLabelByCustomer.Values
-            .Select(v => (v ?? "").Trim())
-            .GroupBy(v => v, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var columnCustomer = new Dictionary<string, string>(StringComparer.Ordinal);
+        var columnLocationCode = new Dictionary<string, string>(StringComparer.Ordinal);
+        var columnLocationTag = new Dictionary<string, string>(StringComparer.Ordinal);
+        var columnCustomerDisplay = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        var storeHeaders = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var kv in headerLabelByCustomer)
-        {
-            var code = kv.Key;
-            var disp = (kv.Value ?? "").Trim();
-            if (string.IsNullOrEmpty(disp))
-                storeHeaders[code] = code;
-            else if (nameLabelCounts.GetValueOrDefault(disp) > 1)
-                storeHeaders[code] = $"{disp}（{code}）";
-            else
-                storeHeaders[code] = disp;
-        }
-
-        var storeKeys = storeHeaders.Keys
-            .OrderBy(k => storeHeaders[k], StringComparer.Ordinal)
-            .ThenBy(k => k, StringComparer.Ordinal)
-            .ToList();
-
-        var storeHeaderCodes = storeHeaders.Keys.ToDictionary(k => k, k => k, StringComparer.Ordinal);
-
-        var locationCodesByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        var locationTagsByCustomer = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var line in lines)
         {
             var cust = (line.CustomerCode ?? "").Trim();
-            if (cust.Length == 0 || !storeHeaders.ContainsKey(cust))
+            if (cust.Length == 0)
                 continue;
-            var locCode = (line.LocationCode ?? "").Trim();
-            if (locCode.Length > 0)
-            {
-                if (!locationCodesByCustomer.TryGetValue(cust, out var cset))
-                {
-                    cset = new HashSet<string>(StringComparer.Ordinal);
-                    locationCodesByCustomer[cust] = cset;
-                }
 
-                cset.Add(locCode);
-            }
+            var loc = (line.LocationCode ?? "").Trim();
+            var colKey = SortingInquiryDeliveryColumnKey(cust, loc);
+            if (columnCustomer.ContainsKey(colKey))
+                continue;
 
-            var tag = DeliveryLocationHeaderLabel(line.LocationName, line.LocationCode);
-            if (tag.Length > 0)
-            {
-                if (!locationTagsByCustomer.TryGetValue(cust, out var tset))
-                {
-                    tset = new HashSet<string>(StringComparer.Ordinal);
-                    locationTagsByCustomer[cust] = tset;
-                }
-
-                tset.Add(tag);
-            }
+            columnCustomer[colKey] = cust;
+            columnLocationCode[colKey] = loc;
+            columnLocationTag[colKey] = DeliveryLocationHeaderLabel(line.LocationName, line.LocationCode);
+            var disp = headerLabelByCustomer.TryGetValue(cust, out var dn) ? dn : cust;
+            var t = (disp ?? "").Trim();
+            columnCustomerDisplay[colKey] = t.Length > 0 ? t : cust;
         }
 
-        var rawDeliveryCodes = new Dictionary<string, string>(StringComparer.Ordinal);
-        var rawDeliveryNames = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var cust in storeHeaders.Keys)
-        {
-            rawDeliveryCodes[cust] = locationCodesByCustomer.TryGetValue(cust, out var cs) && cs.Count > 0
-                ? string.Join("／", cs.OrderBy(s => s, StringComparer.Ordinal))
-                : "";
-            rawDeliveryNames[cust] = locationTagsByCustomer.TryGetValue(cust, out var ts) && ts.Count > 0
-                ? string.Join("／", ts.OrderBy(s => s, StringComparer.Ordinal))
-                : "";
-        }
+        if (columnCustomer.Count == 0)
+            return new SortingInquirySearchResponseDto();
 
-        var storeHeaderDeliveryCodes = DisambiguateStoreRowLabels(rawDeliveryCodes, StringComparer.Ordinal);
-        var storeHeaderDeliveryNames = DisambiguateStoreRowLabels(rawDeliveryNames, StringComparer.Ordinal);
+        var rawLocCodes = columnLocationCode.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        var storeHeaderCodes = DisambiguateStoreRowLabels(rawLocCodes, StringComparer.Ordinal, columnCustomer);
+
+        var storeHeaderDeliveryCodes = columnCustomer.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+        // 仕分け照会 Excel 3 行目（得意先名）: 納入場所コードを括弧付きで付けない（1 行目で拠点を示す）。
+        var storeHeaderDeliveryNames = columnCustomerDisplay.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+        var rawLocTags = columnLocationTag.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        var storeHeaders = DisambiguateStoreRowLabels(rawLocTags, StringComparer.Ordinal, columnCustomer);
+
+        var storeKeys = columnCustomer.Keys
+            .OrderBy(k => storeHeaders[k], StringComparer.Ordinal)
+            .ThenBy(k => columnCustomer[k], StringComparer.Ordinal)
+            .ThenBy(k => k, StringComparer.Ordinal)
+            .ToList();
 
         var itemNameByCode = new Dictionary<string, string>(StringComparer.Ordinal);
         var aggregates = new Dictionary<(string ItemCode, string FoodType), Dictionary<string, decimal>>();
@@ -373,7 +356,11 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         foreach (var line in lines)
         {
             var cust = (line.CustomerCode ?? "").Trim();
-            if (string.IsNullOrEmpty(cust) || !storeHeaders.ContainsKey(cust))
+            if (cust.Length == 0)
+                continue;
+
+            var colKey = SortingInquiryDeliveryColumnKey(cust, (line.LocationCode ?? "").Trim());
+            if (!columnCustomer.ContainsKey(colKey))
                 continue;
 
             var itemCode = line.ItemCode;
@@ -384,13 +371,13 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             var food = ResolveFoodTypeFromStrings(line.Addinfo02, line.Addinfo02Name);
             var groupKey = (itemCode, food);
 
-            if (!aggregates.TryGetValue(groupKey, out var byCustomer))
+            if (!aggregates.TryGetValue(groupKey, out var byColumn))
             {
-                byCustomer = new Dictionary<string, decimal>(StringComparer.Ordinal);
-                aggregates[groupKey] = byCustomer;
+                byColumn = new Dictionary<string, decimal>(StringComparer.Ordinal);
+                aggregates[groupKey] = byColumn;
             }
 
-            byCustomer[cust] = byCustomer.GetValueOrDefault(cust) + line.Quantity;
+            byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + line.Quantity;
 
             var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
             if (div.HasValue)
@@ -401,20 +388,25 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
                     ratioAggregates[groupKey] = byRatio;
                 }
 
-                byRatio[cust] = byRatio.GetValueOrDefault(cust) + line.QtyInUnit0 / div.Value;
+                byRatio[colKey] = byRatio.GetValueOrDefault(colKey) + line.QtyInUnit0 / div.Value;
             }
         }
 
-        var capacityByCustomer = storeHeaders.Keys.ToDictionary(k => k, _ => 0m, StringComparer.Ordinal);
+        var capacityByColumn = columnCustomer.Keys.ToDictionary(k => k, _ => 0m, StringComparer.Ordinal);
         foreach (var line in lines)
         {
             var cust = (line.CustomerCode ?? "").Trim();
-            if (string.IsNullOrEmpty(cust) || !capacityByCustomer.ContainsKey(cust))
+            if (cust.Length == 0)
                 continue;
+
+            var colKey = SortingInquiryDeliveryColumnKey(cust, (line.LocationCode ?? "").Trim());
+            if (!capacityByColumn.ContainsKey(colKey))
+                continue;
+
             var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
             if (!div.HasValue)
                 continue;
-            capacityByCustomer[cust] += line.QtyInUnit0 / div.Value;
+            capacityByColumn[colKey] += line.QtyInUnit0 / div.Value;
         }
 
         var rows = aggregates
@@ -439,7 +431,7 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             StoreHeaderCodes = storeHeaderCodes,
             StoreHeaderDeliveryCodes = storeHeaderDeliveryCodes,
             StoreHeaderDeliveryNames = storeHeaderDeliveryNames,
-            StoreHeaderCapacities = capacityByCustomer,
+            StoreHeaderCapacities = capacityByColumn,
             Rows = rows
         };
     }
@@ -453,12 +445,14 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         return (locationCode ?? "").Trim();
     }
 
-    /// <summary>Excel 2〜3 行目用: 同一表示文字が複数列に付くときは「（得意先コード）」で区別。空はそのまま。</summary>
+    /// <summary>同一表示文字が複数列に付くときは「（suffix）」で区別。空はそのまま。</summary>
+    /// <param name="disambiguationSuffixByKey">列キーごとの括弧内に付ける短い区別子（未指定時は列キー全体）。</param>
     private static Dictionary<string, string> DisambiguateStoreRowLabels(
-        IReadOnlyDictionary<string, string> rawByCustomer,
-        StringComparer cmp)
+        IReadOnlyDictionary<string, string> rawByKey,
+        StringComparer cmp,
+        IReadOnlyDictionary<string, string>? disambiguationSuffixByKey = null)
     {
-        var nonEmpty = rawByCustomer
+        var nonEmpty = rawByKey
             .Where(kv => (kv.Value ?? "").Trim().Length > 0)
             .Select(kv => ((kv.Key), v: (kv.Value ?? "").Trim()))
             .ToList();
@@ -467,15 +461,22 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .ToDictionary(g => g.Key, g => g.Count(), cmp);
 
         var result = new Dictionary<string, string>(cmp);
-        foreach (var cust in rawByCustomer.Keys)
+        foreach (var key in rawByKey.Keys)
         {
-            var disp = (rawByCustomer.TryGetValue(cust, out var rv) ? rv : "").Trim();
+            var disp = (rawByKey.TryGetValue(key, out var rv) ? rv : "").Trim();
             if (disp.Length == 0)
-                result[cust] = "";
+                result[key] = "";
             else if (counts.GetValueOrDefault(disp) > 1)
-                result[cust] = $"{disp}（{cust}）";
+            {
+                var suff = disambiguationSuffixByKey != null
+                           && disambiguationSuffixByKey.TryGetValue(key, out var s)
+                           && !string.IsNullOrEmpty((s ?? "").Trim())
+                    ? (s ?? "").Trim()
+                    : key;
+                result[key] = $"{disp}（{suff}）";
+            }
             else
-                result[cust] = disp;
+                result[key] = disp;
         }
 
         return result;

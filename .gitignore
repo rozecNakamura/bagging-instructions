@@ -88,5 +88,6 @@ _*/
 build*/
 artifacts*/
 .vs/
+venv*/
 # TypeScript incremental
 *.tsbuildinfo

@@ -7,6 +7,9 @@ namespace BaggingInstructions.Api.Tests;
 
 public class SortingInquiryServiceTests
 {
+    private static string SiCol(string customerCode, string locationCode) =>
+        $"{customerCode}\u001e{locationCode}";
+
     private static AppDbContext CreateAppDb()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -94,16 +97,18 @@ public class SortingInquiryServiceTests
 
         var svc = new SortingInquiryService(app);
 
+        var k = SiCol("CUST1", "LOC1");
         var allSlots = await svc.SearchAsync("20250710", Array.Empty<string>());
         Assert.Single(allSlots.Rows);
         Assert.Single(allSlots.StoreKeys);
-        Assert.Equal("得意先1", allSlots.StoreHeaders["CUST1"]);
-        Assert.Equal("CUST1", allSlots.StoreHeaderCodes["CUST1"]);
-        Assert.Equal("LOC1", allSlots.StoreHeaderDeliveryCodes["CUST1"]);
-        Assert.Equal("店舗A", allSlots.StoreHeaderDeliveryNames["CUST1"]);
-        Assert.Equal(3m, allSlots.StoreHeaderCapacities["CUST1"]);
-        Assert.Equal(3m, allSlots.Rows[0].RatioQuantitiesByStore["CUST1"]);
-        Assert.Equal(6, allSlots.Rows[0].QuantitiesByStore["CUST1"]);
+        Assert.Equal(k, allSlots.StoreKeys[0]);
+        Assert.Equal("店舗A", allSlots.StoreHeaders[k]);
+        Assert.Equal("LOC1", allSlots.StoreHeaderCodes[k]);
+        Assert.Equal("CUST1", allSlots.StoreHeaderDeliveryCodes[k]);
+        Assert.Equal("得意先1", allSlots.StoreHeaderDeliveryNames[k]);
+        Assert.Equal(3m, allSlots.StoreHeaderCapacities[k]);
+        Assert.Equal(3m, allSlots.Rows[0].RatioQuantitiesByStore[k]);
+        Assert.Equal(6, allSlots.Rows[0].QuantitiesByStore[k]);
         Assert.Equal("昼食", allSlots.Rows[0].FoodType);
 
         var filtered = await svc.SearchAsync("20250710", new[] { "OTHER" });
@@ -114,7 +119,7 @@ public class SortingInquiryServiceTests
     }
 
     /// <summary>
-    /// 得意先が2件いれば列も2件（キーは得意先コード）。納入場所マスタの有無は列数に影響しない。
+    /// 得意先が2件いれば列も2件（キーは得意先＋納入場所）。納入場所マスタの有無は列数に影響しない。
     /// </summary>
     [Fact]
     public async Task SearchAsync_Uses_order_delivery_code_when_master_row_missing_separate_columns_per_customer()
@@ -186,25 +191,27 @@ public class SortingInquiryServiceTests
         var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20250710", Array.Empty<string>());
 
+        var k1 = SiCol("CUST1", "LOC1");
+        var k2 = SiCol("CUST2", "cus0991");
         Assert.Equal(2, res.StoreKeys.Count);
-        Assert.Contains("CUST1", res.StoreKeys);
-        Assert.Contains("CUST2", res.StoreKeys);
-        Assert.Equal("得意先Ａ", res.StoreHeaders["CUST1"]);
-        Assert.Equal("得意先Ｂ", res.StoreHeaders["CUST2"]);
-        Assert.Equal("CUST1", res.StoreHeaderCodes["CUST1"]);
-        Assert.Equal("CUST2", res.StoreHeaderCodes["CUST2"]);
-        Assert.Equal("LOC1", res.StoreHeaderDeliveryCodes["CUST1"]);
-        Assert.Equal("cus0991", res.StoreHeaderDeliveryCodes["CUST2"]);
-        Assert.Equal("店舗１", res.StoreHeaderDeliveryNames["CUST1"]);
-        Assert.Equal("cus0991", res.StoreHeaderDeliveryNames["CUST2"]);
+        Assert.Contains(k1, res.StoreKeys);
+        Assert.Contains(k2, res.StoreKeys);
+        Assert.Equal("店舗１", res.StoreHeaders[k1]);
+        Assert.Equal("cus0991", res.StoreHeaders[k2]);
+        Assert.Equal("LOC1", res.StoreHeaderCodes[k1]);
+        Assert.Equal("cus0991", res.StoreHeaderCodes[k2]);
+        Assert.Equal("CUST1", res.StoreHeaderDeliveryCodes[k1]);
+        Assert.Equal("CUST2", res.StoreHeaderDeliveryCodes[k2]);
+        Assert.Equal("得意先Ａ", res.StoreHeaderDeliveryNames[k1]);
+        Assert.Equal("得意先Ｂ", res.StoreHeaderDeliveryNames[k2]);
 
         Assert.Equal(2, res.Rows.Count);
-        Assert.Equal(3, res.Rows.Single(r => r.ItemCode == "ITEM1").QuantitiesByStore["CUST1"]);
-        Assert.Equal(5, res.Rows.Single(r => r.ItemCode == "ITEM2").QuantitiesByStore["CUST2"]);
+        Assert.Equal(3, res.Rows.Single(r => r.ItemCode == "ITEM1").QuantitiesByStore[k1]);
+        Assert.Equal(5, res.Rows.Single(r => r.ItemCode == "ITEM2").QuantitiesByStore[k2]);
     }
 
     /// <summary>
-    /// 一方は納入場所あり・他方は受注に納入場所コードが無くても、得意先コードが違えば別列になる。
+    /// 一方は納入場所あり・他方は受注に納入場所コードが無くても、得意先コードが違えば別列になる（納入場所キーも別）。
     /// </summary>
     [Fact]
     public async Task SearchAsync_No_delivery_code_on_order_still_gets_column_per_customer()
@@ -263,20 +270,22 @@ public class SortingInquiryServiceTests
         var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20260330", Array.Empty<string>());
 
+        var k3 = SiCol("CUS003", "cus0991");
+        var k4 = SiCol("CUS004", "");
         Assert.Equal(2, res.StoreKeys.Count);
-        Assert.Contains("CUS003", res.StoreKeys);
-        Assert.Contains("CUS004", res.StoreKeys);
-        Assert.Equal("四川飯店", res.StoreHeaders["CUS003"]);
-        Assert.Equal("別得意先", res.StoreHeaders["CUS004"]);
-        Assert.Equal("CUS003", res.StoreHeaderCodes["CUS003"]);
-        Assert.Equal("CUS004", res.StoreHeaderCodes["CUS004"]);
-        Assert.Equal("cus0991", res.StoreHeaderDeliveryCodes["CUS003"]);
-        Assert.Equal("", res.StoreHeaderDeliveryCodes["CUS004"]);
-        Assert.Equal("cus0991", res.StoreHeaderDeliveryNames["CUS003"]);
-        Assert.Equal("", res.StoreHeaderDeliveryNames["CUS004"]);
+        Assert.Contains(k3, res.StoreKeys);
+        Assert.Contains(k4, res.StoreKeys);
+        Assert.Equal("cus0991", res.StoreHeaders[k3]);
+        Assert.Equal("", res.StoreHeaders[k4]);
+        Assert.Equal("cus0991", res.StoreHeaderCodes[k3]);
+        Assert.Equal("", res.StoreHeaderCodes[k4]);
+        Assert.Equal("CUS003", res.StoreHeaderDeliveryCodes[k3]);
+        Assert.Equal("CUS004", res.StoreHeaderDeliveryCodes[k4]);
+        Assert.Equal("四川飯店", res.StoreHeaderDeliveryNames[k3]);
+        Assert.Equal("別得意先", res.StoreHeaderDeliveryNames[k4]);
 
-        Assert.Equal(7, res.Rows.Single(r => r.ItemCode == "110").QuantitiesByStore["CUS003"]);
-        Assert.Equal(9, res.Rows.Single(r => r.ItemCode == "226").QuantitiesByStore["CUS004"]);
+        Assert.Equal(7, res.Rows.Single(r => r.ItemCode == "110").QuantitiesByStore[k3]);
+        Assert.Equal(9, res.Rows.Single(r => r.ItemCode == "226").QuantitiesByStore[k4]);
     }
 
     /// <summary>
@@ -346,21 +355,23 @@ public class SortingInquiryServiceTests
         var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20250801", new[] { "S1" });
 
+        var ka = SiCol("C_A", "L_A");
+        var kb = SiCol("C_B", "L_B");
         Assert.Equal(2, res.StoreKeys.Count);
-        Assert.Equal("客A", res.StoreHeaders["C_A"]);
-        Assert.Equal("客B", res.StoreHeaders["C_B"]);
-        Assert.Equal("C_A", res.StoreHeaderCodes["C_A"]);
-        Assert.Equal("C_B", res.StoreHeaderCodes["C_B"]);
-        Assert.Equal("L_A", res.StoreHeaderDeliveryCodes["C_A"]);
-        Assert.Equal("L_B", res.StoreHeaderDeliveryCodes["C_B"]);
-        Assert.Equal("場所A", res.StoreHeaderDeliveryNames["C_A"]);
-        Assert.Equal("場所B", res.StoreHeaderDeliveryNames["C_B"]);
-        Assert.Equal(1, res.Rows.Single(r => r.ItemCode == "I1").QuantitiesByStore["C_A"]);
-        Assert.Equal(2, res.Rows.Single(r => r.ItemCode == "I2").QuantitiesByStore["C_B"]);
+        Assert.Equal("場所A", res.StoreHeaders[ka]);
+        Assert.Equal("場所B", res.StoreHeaders[kb]);
+        Assert.Equal("L_A", res.StoreHeaderCodes[ka]);
+        Assert.Equal("L_B", res.StoreHeaderCodes[kb]);
+        Assert.Equal("C_A", res.StoreHeaderDeliveryCodes[ka]);
+        Assert.Equal("C_B", res.StoreHeaderDeliveryCodes[kb]);
+        Assert.Equal("客A", res.StoreHeaderDeliveryNames[ka]);
+        Assert.Equal("客B", res.StoreHeaderDeliveryNames[kb]);
+        Assert.Equal(1, res.Rows.Single(r => r.ItemCode == "I1").QuantitiesByStore[ka]);
+        Assert.Equal(2, res.Rows.Single(r => r.ItemCode == "I2").QuantitiesByStore[kb]);
     }
 
     [Fact]
-    public async Task SearchAsync_Same_customer_two_locations_sums_into_one_column()
+    public async Task SearchAsync_Same_customer_two_locations_gets_two_columns()
     {
         await using var app = CreateAppDb();
         var d = new DateOnly(2025, 9, 1);
@@ -421,12 +432,20 @@ public class SortingInquiryServiceTests
         var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20250901", Array.Empty<string>());
 
-        Assert.Single(res.StoreKeys);
-        Assert.Equal("C1", res.StoreKeys[0]);
-        Assert.Equal("同一客", res.StoreHeaders["C1"]);
-        Assert.Equal("C1", res.StoreHeaderCodes["C1"]);
-        Assert.Equal("L1／L2", res.StoreHeaderDeliveryCodes["C1"]);
-        Assert.Equal("東／西", res.StoreHeaderDeliveryNames["C1"]);
-        Assert.Equal(5, res.Rows.Single().QuantitiesByStore["C1"]);
+        var kEast = SiCol("C1", "L1");
+        var kWest = SiCol("C1", "L2");
+        Assert.Equal(2, res.StoreKeys.Count);
+        Assert.Contains(kEast, res.StoreKeys);
+        Assert.Contains(kWest, res.StoreKeys);
+        Assert.Equal("東", res.StoreHeaders[kEast]);
+        Assert.Equal("西", res.StoreHeaders[kWest]);
+        Assert.Equal("L1", res.StoreHeaderCodes[kEast]);
+        Assert.Equal("L2", res.StoreHeaderCodes[kWest]);
+        Assert.Equal("C1", res.StoreHeaderDeliveryCodes[kEast]);
+        Assert.Equal("C1", res.StoreHeaderDeliveryCodes[kWest]);
+        Assert.Equal("同一客", res.StoreHeaderDeliveryNames[kEast]);
+        Assert.Equal("同一客", res.StoreHeaderDeliveryNames[kWest]);
+        Assert.Equal(2, res.Rows.Single().QuantitiesByStore[kEast]);
+        Assert.Equal(3, res.Rows.Single().QuantitiesByStore[kWest]);
     }
 }
