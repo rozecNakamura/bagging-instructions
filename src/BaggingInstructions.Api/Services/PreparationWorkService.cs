@@ -482,15 +482,16 @@ WHERE sol.planneddeliverydate = {date.Value}
                   COALESCE(ci.itemname, '') AS child_itemname,
                   COALESCE(u.unitname, '') AS child_unitname,
                   COALESCE(
+                    NULLIF(BTRIM(COALESCE(ia.std::text, '')), ''),
                     CASE WHEN ia.car1 IS NOT NULL AND ia.car1 > 0 THEN ia.car1::text END,
                     CASE WHEN ia.car2 IS NOT NULL AND ia.car2 > 0 THEN ia.car2::text END,
                     CASE WHEN ia.car3 IS NOT NULL AND ia.car3 > 0 THEN ia.car3::text END,
                     ''
                   ) AS child_std
                 FROM bom b
-                LEFT JOIN item ci ON ci.itemcode = b.childitemcode
+                LEFT JOIN item ci ON TRIM(ci.itemcode) = TRIM(b.childitemcode)
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
-                LEFT JOIN itemadditionalinformation ia ON ia.itemcode = b.childitemcode
+                LEFT JOIN itemadditionalinformation ia ON TRIM(ia.itemcode) = TRIM(b.childitemcode)
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
@@ -587,5 +588,9 @@ internal sealed class PreparationBomSqlRow
     public decimal YieldPercent { get; set; }
     public string? ChildItemname { get; set; }
     public string? ChildUnitname { get; set; }
+    /// <summary>
+    /// 子品目の規格表示: <c>itemadditionalinformation.std</c>（非空なら優先）。
+    /// <c>std</c> が空のときは従来どおり <c>car1</c>→<c>car2</c>→<c>car3</c>の先頭の正値（マスタ未整備で <c>std</c> だけ空のケース向け）。
+    /// </summary>
     public string? ChildStd { get; set; }
 }
