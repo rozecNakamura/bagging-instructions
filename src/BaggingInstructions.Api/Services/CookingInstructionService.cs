@@ -122,7 +122,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
     /// <summary>
     /// PDF 行生成。ids は ordertableid。
     /// 予定製造量: ordertable.qtyuni0 / qtyuni1..3（item.conversionvalue1..3 で単位0）優先、無ければ qty を単位0換算（ia.car1/car2/car3 / car0）。表示は qtyuni1＋手配単位または conversionvalue1 で手配表示。
-    /// 子品目: 当該親の有効 BOM の子品目コード・名称のみ。
+    /// 子品目: 当該親の有効 BOM の子品目コード・名称・規格（<c>itemadditionalinformation.std</c>）。
     /// 予定使用量: 上記単位0換算後の製造数 × BOM（input/output/yield）による子所要量。
     /// </summary>
     public async Task<List<CookingInstructionPdfLineModel>> BuildPdfLineModelsAsync(
@@ -181,6 +181,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     PlanUnitName = parentUnitName,
                     ChildItemCode = "",
                     ChildItemName = "",
+                    Standard = "",
                     ChildRequiredQtyDisplay = "",
                     ChildUnitName = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
@@ -205,6 +206,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     PlanUnitName = parentUnitName,
                     ChildItemCode = b.ChildItemcode,
                     ChildItemName = (b.ChildItemname ?? "").Trim(),
+                    Standard = (b.ChildStd ?? "").Trim(),
                     ChildRequiredQtyDisplay = qtyDisplay,
                     ChildUnitName = (b.ChildUnitname ?? "").Trim(),
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
@@ -370,10 +372,12 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                   b.outputqty,
                   b.yieldpercent,
                   COALESCE(ci.itemname, '') AS child_itemname,
-                  COALESCE(u.unitname, '') AS child_unitname
+                  COALESCE(u.unitname, '') AS child_unitname,
+                  COALESCE(BTRIM(COALESCE(ia.std::text, '')), '') AS child_std
                 FROM bom b
-                LEFT JOIN item ci ON ci.itemcode = b.childitemcode
+                LEFT JOIN item ci ON TRIM(ci.itemcode) = TRIM(b.childitemcode)
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
+                LEFT JOIN itemadditionalinformation ia ON TRIM(ia.itemcode) = TRIM(b.childitemcode)
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
@@ -394,7 +398,8 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                     OutputQty = reader.GetDecimal(2),
                     YieldPercent = reader.GetDecimal(3),
                     ChildItemname = reader.GetString(4),
-                    ChildUnitname = reader.GetString(5)
+                    ChildUnitname = reader.GetString(5),
+                    ChildStd = reader.GetString(6)
                 });
             }
 
@@ -487,4 +492,6 @@ internal sealed class CookingInstructionBomSqlRow
     public decimal YieldPercent { get; set; }
     public string? ChildItemname { get; set; }
     public string? ChildUnitname { get; set; }
+    /// <summary>子品目の規格（<c>itemadditionalinformation.std</c>）。</summary>
+    public string? ChildStd { get; set; }
 }

@@ -4,6 +4,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 調理指示書.rxz を用いた PDF。便（SlotDisplay）ごとにページ塊を分ける。
+/// 規格は <c>STANDARD00</c>〜<c>STANDARD12</c>（子品目の <see cref="CookingInstructionPdfLineModel.Standard"/>）。
 /// </summary>
 public sealed class CookingInstructionPdfService
 {
@@ -71,6 +72,8 @@ public sealed class CookingInstructionPdfService
             tags[$"ITEMCHINM{nn}"] = "";
             tags[$"ITEMPALNUM{nn}"] = "";
             tags[$"ITEMCHINUM{nn}"] = "";
+            if (i <= 12)
+                tags[$"STANDARD{nn}"] = "";
             tags[$"UNITPAR{nn}"] = "";
             tags[$"UNITCHI{nn}"] = "";
             tags[$"ORDERNO{nn}"] = "";
@@ -97,6 +100,8 @@ public sealed class CookingInstructionPdfService
             tags[$"ITEMCHINM{nn}"] = childText ?? string.Empty;
             tags[$"ITEMPALNUM{nn}"] = parentName ?? string.Empty;
             tags[$"ITEMCHINUM{nn}"] = "";
+            if (i <= 12)
+                tags[$"STANDARD{nn}"] = (r.Standard ?? "").Trim();
             tags[$"MAKEQUNPLAN{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
             tags[$"USEQUNPLAN{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
 

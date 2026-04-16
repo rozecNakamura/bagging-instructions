@@ -17,6 +17,7 @@ public class CookingInstructionPdfServiceTests
             PlanUnitName = "kg",
             ChildItemCode = "C001",
             ChildItemName = "子商品",
+            Standard = "500g",
             ChildRequiredQtyDisplay = "2.5",
             ChildUnitName = "g",
             NeedDateDisplay = "2025/03/01",
@@ -37,6 +38,7 @@ public class CookingInstructionPdfServiceTests
         Assert.Equal("P001 親商品", tags["ITEMPALNUM00"]);
         Assert.Equal("10.5", tags["MAKEQUNPLAN00"]);
         Assert.Equal("C001 子商品", tags["ITEMCHINM00"]);
+        Assert.Equal("500g", tags["STANDARD00"]);
         Assert.Equal("", tags["ITEMCHINUM00"]);
         Assert.Equal("2.5", tags["USEQUNPLAN00"]);
         Assert.Equal("kg", tags["UNITPAR01"]);

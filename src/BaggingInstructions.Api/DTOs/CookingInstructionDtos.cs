@@ -60,6 +60,8 @@ public sealed class CookingInstructionPdfLineModel
 
     public string ChildItemCode { get; set; } = "";
     public string ChildItemName { get; set; } = "";
+    /// <summary>子品目の規格（<c>itemadditionalinformation.std</c>）。</summary>
+    public string Standard { get; set; } = "";
     public string ChildRequiredQtyDisplay { get; set; } = "";
     public string ChildUnitName { get; set; } = "";
 
