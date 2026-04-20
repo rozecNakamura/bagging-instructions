@@ -40,7 +40,7 @@ function displayHclResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('hclHeaderCheckbox');
     if (headerCheckbox) headerCheckbox.checked = false;
 }

@@ -55,7 +55,7 @@ function displayPersonalDeliveryResults(items) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     document.getElementById('personalDeliveryHeaderCheckbox').checked = false;
 }
 

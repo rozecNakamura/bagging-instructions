@@ -114,7 +114,7 @@ function displayCookingResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('cookHeaderCheckbox');
     if (headerCheckbox) headerCheckbox.checked = false;
 }

@@ -109,8 +109,7 @@ public class AcceptanceRecordController : ControllerBase
                 fullPath,
                 lines,
                 body.HeaderLocation,
-                body.HeaderOutDate,
-                body.HeaderDelvDate);
+                body.HeaderOutDate);
             if (pdfBytes.Length == 0)
                 return BadRequest(new { detail = "印刷する行がありません" });
 

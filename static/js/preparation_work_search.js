@@ -237,7 +237,7 @@ function displayPrepResults(groups) {
     });
 
     section.style.display = 'block';
-    outSection.style.display = 'block';
+    outSection.style.display = 'flex';
     document.getElementById('prepHeaderCheckbox').checked = false;
 }
 

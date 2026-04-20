@@ -40,7 +40,7 @@ function displayGmtResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('gmtHeaderCheckbox');
     if (headerCheckbox) headerCheckbox.checked = false;
 }

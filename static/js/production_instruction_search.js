@@ -47,7 +47,7 @@ function displayProductionResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('prodHeaderCheckbox');
     if (headerCheckbox) headerCheckbox.checked = false;
 }

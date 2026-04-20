@@ -60,7 +60,7 @@ function displayJuiceResults(groups) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     document.getElementById('juiceHeaderCheckbox').checked = false;
 }
 

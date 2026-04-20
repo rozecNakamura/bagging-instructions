@@ -71,6 +71,14 @@
     flex-wrap: wrap;
 }
 
+/* 検索ボタン右横：印刷・出力ボタン（従来は画面下部の print-section にあったもの） */
+.search-form-inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
@@ -194,7 +202,11 @@
     background-color: #fafafa;
     max-height: 180px;
     overflow-y: auto;
+    overflow-x: auto;
     min-width: 100%;
+    width: max-content;
+    max-width: min(96vw, 960px);
+    box-sizing: border-box;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
@@ -204,6 +216,7 @@
     gap: 6px;
     font-size: 0.9rem;
     margin-bottom: 4px;
+    white-space: nowrap;
 }
 
 .multi-select-panel input[type="checkbox"] {

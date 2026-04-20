@@ -139,7 +139,7 @@ function displaySortingInquiryResults(data) {
     });
 
     section.style.display = 'block';
-    exportSection.style.display = 'block';
+    exportSection.style.display = 'flex';
 }
 
 /** @returns {{ delvedt: string, slotCodes: string[] }} */

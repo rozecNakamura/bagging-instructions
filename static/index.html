@@ -185,6 +185,9 @@
                                 <input type="text" id="juiceItemCode" placeholder="品目コードを入力">
                             </div>
                             <button id="juiceSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="juicePrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="juicePrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="juiceResultsSection" style="display: none;">
@@ -213,10 +216,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="juicePrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="juicePrintBtn" class="btn btn-success">PDF印刷</button>
-                    </section>
                 </div>
             </div>
 
@@ -238,6 +237,9 @@
                                 <input type="text" id="bentoItemCode" placeholder="品目コードを入力">
                             </div>
                             <button type="button" id="bentoSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="bentoPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="bentoPrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="bentoResultsSection" style="display: none;">
@@ -266,10 +268,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="bentoPrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="bentoPrintBtn" class="btn btn-success">PDF印刷</button>
-                    </section>
                 </div>
             </div>
 
@@ -287,6 +285,9 @@
                                 <input type="date" id="deliveryNoteEatingDate" required aria-required="true">
                             </div>
                             <button type="button" id="deliveryNoteSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="deliveryNotePrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="deliveryNotePrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="deliveryNoteResultsSection" style="display: none;">
@@ -311,10 +312,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="deliveryNotePrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="deliveryNotePrintBtn" class="btn btn-success">PDF印刷</button>
                     </section>
                 </div>
             </div>
@@ -343,6 +340,9 @@
                                 </div>
                             </div>
                             <button type="button" id="inspectionSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="inspectionPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="inspectionPrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="inspectionResultsSection" style="display: none;">
@@ -372,10 +372,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="inspectionPrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="inspectionPrintBtn" class="btn btn-success">PDF印刷</button>
                     </section>
                 </div>
             </div>
@@ -408,6 +404,9 @@
                                 </div>
                             </div>
                             <button type="button" id="acceptanceSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="acceptancePrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="acceptancePrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="acceptanceResultsSection" style="display: none;">
@@ -437,10 +436,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="acceptancePrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="acceptancePrintBtn" class="btn btn-success">PDF印刷</button>
-                    </section>
                 </div>
             </div>
 
@@ -458,6 +453,10 @@
                                 <input type="date" id="personalDeliveryDate" required aria-required="true">
                             </div>
                             <button type="button" id="personalDeliverySearchBtn" class="btn btn-primary">検索</button>
+                            <div id="personalDeliveryPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="personalDeliveryDetailPrintBtn" class="btn btn-success">個人配送指示書出力</button>
+                                <button type="button" id="personalDeliverySummaryPrintBtn" class="btn btn-success">個人配送指示書（集計）出力</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="personalDeliveryResultsSection" style="display: none;">
@@ -484,11 +483,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="personalDeliveryPrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="personalDeliveryDetailPrintBtn" class="btn btn-success">個人配送指示書出力</button>
-                        <button type="button" id="personalDeliverySummaryPrintBtn" class="btn btn-success">個人配送指示書（集計）出力</button>
-                    </section>
                 </div>
             </div>
 
@@ -512,6 +506,9 @@
                                 </select>
                             </div>
                             <button type="button" id="productLabelSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="productLabelPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="productLabelPrintBtn" class="btn btn-success">印刷</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="productLabelResultsSection" style="display: none;">
@@ -532,10 +529,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="productLabelPrintSection" style="display: none;">
-                        <h2>印刷</h2>
-                        <button type="button" id="productLabelPrintBtn" class="btn btn-success">印刷</button>
                     </section>
                 </div>
             </div>
@@ -578,6 +571,9 @@
                                 </div>
                             </div>
                             <button type="button" id="aggSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="aggPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="aggPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="aggResultsSection" style="display: none;">
@@ -604,10 +600,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="aggPrintSection" style="display: none;">
-                        <h2>帳票出力</h2>
-                        <button type="button" id="aggPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
                     </section>
                 </div>
             </div>
@@ -646,6 +638,9 @@
                                 </div>
                             </div>
                             <button type="button" id="cookSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="cookPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="cookPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="cookResultsSection" style="display: none;">
@@ -671,10 +666,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="cookPrintSection" style="display: none;">
-                        <h2>帳票出力</h2>
-                        <button type="button" id="cookPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
                     </section>
                 </div>
             </div>
@@ -713,6 +704,9 @@
                                 </div>
                             </div>
                             <button type="button" id="prodSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="prodPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="prodPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="prodResultsSection" style="display: none;">
@@ -739,10 +733,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="prodPrintSection" style="display: none;">
-                        <h2>帳票出力</h2>
-                        <button type="button" id="prodPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
-                    </section>
                 </div>
             </div>
 
@@ -764,6 +754,9 @@
                                 <input type="text" id="hclItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
                             </div>
                             <button type="button" id="hclSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="hclPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="hclPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="hclResultsSection" style="display: none;">
@@ -791,10 +784,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="hclPrintSection" style="display: none;">
-                        <h2>帳票出力</h2>
-                        <button type="button" id="hclPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
-                    </section>
                 </div>
             </div>
 
@@ -816,6 +805,9 @@
                                 <input type="text" id="gmtItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
                             </div>
                             <button type="button" id="gmtSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="gmtPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="gmtPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="gmtResultsSection" style="display: none;">
@@ -843,10 +835,6 @@
                             </table>
                         </div>
                     </section>
-                    <section class="print-section" id="gmtPrintSection" style="display: none;">
-                        <h2>帳票出力</h2>
-                        <button type="button" id="gmtPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
-                    </section>
                 </div>
             </div>
 
@@ -868,6 +856,9 @@
                                 <input type="text" id="cwsItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
                             </div>
                             <button type="button" id="cwsSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="cwsPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="cwsPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="cwsResultsSection" style="display: none;">
@@ -894,10 +885,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="cwsPrintSection" style="display: none;">
-                        <h2>帳票出力</h2>
-                        <button type="button" id="cwsPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
                     </section>
                 </div>
             </div>
@@ -926,6 +913,10 @@
                                 </div>
                             </div>
                             <button type="button" id="siSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="siExportSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="siExportShiwakeBtn" class="btn btn-primary">Excel 出力（仕分け照会）</button>
+                                <button type="button" id="siExportJournalBtn" class="btn btn-primary">Excel 出力（仕訳表自動調整）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="siResultsSection" style="display: none;">
@@ -939,11 +930,6 @@
                                 <tbody id="siResultsBody"></tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="siExportSection" style="display: none;">
-                        <h2>Excel 出力</h2>
-                        <button type="button" id="siExportShiwakeBtn" class="btn btn-primary">Excel 出力（仕分け照会）</button>
-                        <button type="button" id="siExportJournalBtn" class="btn btn-primary">Excel 出力（仕訳表自動調整）</button>
                     </section>
                 </div>
             </div>
@@ -990,6 +976,10 @@
                                 </div>
                             </div>
                             <button type="button" id="prepSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="prepOutputSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="prepCsvBtn" class="btn btn-primary">データ出力（CSV）</button>
+                                <button type="button" id="prepPdfBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
                         </div>
                     </section>
                     <section class="results-section" id="prepResultsSection" style="display: none;">
@@ -1016,11 +1006,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                    <section class="print-section" id="prepOutputSection" style="display: none;">
-                        <h2>出力</h2>
-                        <button type="button" id="prepCsvBtn" class="btn btn-primary">データ出力（CSV）</button>
-                        <button type="button" id="prepPdfBtn" class="btn btn-success">帳票印刷（PDF）</button>
                     </section>
                 </div>
             </div>

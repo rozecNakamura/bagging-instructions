@@ -36,14 +36,16 @@ public class CustomerDeliveryLocation
     [Column("faxnumber")]
     public string? FaxNumber { get; set; }
 
+    /// <summary> craftlineax では NULL の行があるため nullable。</summary>
     [Column("isdefault")]
-    public bool IsDefault { get; set; }
+    public bool? IsDefault { get; set; }
 
+    /// <summary> craftlineax では NULL の行があるため nullable。</summary>
     [Column("isactive")]
-    public bool IsActive { get; set; } = true;
+    public bool? IsActive { get; set; }
 
     [Column("sortorder")]
-    public int SortOrder { get; set; }
+    public int? SortOrder { get; set; }
 
     public virtual Customer Customer { get; set; } = null!;
     public virtual CustomerDeliveryLocationAddinfo? Addinfo { get; set; }

@@ -60,7 +60,7 @@ function displayBentoResults(groups) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     document.getElementById('bentoHeaderCheckbox').checked = false;
 }
 

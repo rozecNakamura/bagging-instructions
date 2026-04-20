@@ -40,7 +40,7 @@ function displayCwsResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('cwsHeaderCheckbox');
     if (headerCheckbox) headerCheckbox.checked = false;
 }

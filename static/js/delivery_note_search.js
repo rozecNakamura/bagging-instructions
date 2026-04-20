@@ -54,7 +54,7 @@ function displayDeliveryNoteResults(items) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     document.getElementById('deliveryNoteHeaderCheckbox').checked = false;
 }
 

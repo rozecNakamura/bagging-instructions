@@ -81,7 +81,7 @@ function displayProductLabelResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
 }
 
 document.addEventListener('DOMContentLoaded', () => {

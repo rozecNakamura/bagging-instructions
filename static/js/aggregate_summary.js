@@ -269,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             section.style.display = 'block';
-            printSection.style.display = 'block';
+            printSection.style.display = 'flex';
             headerCheckbox.checked = false;
         } catch (e) {
             alert('検索に失敗しました: ' + e.message);

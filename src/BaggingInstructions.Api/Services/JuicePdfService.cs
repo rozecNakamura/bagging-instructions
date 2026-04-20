@@ -68,6 +68,12 @@ public class JuicePdfService
         public int FillPattern { get; set; }
         /// <summary>Box の塗り（FillPattern≠0 のとき）。AARRGGBB。</summary>
         public string BoxFillColor { get; set; } = "ff000000";
+
+        /// <summary>rxz の Line（グリッド線）。<see cref="EndX"/>/<see cref="EndY"/> まで描画。</summary>
+        public bool IsVectorLine { get; set; }
+
+        public int EndX { get; set; }
+        public int EndY { get; set; }
     }
 
     /// <summary>
@@ -212,6 +218,13 @@ public class JuicePdfService
                     if (!TryParseBoxItem(box, out var boxItem)) continue;
                     list.Add(boxItem);
                 }
+
+                // 4) Line（直線・表グリッド）。検収の記録簿.rxz など。
+                foreach (var lineEl in objectsEl.Elements("Line"))
+                {
+                    if (!TryParseVectorLineItem(lineEl, out var lineItem)) continue;
+                    list.Add(lineItem);
+                }
             }
         }
 
@@ -315,6 +328,55 @@ public class JuicePdfService
         return true;
     }
 
+    /// <summary>rxz の Line（Graphic/Object/Start と End）をパースする。</summary>
+    private static bool TryParseVectorLineItem(XElement lineEl, out RxzTextItem item)
+    {
+        item = null!;
+        var graphic = lineEl.Element("Graphic");
+        var obj = graphic?.Element("Object");
+        var startEl = obj?.Element("Start");
+        var endEl = lineEl.Element("End");
+        if (startEl == null || endEl == null || obj == null) return false;
+
+        int sx = (int?)startEl.Attribute("X") ?? 0;
+        int sy = (int?)startEl.Attribute("Y") ?? 0;
+        int ex = (int?)endEl.Attribute("X") ?? 0;
+        int ey = (int?)endEl.Attribute("Y") ?? 0;
+        int lineWidth = (int?)graphic?.Element("LineWidth") ?? 14173;
+        string lineColor = (string?)graphic?.Element("LineColor") ?? "ff000000";
+        int drawSeq = (int?)obj.Element("DrawSeq") ?? 0;
+        bool visible = (bool?)obj.Element("Visible") ?? true;
+        var name = (string?)obj.Element("Name") ?? $"Line_{drawSeq}";
+
+        item = new RxzTextItem
+        {
+            Name = name,
+            StartX = sx,
+            StartY = sy,
+            EndX = ex,
+            EndY = ey,
+            SizeWidth = 0,
+            SizeHeight = 0,
+            TextData = "",
+            Alignment = 1,
+            FontHeight = 1100,
+            FontName = "ＭＳ ゴシック",
+            DrawSeq = drawSeq,
+            Visible = visible,
+            Frame = false,
+            LineWidth = lineWidth,
+            LineColor = lineColor ?? "ff000000",
+            MarginLeft = 0,
+            MarginTop = 0,
+            MarginRight = 0,
+            MarginBottom = 0,
+            ShrinkToFit = false,
+            AlignVertical = 2,
+            IsVectorLine = true
+        };
+        return true;
+    }
+
     private static bool IsQuantityUnitFieldName(string name) =>
         name.StartsWith("USEQUNUNIT", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("SUBUSEQUNUNIT", StringComparison.OrdinalIgnoreCase) ||
@@ -408,6 +470,20 @@ public class JuicePdfService
         foreach (var item in items)
         {
             if (!item.Visible) continue;
+
+            if (item.IsVectorLine)
+            {
+                double x1 = item.StartX / Twip + offsetX;
+                double y1 = item.StartY / Twip + offsetY;
+                double x2 = item.EndX / Twip + offsetX;
+                double y2 = item.EndY / Twip + offsetY;
+                var lineWidthPt = item.LineWidth / Twip;
+                if (lineWidthPt <= 0) lineWidthPt = 0.35;
+                var penColor = ParseLineColor(item.LineColor);
+                var pen = new XPen(penColor, lineWidthPt);
+                gfx.DrawLine(pen, x1, y1, x2, y2);
+                continue;
+            }
 
             double x = item.StartX / Twip + offsetX;
             double y = item.StartY / Twip + offsetY;

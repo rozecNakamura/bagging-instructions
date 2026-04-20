@@ -49,7 +49,7 @@ function displayAcceptanceResults(rows) {
     });
 
     section.style.display = 'block';
-    printSection.style.display = 'block';
+    printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('acceptanceHeaderCheckbox');
     if (headerCheckbox) headerCheckbox.checked = false;
 }
@@ -136,7 +136,13 @@ export function getSelectedAcceptanceSalesOrderLineIds() {
     checked.forEach(cb => {
         const index = Number(cb.dataset.index);
         const row = acceptanceRows[index];
-        if (row && typeof row.salesOrderLineId === 'number') {
+        if (!row) return;
+        const list = row.salesOrderLineIds;
+        if (Array.isArray(list) && list.length > 0) {
+            list.forEach((id) => {
+                if (typeof id === 'number' && Number.isFinite(id)) ids.push(id);
+            });
+        } else if (typeof row.salesOrderLineId === 'number') {
             ids.push(row.salesOrderLineId);
         }
     });
