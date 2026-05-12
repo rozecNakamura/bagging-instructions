@@ -13,10 +13,12 @@ namespace BaggingInstructions.Api.Services;
 public class SearchService
 {
     private readonly AppDbContext _db;
+    private readonly CstmeatDbContext _otherDb;
 
-    public SearchService(AppDbContext db)
+    public SearchService(AppDbContext db, CstmeatDbContext otherDb)
     {
         _db = db;
+        _otherDb = otherDb;
     }
 
     /// <summary>受注明細を検索（基本情報のみ）。productdate で検索、itemcd は部分一致。</summary>
@@ -74,10 +76,12 @@ public class SearchService
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
 
-        var registrations = await _db.BaggingInputRegistrations.AsNoTracking()
-            .Where(r => r.ProductDate == prddtDate.Value)
+        var printedRows = await _otherDb.BaggedQuantities.AsNoTracking()
+            .Where(r => r.ProductDate == prddtDate.Value && r.IsPrinted)
+            .Select(r => r.ParentItemCode)
+            .Distinct()
             .ToListAsync(ct);
-        var printedByItemCd = registrations.ToDictionary(r => r.ItemCode, r => r.IsPrinted);
+        var printedItemCodes = printedRows.ToHashSet(StringComparer.Ordinal);
 
         var groups = lines
             .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
@@ -86,7 +90,7 @@ public class SearchService
             {
                 var first = g.First();
                 var item = first.Item!;
-                var printed = printedByItemCd.TryGetValue(g.Key, out var p) && p;
+                var printed = printedItemCodes.Contains(g.Key);
                 return new BaggingSearchGroupDto
                 {
                     Prddt = prddtDate.Value.ToString("yyyyMMdd"),

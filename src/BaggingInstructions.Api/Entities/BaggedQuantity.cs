@@ -30,6 +30,9 @@ public class BaggedQuantity
     [Column("totalquantity")]
     public decimal? TotalQuantity { get; set; }
 
+    [Column("isprinted")]
+    public bool IsPrinted { get; set; }
+
     [Column("updatedat")]
     public DateTime UpdatedAt { get; set; }
 }

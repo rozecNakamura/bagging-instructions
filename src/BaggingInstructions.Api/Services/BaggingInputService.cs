@@ -179,6 +179,9 @@ public class BaggingInputService
     {
         var now = DateTime.UtcNow;
         var lines = payload?.Lines ?? new List<BaggingInputLineDto>();
+        var wasPrinted = await _otherDb.BaggedQuantities.AsNoTracking()
+            .Where(r => r.ProductDate == productDate && r.ParentItemCode == parentItemCode)
+            .AnyAsync(r => r.IsPrinted, ct);
 
         await using var tx = await _otherDb.Database.BeginTransactionAsync(ct);
         try
@@ -198,7 +201,7 @@ public class BaggingInputService
                 var inputOrder = line.InputOrder is > 0 ? line.InputOrder!.Value : idx + 1;
 
                 await _otherDb.Database.ExecuteSqlAsync(
-                    $"INSERT INTO baggedquantity (productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, updatedat) VALUES ({productDate}, {parentItemCode}, {citem}, {inputOrder}, {line.SpecQty}, {line.TotalQty}, {now})",
+                    $"INSERT INTO baggedquantity (productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, isprinted, updatedat) VALUES ({productDate}, {parentItemCode}, {citem}, {inputOrder}, {line.SpecQty}, {line.TotalQty}, {wasPrinted}, {now})",
                     ct);
             }
             await tx.CommitAsync(ct);
@@ -217,27 +220,17 @@ public class BaggingInputService
         var itemTrim = itemcd.Trim();
         var now = DateTime.UtcNow;
 
-        var existing = await _db.BaggingInputRegistrations
-            .FirstOrDefaultAsync(r => r.ProductDate == date.Value && r.ItemCode == itemTrim, ct);
+        var rows = await _otherDb.BaggedQuantities
+            .Where(r => r.ProductDate == date.Value && r.ParentItemCode == itemTrim)
+            .ToListAsync(ct);
 
-        if (existing == null)
+        foreach (var row in rows)
         {
-            _db.BaggingInputRegistrations.Add(new BaggingInputRegistration
-            {
-                ProductDate = date.Value,
-                ItemCode = itemTrim,
-                Payload = "{}",
-                IsPrinted = true,
-                UpdatedAt = now
-            });
-        }
-        else
-        {
-            existing.IsPrinted = true;
-            existing.UpdatedAt = now;
+            row.IsPrinted = true;
+            row.UpdatedAt = now;
         }
 
-        await _db.SaveChangesAsync(ct);
+        await _otherDb.SaveChangesAsync(ct);
     }
 
     public async Task<BaggingInputPayloadDto?> TryGetPayloadAsync(
