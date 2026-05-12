@@ -267,6 +267,8 @@ public class SearchService
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.WorkCenterMappings!)
                 .ThenInclude(m => m.Workcenter)
+            .Include(l => l.Item!)
+                .ThenInclude(i => i!.Classification1)
             .Include(l => l.CustomerItem!)
                 .ThenInclude(ci => ci!.Customer)
             .OrderBy(l => l.SalesOrderLineId)
@@ -328,7 +330,7 @@ public class SearchService
                 Prddt = l.ProductDate?.ToString("yyyyMMdd"),
                 Delvedt = l.PlannedDeliveryDate?.ToString("yyyyMMdd"),
                 Shptm = l.Addinfo?.Addinfo04,
-                ShptmName = l.Addinfo?.Addinfo04Name,
+                ShptmName = l.Addinfo?.Addinfo05Name,
                 Cuscd = cust?.CustomerCode,
                 Shpctrcd = loc?.LocationCode,
                 Itemcd = item?.ItemCd,

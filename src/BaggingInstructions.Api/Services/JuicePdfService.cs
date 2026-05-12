@@ -695,11 +695,13 @@ public class JuicePdfService
     /// 複数ページ分のタグ値を受け取り、1 ページずつ描画して PDF を生成する（弁当箱盛り付け指示書などで使用）。
     /// </summary>
     /// <param name="alignmentOverrides">フィールド名ごとのアライメント上書き（1=左 2=右 3=中央）。テンプレート定義より優先。</param>
+    /// <param name="shrinkToFitOverrides">ShrinkToFit を強制するフィールド名のセット。テンプレートの ShrinkToFit=false を上書きして縮小表示する。</param>
     public byte[] GeneratePdfMultiPage(
         string rxzTemplatePath,
         IReadOnlyList<Dictionary<string, string>> pagesTagValues,
         string? documentTitle = null,
-        IReadOnlyDictionary<string, int>? alignmentOverrides = null)
+        IReadOnlyDictionary<string, int>? alignmentOverrides = null,
+        IReadOnlySet<string>? shrinkToFitOverrides = null)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
@@ -711,6 +713,14 @@ public class JuicePdfService
             {
                 if (alignmentOverrides.TryGetValue(item.Name, out var align))
                     item.Alignment = align;
+            }
+        }
+        if (shrinkToFitOverrides != null)
+        {
+            foreach (var item in items)
+            {
+                if (shrinkToFitOverrides.Contains(item.Name))
+                    item.ShrinkToFit = true;
             }
         }
 
