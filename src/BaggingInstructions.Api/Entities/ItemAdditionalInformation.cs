@@ -5,9 +5,9 @@ namespace BaggingInstructions.Api.Entities;
 [Table("itemadditionalinformation")]
 public class ItemAdditionalInformation
 {
-    /// <summary>サロゲート ID（EF 主キーは <see cref="ItemCd"/>）。</summary>
+    /// <summary>内部採番 ID。craftlineax は bigint（EF の主キーは <see cref="ItemCd"/>）。</summary>
     [Column("itemadditionalinformationid")]
-    public long? ItemAdditionalInformationId { get; set; }
+    public long ItemAdditionalInformationId { get; set; }
 
     /// <summary>品目コード（item.itemcode へ。主キー）。</summary>
     [Column("itemcode")]
