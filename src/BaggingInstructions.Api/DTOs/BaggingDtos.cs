@@ -218,3 +218,12 @@ public class BaggingCalculateResult
     /// <summary>有効な規格充填量（ユーザー登録 spec_qty 優先、未登録時は addInfo.Car0）。</summary>
     public decimal? EffectiveSpecFillQty { get; set; }
 }
+
+public class MarkPrintedRequestDto
+{
+    [JsonPropertyName("prddt")]
+    public string Prddt { get; set; } = "";
+
+    [JsonPropertyName("itemcd")]
+    public string Itemcd { get; set; } = "";
+}

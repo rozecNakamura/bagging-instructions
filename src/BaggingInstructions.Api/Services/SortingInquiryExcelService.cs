@@ -143,7 +143,7 @@ public sealed class SortingInquiryExcelService
             var key = data.StoreKeys[i];
             columnRatioMaxes.TryGetValue(key, out var colMax);
             var cell = ws.Cell(headerRow, FirstCustomerCol + i);
-            cell.Value = Math.Round(colMax, 2, MidpointRounding.AwayFromZero);
+            cell.Value = colMax;
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
         }
 
@@ -218,7 +218,7 @@ public sealed class SortingInquiryExcelService
                         continue;
                 }
 
-                ws.Cell(r, c).Value = Math.Round(q, 2, MidpointRounding.AwayFromZero);
+                ws.Cell(r, c).Value = q;
             }
 
             if (n > 0)

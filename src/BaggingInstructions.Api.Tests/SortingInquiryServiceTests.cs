@@ -8,7 +8,7 @@ namespace BaggingInstructions.Api.Tests;
 public class SortingInquiryServiceTests
 {
     private static string SiCol(string customerCode, string locationCode) =>
-        $"{customerCode}{locationCode}";
+        $"{customerCode}\u001e{locationCode}";
 
     private static AppDbContext CreateAppDb()
     {
@@ -18,20 +18,11 @@ public class SortingInquiryServiceTests
         return new AppDbContext(options);
     }
 
-    private static CstmeatDbContext CreateCstmeatDb()
-    {
-        var options = new DbContextOptionsBuilder<CstmeatDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        return new CstmeatDbContext(options);
-    }
-
     [Fact]
     public async Task SearchAsync_InvalidDate_ThrowsArgumentException()
     {
         await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
-        var svc = new SortingInquiryService(app, cstmeat);
+        var svc = new SortingInquiryService(app);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             svc.SearchAsync("2024", null, CancellationToken.None));
@@ -41,21 +32,20 @@ public class SortingInquiryServiceTests
     public async Task SearchAsync_Filters_by_slot_and_aggregates_by_item_foodtype_and_store()
     {
         await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
 
         var d = new DateOnly(2025, 7, 10);
-        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "得意先1" });
+        app.Customers.Add(new Customer { CustomerCode = "CUST1", CustomerName = "得意先1" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
-            CustomerCode = "200",
+            CustomerCode = "CUST1",
             LocationCode = "LOC1",
             LocationName = "店舗A"
         });
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 1,
-            CustomerCode = "200",
+            CustomerCode = "CUST1",
             CustomerDeliveryLocationCode = "LOC1"
         });
         app.Items.Add(new Item
@@ -105,16 +95,16 @@ public class SortingInquiryServiceTests
         });
         await app.SaveChangesAsync();
 
-        var svc = new SortingInquiryService(app, cstmeat);
+        var svc = new SortingInquiryService(app);
 
-        var k = SiCol("200", "LOC1");
+        var k = SiCol("CUST1", "LOC1");
         var allSlots = await svc.SearchAsync("20250710", Array.Empty<string>());
         Assert.Single(allSlots.Rows);
         Assert.Single(allSlots.StoreKeys);
         Assert.Equal(k, allSlots.StoreKeys[0]);
         Assert.Equal("店舗A", allSlots.StoreHeaders[k]);
         Assert.Equal("LOC1", allSlots.StoreHeaderCodes[k]);
-        Assert.Equal("200", allSlots.StoreHeaderDeliveryCodes[k]);
+        Assert.Equal("CUST1", allSlots.StoreHeaderDeliveryCodes[k]);
         Assert.Equal("得意先1", allSlots.StoreHeaderDeliveryNames[k]);
         Assert.Equal(3m, allSlots.StoreHeaderCapacities[k]);
         Assert.Equal(3m, allSlots.Rows[0].RatioQuantitiesByStore[k]);
@@ -135,30 +125,29 @@ public class SortingInquiryServiceTests
     public async Task SearchAsync_Uses_order_delivery_code_when_master_row_missing_separate_columns_per_customer()
     {
         await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
         var d = new DateOnly(2025, 7, 10);
 
-        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "得意先Ａ" });
-        app.Customers.Add(new Customer { CustomerCode = "210", CustomerName = "得意先Ｂ" });
+        app.Customers.Add(new Customer { CustomerCode = "CUST1", CustomerName = "得意先Ａ" });
+        app.Customers.Add(new Customer { CustomerCode = "CUST2", CustomerName = "得意先Ｂ" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
-            CustomerCode = "200",
+            CustomerCode = "CUST1",
             LocationCode = "LOC1",
             LocationName = "店舗１"
         });
-        // 210: マスタ行なし。受注に cus0991 のみ。
+        // CUST2: マスタ行なし。受注に cus0991 のみ。
 
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 1,
-            CustomerCode = "200",
+            CustomerCode = "CUST1",
             CustomerDeliveryLocationCode = "LOC1"
         });
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 2,
-            CustomerCode = "210",
+            CustomerCode = "CUST2",
             CustomerDeliveryLocationCode = "cus0991"
         });
 
@@ -199,11 +188,11 @@ public class SortingInquiryServiceTests
         });
         await app.SaveChangesAsync();
 
-        var svc = new SortingInquiryService(app, cstmeat);
+        var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20250710", Array.Empty<string>());
 
-        var k1 = SiCol("200", "LOC1");
-        var k2 = SiCol("210", "cus0991");
+        var k1 = SiCol("CUST1", "LOC1");
+        var k2 = SiCol("CUST2", "cus0991");
         Assert.Equal(2, res.StoreKeys.Count);
         Assert.Contains(k1, res.StoreKeys);
         Assert.Contains(k2, res.StoreKeys);
@@ -211,8 +200,8 @@ public class SortingInquiryServiceTests
         Assert.Equal("cus0991", res.StoreHeaders[k2]);
         Assert.Equal("LOC1", res.StoreHeaderCodes[k1]);
         Assert.Equal("cus0991", res.StoreHeaderCodes[k2]);
-        Assert.Equal("200", res.StoreHeaderDeliveryCodes[k1]);
-        Assert.Equal("210", res.StoreHeaderDeliveryCodes[k2]);
+        Assert.Equal("CUST1", res.StoreHeaderDeliveryCodes[k1]);
+        Assert.Equal("CUST2", res.StoreHeaderDeliveryCodes[k2]);
         Assert.Equal("得意先Ａ", res.StoreHeaderDeliveryNames[k1]);
         Assert.Equal("得意先Ｂ", res.StoreHeaderDeliveryNames[k2]);
 
@@ -228,15 +217,14 @@ public class SortingInquiryServiceTests
     public async Task SearchAsync_No_delivery_code_on_order_still_gets_column_per_customer()
     {
         await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
         var d = new DateOnly(2026, 3, 30);
 
-        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "四川飯店" });
-        app.Customers.Add(new Customer { CustomerCode = "210", CustomerName = "別得意先" });
+        app.Customers.Add(new Customer { CustomerCode = "CUS003", CustomerName = "四川飯店" });
+        app.Customers.Add(new Customer { CustomerCode = "CUS004", CustomerName = "別得意先" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
-            CustomerCode = "200",
+            CustomerCode = "CUS003",
             LocationCode = "cus0991",
             LocationName = ""
         });
@@ -244,13 +232,13 @@ public class SortingInquiryServiceTests
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 1,
-            CustomerCode = "200",
+            CustomerCode = "CUS003",
             CustomerDeliveryLocationCode = "cus0991"
         });
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 2,
-            CustomerCode = "210",
+            CustomerCode = "CUS004",
             CustomerDeliveryLocationCode = null
         });
 
@@ -279,11 +267,11 @@ public class SortingInquiryServiceTests
         });
         await app.SaveChangesAsync();
 
-        var svc = new SortingInquiryService(app, cstmeat);
+        var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20260330", Array.Empty<string>());
 
-        var k3 = SiCol("200", "cus0991");
-        var k4 = SiCol("210", "");
+        var k3 = SiCol("CUS003", "cus0991");
+        var k4 = SiCol("CUS004", "");
         Assert.Equal(2, res.StoreKeys.Count);
         Assert.Contains(k3, res.StoreKeys);
         Assert.Contains(k4, res.StoreKeys);
@@ -291,8 +279,8 @@ public class SortingInquiryServiceTests
         Assert.Equal("", res.StoreHeaders[k4]);
         Assert.Equal("cus0991", res.StoreHeaderCodes[k3]);
         Assert.Equal("", res.StoreHeaderCodes[k4]);
-        Assert.Equal("200", res.StoreHeaderDeliveryCodes[k3]);
-        Assert.Equal("210", res.StoreHeaderDeliveryCodes[k4]);
+        Assert.Equal("CUS003", res.StoreHeaderDeliveryCodes[k3]);
+        Assert.Equal("CUS004", res.StoreHeaderDeliveryCodes[k4]);
         Assert.Equal("四川飯店", res.StoreHeaderDeliveryNames[k3]);
         Assert.Equal("別得意先", res.StoreHeaderDeliveryNames[k4]);
 
@@ -307,22 +295,21 @@ public class SortingInquiryServiceTests
     public async Task SearchAsync_Slot_filter_includes_lines_with_blank_slotcode()
     {
         await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
         var d = new DateOnly(2025, 8, 1);
 
-        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "客A" });
-        app.Customers.Add(new Customer { CustomerCode = "210", CustomerName = "客B" });
+        app.Customers.Add(new Customer { CustomerCode = "C_A", CustomerName = "客A" });
+        app.Customers.Add(new Customer { CustomerCode = "C_B", CustomerName = "客B" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
-            CustomerCode = "200",
+            CustomerCode = "C_A",
             LocationCode = "L_A",
             LocationName = "場所A"
         });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 2,
-            CustomerCode = "210",
+            CustomerCode = "C_B",
             LocationCode = "L_B",
             LocationName = "場所B"
         });
@@ -330,13 +317,13 @@ public class SortingInquiryServiceTests
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 1,
-            CustomerCode = "200",
+            CustomerCode = "C_A",
             CustomerDeliveryLocationCode = "L_A"
         });
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 2,
-            CustomerCode = "210",
+            CustomerCode = "C_B",
             CustomerDeliveryLocationCode = "L_B"
         });
 
@@ -365,18 +352,18 @@ public class SortingInquiryServiceTests
         });
         await app.SaveChangesAsync();
 
-        var svc = new SortingInquiryService(app, cstmeat);
+        var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20250801", new[] { "S1" });
 
-        var ka = SiCol("200", "L_A");
-        var kb = SiCol("210", "L_B");
+        var ka = SiCol("C_A", "L_A");
+        var kb = SiCol("C_B", "L_B");
         Assert.Equal(2, res.StoreKeys.Count);
         Assert.Equal("場所A", res.StoreHeaders[ka]);
         Assert.Equal("場所B", res.StoreHeaders[kb]);
         Assert.Equal("L_A", res.StoreHeaderCodes[ka]);
         Assert.Equal("L_B", res.StoreHeaderCodes[kb]);
-        Assert.Equal("200", res.StoreHeaderDeliveryCodes[ka]);
-        Assert.Equal("210", res.StoreHeaderDeliveryCodes[kb]);
+        Assert.Equal("C_A", res.StoreHeaderDeliveryCodes[ka]);
+        Assert.Equal("C_B", res.StoreHeaderDeliveryCodes[kb]);
         Assert.Equal("客A", res.StoreHeaderDeliveryNames[ka]);
         Assert.Equal("客B", res.StoreHeaderDeliveryNames[kb]);
         Assert.Equal(1, res.Rows.Single(r => r.ItemCode == "I1").QuantitiesByStore[ka]);
@@ -387,21 +374,20 @@ public class SortingInquiryServiceTests
     public async Task SearchAsync_Same_customer_two_locations_gets_two_columns()
     {
         await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
         var d = new DateOnly(2025, 9, 1);
 
-        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "同一客" });
+        app.Customers.Add(new Customer { CustomerCode = "C1", CustomerName = "同一客" });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 1,
-            CustomerCode = "200",
+            CustomerCode = "C1",
             LocationCode = "L1",
             LocationName = "東"
         });
         app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
         {
             DeliveryLocationId = 2,
-            CustomerCode = "200",
+            CustomerCode = "C1",
             LocationCode = "L2",
             LocationName = "西"
         });
@@ -409,13 +395,13 @@ public class SortingInquiryServiceTests
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 1,
-            CustomerCode = "200",
+            CustomerCode = "C1",
             CustomerDeliveryLocationCode = "L1"
         });
         app.SalesOrders.Add(new SalesOrder
         {
             SalesOrderId = 2,
-            CustomerCode = "200",
+            CustomerCode = "C1",
             CustomerDeliveryLocationCode = "L2"
         });
 
@@ -443,11 +429,11 @@ public class SortingInquiryServiceTests
         });
         await app.SaveChangesAsync();
 
-        var svc = new SortingInquiryService(app, cstmeat);
+        var svc = new SortingInquiryService(app);
         var res = await svc.SearchAsync("20250901", Array.Empty<string>());
 
-        var kEast = SiCol("200", "L1");
-        var kWest = SiCol("200", "L2");
+        var kEast = SiCol("C1", "L1");
+        var kWest = SiCol("C1", "L2");
         Assert.Equal(2, res.StoreKeys.Count);
         Assert.Contains(kEast, res.StoreKeys);
         Assert.Contains(kWest, res.StoreKeys);
@@ -455,94 +441,11 @@ public class SortingInquiryServiceTests
         Assert.Equal("西", res.StoreHeaders[kWest]);
         Assert.Equal("L1", res.StoreHeaderCodes[kEast]);
         Assert.Equal("L2", res.StoreHeaderCodes[kWest]);
-        Assert.Equal("200", res.StoreHeaderDeliveryCodes[kEast]);
-        Assert.Equal("200", res.StoreHeaderDeliveryCodes[kWest]);
+        Assert.Equal("C1", res.StoreHeaderDeliveryCodes[kEast]);
+        Assert.Equal("C1", res.StoreHeaderDeliveryCodes[kWest]);
         Assert.Equal("同一客", res.StoreHeaderDeliveryNames[kEast]);
         Assert.Equal("同一客", res.StoreHeaderDeliveryNames[kWest]);
         Assert.Equal(2, res.Rows.Single().QuantitiesByStore[kEast]);
         Assert.Equal(3, res.Rows.Single().QuantitiesByStore[kWest]);
-    }
-
-    /// <summary>
-    /// 同一品目に複数食種がある場合、priority_order が最小の食種が代表食種として選ばれる。
-    /// priority_order 未登録の食種は後回し（int.MaxValue 扱い）。
-    /// </summary>
-    [Fact]
-    public async Task SearchAsync_Representative_foodtype_selected_by_lowest_priority_order()
-    {
-        await using var app = CreateAppDb();
-        await using var cstmeat = CreateCstmeatDb();
-
-        // FT_A: priority_order=2, FT_B: priority_order=1 → 代表は FT_B
-        cstmeat.Mshokushus.Add(new Mshokushu { Id = 1, ShokushuCode = "FT_A", PriorityOrder = 2 });
-        cstmeat.Mshokushus.Add(new Mshokushu { Id = 2, ShokushuCode = "FT_B", PriorityOrder = 1 });
-        await cstmeat.SaveChangesAsync();
-
-        var d = new DateOnly(2025, 10, 1);
-        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "施設X" });
-        app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
-        {
-            DeliveryLocationId = 1,
-            CustomerCode = "200",
-            LocationCode = "LOC1",
-            LocationName = "拠点1"
-        });
-        app.SalesOrders.Add(new SalesOrder
-        {
-            SalesOrderId = 1,
-            CustomerCode = "200",
-            CustomerDeliveryLocationCode = "LOC1"
-        });
-        app.Items.Add(new Item { ItemId = 1, ItemCd = "ITEM1", ItemName = "商品1", ActiveFlag = true });
-
-        // 同じ品目に食種 FT_A と FT_B の2明細
-        app.SalesOrderLines.Add(new SalesOrderLine
-        {
-            SalesOrderLineId = 1,
-            SalesOrderId = 1,
-            LineNo = 1,
-            ItemCd = "ITEM1",
-            Quantity = 10,
-            PlannedDeliveryDate = d,
-            SlotCode = "S1"
-        });
-        app.SalesOrderLines.Add(new SalesOrderLine
-        {
-            SalesOrderLineId = 2,
-            SalesOrderId = 1,
-            LineNo = 2,
-            ItemCd = "ITEM1",
-            Quantity = 5,
-            PlannedDeliveryDate = d,
-            SlotCode = "S1"
-        });
-        app.SalesOrderLineAddinfos.Add(new SalesOrderLineAddinfo
-        {
-            SalesOrderLineAddinfoId = 1,
-            SalesOrderLineId = 1,
-            Addinfo02 = "FT_A",
-            Addinfo02Name = "夕食"
-        });
-        app.SalesOrderLineAddinfos.Add(new SalesOrderLineAddinfo
-        {
-            SalesOrderLineAddinfoId = 2,
-            SalesOrderLineId = 2,
-            Addinfo02 = "FT_B",
-            Addinfo02Name = "昼食"
-        });
-        await app.SaveChangesAsync();
-
-        var svc = new SortingInquiryService(app, cstmeat);
-        var res = await svc.SearchAsync("20251001", Array.Empty<string>());
-
-        // 品目単位で集約されるので1行
-        Assert.Single(res.Rows);
-        var row = res.Rows[0];
-        Assert.Equal("ITEM1", row.ItemCode);
-        // priority_order=1 の FT_B（昼食）が代表食種
-        Assert.Equal("昼食", row.FoodType);
-        // 数量は両食種の合計
-        var k = SiCol("200", "LOC1");
-        Assert.Equal(15, row.QuantitiesByStore[k]);
     }
 }

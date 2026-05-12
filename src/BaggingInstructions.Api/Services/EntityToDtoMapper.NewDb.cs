@@ -92,6 +92,7 @@ public static partial class EntityToDtoMapper
             Steritime = addInfo?.SteriTime,
             Kikunip = addInfo?.Car0,
             ShelflifeDays = i.ShelflifeDays,
+            Std = addInfo?.Std,
             Classification1Code = i.Classification1Code,
             Classification2Code = i.Classification2Code,
             Classification3Code = i.Classification3Code,

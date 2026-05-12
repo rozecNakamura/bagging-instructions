@@ -61,10 +61,6 @@ public class Item
     [Column("salesprice0")]
     public decimal? SalesPrice0 { get; set; }
 
-    /// <summary>大分類コード（DB: majorclassficationcode）。majorclassification.majorclassificationcode と対応。</summary>
-    [Column("majorclassficationcode")]
-    public string? MajorClassificationCode { get; set; }
-
     /// <summary>分類1コード。DB 列名は craftlineax の綴り classfication（i 欠け）。</summary>
     [Column("classfication1code")]
     public string? Classification1Code { get; set; }
@@ -76,18 +72,6 @@ public class Item
     /// <summary>分類3コード（DB: classfication3code）。</summary>
     [Column("classfication3code")]
     public string? Classification3Code { get; set; }
-
-    /// <summary>仕入先コード（計量器連携 ITEM.csv の LOCCD 候補）。</summary>
-    [Column("suppliercode")]
-    public string? SupplierCode { get; set; }
-
-    /// <summary>作業区コード（計量器連携 ITEM.csv の LOCCD 候補）。</summary>
-    [Column("workcentercode")]
-    public string? WorkCenterCode { get; set; }
-
-    /// <summary>倉庫コード（計量器連携 ITEM.csv の WHCD）。</summary>
-    [Column("warehousecode")]
-    public string? WarehouseCode { get; set; }
 
     /// <summary>中分類コード（DB 列名は middleclassficationcode）。middleclassification.middleclassificationcode と対応。</summary>
     [Column("middleclassficationcode")]

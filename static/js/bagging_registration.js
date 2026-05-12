@@ -7,6 +7,7 @@ import {
     saveBaggingInput,
     fetchBaggingRequiredQuantities,
     calculateBagging,
+    markBaggingPrinted,
     normalizePrddt
 } from './api.js';
 import { generateInstructionPDF, generateLabelPDF } from './pdf_generator.js';
@@ -87,6 +88,15 @@ function renderLineInputs() {
         tdNm.className = 'bagging-reg-cell-readonly bagging-reg-citemnm-cell';
         tdNm.textContent = line.citem_name || '';
 
+        const tdSpec = document.createElement('td');
+        const inpSpec = document.createElement('input');
+        inpSpec.type = 'number';
+        inpSpec.step = 'any';
+        inpSpec.className = 'bagging-reg-spec';
+        inpSpec.dataset.i = String(i);
+        inpSpec.value = line.spec_qty;
+        tdSpec.appendChild(inpSpec);
+
         const tdTotal = document.createElement('td');
         const inpTotal = document.createElement('input');
         inpTotal.type = 'number';
@@ -99,6 +109,7 @@ function renderLineInputs() {
         tr.appendChild(tdOrder);
         tr.appendChild(tdCd);
         tr.appendChild(tdNm);
+        tr.appendChild(tdSpec);
         tr.appendChild(tdTotal);
         tbody.appendChild(tr);
     });
@@ -159,6 +170,7 @@ async function loadRegistrationUi(group) {
             input_order: io,
             citemcd: reqLine.citemcd || '',
             citem_name: reqLine.citem_name || '',
+            spec_qty: sl?.spec_qty != null ? String(sl.spec_qty) : '',
             total_qty: sl?.total_qty != null ? String(sl.total_qty) : (reqLine.total_qty != null ? String(reqLine.total_qty) : '0')
         };
     });
@@ -204,6 +216,7 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
             input_order: inputOrderForReqLine(reqLine, j),
             citemcd: reqLine.citemcd || '',
             citem_name: reqLine.citem_name || '',
+            spec_qty: '',
             total_qty: reqLine.total_qty != null ? String(reqLine.total_qty) : ''
         }));
         renderLineInputs();
@@ -237,6 +250,13 @@ document.getElementById('baggingRegPrintBtn')?.addEventListener('click', async (
         } else {
             await generateInstructionPDF(data);
         }
+        // 印刷済みフラグをセットし検索結果を更新
+        const printedPrddt = prddtFromFormOrGroup(activeGroup);
+        try {
+            await markBaggingPrinted(printedPrddt, activeGroup.itemcd);
+            const { refreshBaggingSearch } = await import('./search.js');
+            await refreshBaggingSearch();
+        } catch { /* 印刷自体は成功しているので無視 */ }
     } catch (e) {
         alert('印刷データの取得に失敗しました: ' + e.message);
     }

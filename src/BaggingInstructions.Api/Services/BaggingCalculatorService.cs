@@ -188,7 +188,7 @@ public class BaggingCalculatorService
             lines.Add(new BaggingInputLineDto
             {
                 Citemcd = mboms[j].Citemcd ?? "",
-                ChildItemName = mboms[j].ChildItem?.Itemnm ?? "",
+                ChildItemName = mboms[j].ChildItem?.Itemnm,
                 InputOrder = j + 1,
                 SpecQty = car0 > 0 ? car0 : null,
                 TotalQty = j < globals.Count ? globals[j] : null

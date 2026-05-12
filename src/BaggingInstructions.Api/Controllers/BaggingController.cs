@@ -75,6 +75,16 @@ public class BaggingController : ControllerBase
         return Ok(r);
     }
 
+    /// <summary>印刷済みとしてマーク（製造日・品目コードで UPSERT）。</summary>
+    [HttpPost("mark-printed")]
+    public async Task<IActionResult> MarkPrinted([FromBody] MarkPrintedRequestDto body, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Prddt) || string.IsNullOrWhiteSpace(body.Itemcd))
+            return BadRequest(new { detail = "prddt と itemcd を指定してください。" });
+        await _baggingInputService.MarkPrintedAsync(body.Prddt.Trim(), body.Itemcd.Trim(), ct);
+        return Ok(new { ok = true });
+    }
+
     /// <summary>袋詰指示書またはラベルデータを計算。ラベルは殺菌温度（strtemp）を含む。</summary>
     [HttpPost("calculate")]
     public async Task<IActionResult> Calculate(

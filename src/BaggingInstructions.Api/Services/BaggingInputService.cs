@@ -189,10 +189,6 @@ public class BaggingInputService
             _otherDb.BaggedQuantities.RemoveRange(toRemove);
             await _otherDb.SaveChangesAsync(ct);
 
-            var nextId = await _otherDb.BaggedQuantities.AnyAsync(ct)
-                ? await _otherDb.BaggedQuantities.MaxAsync(r => r.BaggedQuantityId, ct) + 1
-                : 1L;
-
             for (var idx = 0; idx < lines.Count; idx++)
             {
                 var line = lines[idx];
@@ -201,20 +197,10 @@ public class BaggingInputService
 
                 var inputOrder = line.InputOrder is > 0 ? line.InputOrder!.Value : idx + 1;
 
-                _otherDb.BaggedQuantities.Add(new BaggedQuantity
-                {
-                    BaggedQuantityId = nextId++,
-                    ProductDate = productDate,
-                    ParentItemCode = parentItemCode,
-                    ChildItemCode = citem,
-                    InputOrder = inputOrder,
-                    StandardQuantity = line.SpecQty,
-                    TotalQuantity = line.TotalQty,
-                    UpdatedAt = now
-                });
+                await _otherDb.Database.ExecuteSqlAsync(
+                    $"INSERT INTO baggedquantity (productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, updatedat) VALUES ({productDate}, {parentItemCode}, {citem}, {inputOrder}, {line.SpecQty}, {line.TotalQty}, {now})",
+                    ct);
             }
-
-            await _otherDb.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
         catch
@@ -222,6 +208,36 @@ public class BaggingInputService
             await tx.RollbackAsync(ct);
             throw;
         }
+    }
+
+    public async Task MarkPrintedAsync(string prddt, string itemcd, CancellationToken ct = default)
+    {
+        var date = ParsePrddt(prddt);
+        if (!date.HasValue) return;
+        var itemTrim = itemcd.Trim();
+        var now = DateTime.UtcNow;
+
+        var existing = await _db.BaggingInputRegistrations
+            .FirstOrDefaultAsync(r => r.ProductDate == date.Value && r.ItemCode == itemTrim, ct);
+
+        if (existing == null)
+        {
+            _db.BaggingInputRegistrations.Add(new BaggingInputRegistration
+            {
+                ProductDate = date.Value,
+                ItemCode = itemTrim,
+                Payload = "{}",
+                IsPrinted = true,
+                UpdatedAt = now
+            });
+        }
+        else
+        {
+            existing.IsPrinted = true;
+            existing.UpdatedAt = now;
+        }
+
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task<BaggingInputPayloadDto?> TryGetPayloadAsync(

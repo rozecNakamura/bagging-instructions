@@ -59,10 +59,21 @@ public class ScalesLinkService
                     Itemcd = i.ItemCd,
                     Addinfo06 = (ai.Addinfo06 ?? "").Trim(),
                     i.ItemName,
-                    Loccd = i.SupplierCode != null && i.SupplierCode.Trim() != ""
-                        ? i.SupplierCode.Trim()
-                        : (i.WorkCenterCode ?? "").Trim(),
-                    Whcd = i.WarehouseCode ?? "",
+                    Loccd = _db.ItemWorkCenterMappings.AsNoTracking()
+                        .Where(m => m.ItemCd == i.ItemCd)
+                        .OrderBy(m => m.WorkcenterCode)
+                        .Select(m => m.WorkcenterCode)
+                        .FirstOrDefault() ?? "",
+                    Whcd = _db.Stocks.AsNoTracking()
+                        .Where(s => s.ItemCd == i.ItemCd)
+                        .Join(
+                            _db.Warehouses.AsNoTracking(),
+                            s => s.WarehouseId,
+                            w => w.WarehouseId,
+                            (_, w) => w.WarehouseCode)
+                        .Where(code => code != null && code.Trim() != "")
+                        .OrderBy(code => code)
+                        .FirstOrDefault() ?? "",
                     i.UnitCode0,
                     i.UnitCode1,
                     i.UnitCode2,

@@ -127,6 +127,14 @@
                     <label for="productCode">品目コード:</label>
                     <input type="text" id="productCode" placeholder="品目コードを入力">
                 </div>
+                <div class="form-group">
+                    <label for="completionFilter">完了状態:</label>
+                    <select id="completionFilter">
+                        <option value="">全件</option>
+                        <option value="false">未完了</option>
+                        <option value="true">完了</option>
+                    </select>
+                </div>
                 <button id="searchBtn" class="btn btn-primary">検索</button>
             </div>
         </section>
@@ -147,6 +155,7 @@
                             <th>品目名</th>
                             <th>受注数量</th>
                             <th>単位</th>
+                            <th>状態</th>
                         </tr>
                     </thead>
                     <tbody id="resultsBody">
@@ -173,7 +182,8 @@
                                         <tr>
                                             <th>投入順</th>
                                             <th>子品目コード</th>
-                                            <th>子品目名</th>
+                                            <th>子品目名称</th>
+                                            <th>規格数量</th>
                                             <th>総数量</th>
                                         </tr>
                                     </thead>
