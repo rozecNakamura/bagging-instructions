@@ -377,7 +377,7 @@ function resolveMainTableSizing(itemCount) {
 
 /**
  * テーブルデータを注入（新テンプレート用）
- * 常に20行を表示する
+ * 空行で水増しせず、データ行の直後に合計行を表示する
  * @param {HTMLElement} container - コンテナ要素
  * @param {Object} data - データオブジェクト
  */
@@ -419,8 +419,8 @@ function injectTableData(container, data) {
         });
     });
 
-    // 20行未満は空行で埋め、20行超は同じページに全施設を表示する。
-    const totalRowIndex = Math.max(20, items.length);
+    // 空行で水増しすると合計行だけが2ページ目に送られるため、データ行の直後に合計行を置く。
+    const totalRowIndex = items.length;
     for (let i = 0; i <= totalRowIndex; i++) {
         const row = document.createElement('tr');
         const item = items[i];

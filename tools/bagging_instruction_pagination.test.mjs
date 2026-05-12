@@ -48,4 +48,11 @@ for (const [name, relativePath] of [
         assert.equal(pages[0].pageNumber, 1);
         assert.equal(pages[0].totalPages, 1);
     });
+
+    test(`${name} bagging instruction does not pad empty facility rows before total row`, async () => {
+        const source = await readFile(new URL(relativePath, import.meta.url), 'utf8');
+
+        assert.match(source, /const totalRowIndex = items\.length;/);
+        assert.doesNotMatch(source, /Math\.max\(20,\s*items\.length\)/);
+    });
 }
