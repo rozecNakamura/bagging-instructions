@@ -178,7 +178,14 @@ public class BaggingInputService
         CancellationToken ct)
     {
         var now = DateTime.UtcNow;
-        var lines = payload?.Lines ?? new List<BaggingInputLineDto>();
+        var allLines = payload?.Lines ?? new List<BaggingInputLineDto>();
+
+        // 投入量（TotalQty）が未入力の行は保存対象外。有効行が0件の場合は既存データを保持したまま終了。
+        var validLines = allLines
+            .Where(l => !string.IsNullOrEmpty((l.Citemcd ?? "").Trim()) && l.TotalQty != null)
+            .ToList();
+        if (validLines.Count == 0) return;
+
         var wasPrinted = await _otherDb.BaggedQuantities.AsNoTracking()
             .Where(r => r.ProductDate == productDate && r.ParentItemCode == parentItemCode)
             .AnyAsync(r => r.IsPrinted, ct);
@@ -192,16 +199,22 @@ public class BaggingInputService
             _otherDb.BaggedQuantities.RemoveRange(toRemove);
             await _otherDb.SaveChangesAsync(ct);
 
-            for (var idx = 0; idx < lines.Count; idx++)
-            {
-                var line = lines[idx];
-                var citem = (line.Citemcd ?? "").Trim();
-                if (string.IsNullOrEmpty(citem)) continue;
+            // baggedquantityid はアプリ側で採番（テーブルに SERIAL / IDENTITY 列なし）
+            var nextId = await _otherDb.BaggedQuantities.AnyAsync(ct)
+                ? await _otherDb.BaggedQuantities.MaxAsync(r => r.BaggedQuantityId, ct) + 1
+                : 1L;
 
+            for (var idx = 0; idx < validLines.Count; idx++)
+            {
+                var line = validLines[idx];
+                var citem = line.Citemcd!.Trim();
                 var inputOrder = line.InputOrder is > 0 ? line.InputOrder!.Value : idx + 1;
+                var specQty = line.SpecQty ?? 0m;
+                var totalQty = line.TotalQty!.Value;
+                var id = nextId++;
 
                 await _otherDb.Database.ExecuteSqlAsync(
-                    $"INSERT INTO baggedquantity (productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, isprinted, updatedat) VALUES ({productDate}, {parentItemCode}, {citem}, {inputOrder}, {line.SpecQty}, {line.TotalQty}, {wasPrinted}, {now})",
+                    $"INSERT INTO baggedquantity (baggedquantityid, productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, isprinted, updatedat) VALUES ({id}, {productDate}, {parentItemCode}, {citem}, {inputOrder}, {specQty}, {totalQty}, {wasPrinted}, {now})",
                     ct);
             }
             await tx.CommitAsync(ct);
