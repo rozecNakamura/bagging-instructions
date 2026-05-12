@@ -7,6 +7,7 @@ import {
     saveBaggingInput,
     fetchBaggingRequiredQuantities,
     calculateBagging,
+    markBaggingPrinted,
     normalizePrddt
 } from './api.js';
 import { generateInstructionPDF, generateLabelPDF } from './pdf_generator.js';
@@ -15,7 +16,7 @@ import { generateInstructionPDF, generateLabelPDF } from './pdf_generator.js';
 /** @type {BaggingSearchGroup | null} */
 let activeGroup = null;
 
-/** @type {{ input_order: number, citemcd: string, citem_name: string, total_qty: string }[]} */
+/** @type {{ input_order: number, citemcd: string, citem_name: string, reference_qty: string, total_qty: string }[]} */
 let lineEditors = [];
 
 /** BOM / 必要量行の input_order（1 始まり）。未指定時は行インデックス + 1。 */
@@ -87,6 +88,10 @@ function renderLineInputs() {
         tdNm.className = 'bagging-reg-cell-readonly bagging-reg-citemnm-cell';
         tdNm.textContent = line.citem_name || '';
 
+        const tdReference = document.createElement('td');
+        tdReference.className = 'bagging-reg-cell-readonly bagging-reg-reference-cell';
+        tdReference.textContent = line.reference_qty || '';
+
         const tdTotal = document.createElement('td');
         const inpTotal = document.createElement('input');
         inpTotal.type = 'number';
@@ -99,6 +104,7 @@ function renderLineInputs() {
         tr.appendChild(tdOrder);
         tr.appendChild(tdCd);
         tr.appendChild(tdNm);
+        tr.appendChild(tdReference);
         tr.appendChild(tdTotal);
         tbody.appendChild(tr);
     });
@@ -145,7 +151,7 @@ async function loadRegistrationUi(group) {
 
     const reqLines = required.lines || [];
 
-    // 規格数量は親品目共通の1値 — 保存済み→デフォルト（Car0）の順で取得
+    // 規格数量は親品目共通の1値 — 保存済み→選択品目STDの順で取得
     const firstSavedSpec = savedPayload?.lines?.find(sl => sl.spec_qty != null)?.spec_qty;
     const firstDefaultSpec = reqLines[0]?.spec_qty;
     const resolvedSpec = firstSavedSpec ?? firstDefaultSpec ?? '';
@@ -159,6 +165,7 @@ async function loadRegistrationUi(group) {
             input_order: io,
             citemcd: reqLine.citemcd || '',
             citem_name: reqLine.citem_name || '',
+            reference_qty: reqLine.reference_qty != null ? String(reqLine.reference_qty) : '',
             total_qty: sl?.total_qty != null ? String(sl.total_qty) : (reqLine.total_qty != null ? String(reqLine.total_qty) : '0')
         };
     });
@@ -204,6 +211,7 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
             input_order: inputOrderForReqLine(reqLine, j),
             citemcd: reqLine.citemcd || '',
             citem_name: reqLine.citem_name || '',
+            reference_qty: reqLine.reference_qty != null ? String(reqLine.reference_qty) : '',
             total_qty: reqLine.total_qty != null ? String(reqLine.total_qty) : ''
         }));
         renderLineInputs();
@@ -237,6 +245,13 @@ document.getElementById('baggingRegPrintBtn')?.addEventListener('click', async (
         } else {
             await generateInstructionPDF(data);
         }
+        // 印刷済みフラグをセットし検索結果を更新
+        const printedPrddt = prddtFromFormOrGroup(activeGroup);
+        try {
+            await markBaggingPrinted(printedPrddt, activeGroup.itemcd);
+            const { refreshBaggingSearch } = await import('./search.js');
+            await refreshBaggingSearch();
+        } catch { /* 印刷自体は成功しているので無視 */ }
     } catch (e) {
         alert('印刷データの取得に失敗しました: ' + e.message);
     }

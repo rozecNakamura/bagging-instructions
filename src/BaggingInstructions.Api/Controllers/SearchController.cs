@@ -37,16 +37,18 @@ public class SearchController : ControllerBase
         }
     }
 
-    /// <summary>袋詰用：製造日・品目で受注明細を合算したグループ一覧。</summary>
+    /// <summary>袋詰用：製造日・品目で受注明細を合算したグループ一覧。is_complete=true/false で完了フィルター。</summary>
     [HttpGet("search/bagging")]
     public async Task<ActionResult<BaggingSearchResponseDto>> SearchBagging(
         [FromQuery] string prddt,
         [FromQuery] string? itemcd,
+        [FromQuery(Name = "is_complete")] string? isComplete,
         CancellationToken ct)
     {
+        bool? isCompleteFilter = isComplete switch { "true" => true, "false" => false, _ => null };
         try
         {
-            var groups = await _searchService.SearchBaggingGroupedAsync(prddt, itemcd, ct);
+            var groups = await _searchService.SearchBaggingGroupedAsync(prddt, itemcd, isCompleteFilter, ct);
             return Ok(new BaggingSearchResponseDto { Total = groups.Count, Groups = groups });
         }
         catch (ArgumentException ex)

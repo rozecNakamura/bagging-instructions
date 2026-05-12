@@ -19,6 +19,9 @@ public class BaggingInputRegistration
     [Column("payload")]
     public string Payload { get; set; } = "{}";
 
+    [Column("is_printed")]
+    public bool IsPrinted { get; set; } = false;
+
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; }
 }

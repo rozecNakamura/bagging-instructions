@@ -41,6 +41,9 @@ public class CstmeatDbContext : DbContext
             .Property(e => e.ProductDate)
             .HasConversion(dateOnlyConverter);
         modelBuilder.Entity<BaggedQuantity>()
+            .Property(e => e.IsPrinted)
+            .HasDefaultValue(false);
+        modelBuilder.Entity<BaggedQuantity>()
             .HasIndex(e => new { e.ProductDate, e.ParentItemCode });
 
         modelBuilder.Entity<Mshokushu>().HasKey(m => m.Id);

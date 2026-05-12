@@ -167,6 +167,10 @@ public class BaggingInputLineDto
 
     [JsonPropertyName("total_qty")]
     public decimal? TotalQty { get; set; }
+
+    /// <summary>出来高由来の比較用参考値（小数切り上げ済み）。保存対象ではなく表示用。</summary>
+    [JsonPropertyName("reference_qty")]
+    public decimal? ReferenceQty { get; set; }
 }
 
 public class BaggingInputSaveRequestDto
@@ -221,4 +225,13 @@ public class BaggingCalculateResult
     public List<BaggingIngredientRowDto>? IngredientDisplayRows { get; set; }
     /// <summary>有効な規格充填量（ユーザー登録 spec_qty 優先、未登録時は addInfo.Car0）。</summary>
     public decimal? EffectiveSpecFillQty { get; set; }
+}
+
+public class MarkPrintedRequestDto
+{
+    [JsonPropertyName("prddt")]
+    public string Prddt { get; set; } = "";
+
+    [JsonPropertyName("itemcd")]
+    public string Itemcd { get; set; } = "";
 }
