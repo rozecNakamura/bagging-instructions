@@ -127,6 +127,7 @@ public class BaggingCalculatorService
                 Itemnm = itemnm,
                 Delvedt = first.Delvedt ?? "",
                 Shptm = first.Shptm,
+                ShptmName = first.ShptmName,
                 PlannedQuantity = totalOrder,
                 AdjustedQuantity = adjustedQuantity,
                 QuantityForInventory = totalOrder,

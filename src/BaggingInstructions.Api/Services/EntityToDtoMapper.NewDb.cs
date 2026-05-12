@@ -94,6 +94,7 @@ public static partial class EntityToDtoMapper
             ShelflifeDays = i.ShelflifeDays,
             Std = addInfo?.Std,
             Classification1Code = i.Classification1Code,
+            Classification1Name = i.Classification1?.Classification1Name,
             Classification2Code = i.Classification2Code,
             Classification3Code = i.Classification3Code,
             IsLiquid = ItemCodeKind.IsLiquid(i.ItemCd),

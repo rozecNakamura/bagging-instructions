@@ -81,6 +81,7 @@ public static partial class EntityToDtoMapper
             Steritime = null,
             Kikunip = i.Car,
             Classification1Code = null,
+            Classification1Name = null,
             Classification2Code = null,
             Classification3Code = null,
             IsLiquid = ItemCodeKind.IsLiquid(i.Itemcd),

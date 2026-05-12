@@ -80,4 +80,5 @@ public class Item
     public virtual Unit? Unit0 { get; set; }
     public virtual ItemAdditionalInformation? AdditionalInformation { get; set; }
     public virtual ICollection<ItemWorkCenterMapping> WorkCenterMappings { get; set; } = new List<ItemWorkCenterMapping>();
+    public virtual Classification1? Classification1 { get; set; }
 }

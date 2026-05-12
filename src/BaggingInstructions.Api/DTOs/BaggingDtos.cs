@@ -66,6 +66,10 @@ public class BaggingInstructionItemDto
     [JsonPropertyName("shptm")]
     public string? Shptm { get; set; }
 
+    /// <summary>配送便名称（salesorderlineaddinfo.addinfo05name）。ラベルの TIME01 に使用。</summary>
+    [JsonPropertyName("shptm_name")]
+    public string? ShptmName { get; set; }
+
     [JsonPropertyName("planned_quantity")]
     public decimal PlannedQuantity { get; set; }
 

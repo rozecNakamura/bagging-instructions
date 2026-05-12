@@ -353,6 +353,10 @@ public class ItemDetailDto
     [JsonPropertyName("classification1_code")]
     public string? Classification1Code { get; set; }
 
+    /// <summary>分類1名称（classification1.classification1name）。</summary>
+    [JsonPropertyName("classification1_name")]
+    public string? Classification1Name { get; set; }
+
     /// <summary>分類2コード（品目付加情報・classification2 code）。</summary>
     [JsonPropertyName("classification2_code")]
     public string? Classification2Code { get; set; }
