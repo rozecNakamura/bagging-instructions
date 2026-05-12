@@ -23,6 +23,8 @@ public class BaggingDetailRow
     public decimal Divisor { get; set; } = 1;
     /// <summary>規格袋数計算用（car0）</summary>
     public decimal Car0 { get; set; } = 1;
+    /// <summary>投入量登録の規格数量初期値（品目マスタ STD）。</summary>
+    public decimal? DefaultSpecQty { get; set; }
     public List<SeasoningBomRow> SeasoningBoms { get; set; } = new();
     public ItemDetailDto? Item { get; set; }
     public ShpctrDetailDto? Shpctr { get; set; }

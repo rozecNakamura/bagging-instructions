@@ -16,7 +16,7 @@ import { generateInstructionPDF, generateLabelPDF } from './pdf_generator.js';
 /** @type {BaggingSearchGroup | null} */
 let activeGroup = null;
 
-/** @type {{ input_order: number, citemcd: string, citem_name: string, total_qty: string }[]} */
+/** @type {{ input_order: number, citemcd: string, citem_name: string, spec_qty: string, reference_qty: string, total_qty: string }[]} */
 let lineEditors = [];
 
 /** BOM / 必要量行の input_order（1 始まり）。未指定時は行インデックス + 1。 */
@@ -97,6 +97,10 @@ function renderLineInputs() {
         inpSpec.value = line.spec_qty;
         tdSpec.appendChild(inpSpec);
 
+        const tdReference = document.createElement('td');
+        tdReference.className = 'bagging-reg-cell-readonly bagging-reg-reference-cell';
+        tdReference.textContent = line.reference_qty || '';
+
         const tdTotal = document.createElement('td');
         const inpTotal = document.createElement('input');
         inpTotal.type = 'number';
@@ -110,6 +114,7 @@ function renderLineInputs() {
         tr.appendChild(tdCd);
         tr.appendChild(tdNm);
         tr.appendChild(tdSpec);
+        tr.appendChild(tdReference);
         tr.appendChild(tdTotal);
         tbody.appendChild(tr);
     });
@@ -171,6 +176,7 @@ async function loadRegistrationUi(group) {
             citemcd: reqLine.citemcd || '',
             citem_name: reqLine.citem_name || '',
             spec_qty: sl?.spec_qty != null ? String(sl.spec_qty) : '',
+            reference_qty: reqLine.reference_qty != null ? String(reqLine.reference_qty) : '',
             total_qty: sl?.total_qty != null ? String(sl.total_qty) : (reqLine.total_qty != null ? String(reqLine.total_qty) : '0')
         };
     });
@@ -217,6 +223,7 @@ document.getElementById('baggingRegRequiredBtn')?.addEventListener('click', asyn
             citemcd: reqLine.citemcd || '',
             citem_name: reqLine.citem_name || '',
             spec_qty: '',
+            reference_qty: reqLine.reference_qty != null ? String(reqLine.reference_qty) : '',
             total_qty: reqLine.total_qty != null ? String(reqLine.total_qty) : ''
         }));
         renderLineInputs();

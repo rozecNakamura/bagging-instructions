@@ -57,7 +57,7 @@ public class SearchService
         }).ToList();
     }
 
-    /// <summary>袋詰用：製造日・品目コードで受注明細を検索し、製造日×品目で合算したグループを返す。</summary>
+    /// <summary>袋詰用：品目コードが 40 で始まる受注明細を製造日・品目コードで検索し、製造日×品目で合算したグループを返す。</summary>
     public async Task<List<BaggingSearchGroupDto>> SearchBaggingGroupedAsync(string prddt, string? itemcd, bool? isComplete = null, CancellationToken ct = default)
     {
         var prddtDate = ParseProductDate(prddt);
@@ -67,7 +67,8 @@ public class SearchService
         var query = _db.SalesOrderLines.AsNoTracking()
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.Unit0)
-            .Where(l => l.ProductDate == prddtDate);
+            .Where(l => l.ProductDate == prddtDate)
+            .Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.StartsWith("40"));
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
@@ -316,6 +317,7 @@ public class SearchService
             var loc = so?.CustomerDeliveryLocation;
             var divisor = BaggingDivisorResolver.ResolveFromAddInfo(addInfo);
             var car0 = addInfo?.Car0 ?? BaggingDivisorResolver.ParseStdToDecimal(addInfo?.Std) ?? 1m;
+            var defaultSpecQty = BaggingDivisorResolver.ParseStdToDecimal(addInfo?.Std);
 
             var seasoningBoms = new List<SeasoningBomRow>();
             var bomListResolved = new List<(Bom b, Item? child, Unit? unit)>();
@@ -355,6 +357,7 @@ public class SearchService
                 Shpctrnm = loc?.LocationName ?? loc?.LocationCode ?? "未指定",
                 Divisor = divisor,
                 Car0 = car0,
+                DefaultSpecQty = defaultSpecQty,
                 SeasoningBoms = seasoningBoms,
                 Item = EntityToDtoMapper.ToItemDetailDto(item, addInfo, item?.Unit0, routs),
                 Shpctr = EntityToDtoMapper.ToShpctrDetailDto(loc, cust),

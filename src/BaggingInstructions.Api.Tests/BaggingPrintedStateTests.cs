@@ -87,19 +87,19 @@ public class BaggingPrintedStateTests
         var productDate = new DateOnly(2026, 5, 12);
 
         appDb.Units.Add(new Unit { UnitCode = "EA", UnitName = "Each" });
-        appDb.Items.Add(new Item { ItemCd = "P1", ItemName = "Parent", UnitCode0 = "EA" });
+        appDb.Items.Add(new Item { ItemCd = "401001", ItemName = "Parent", UnitCode0 = "EA" });
         appDb.SalesOrderLines.Add(new SalesOrderLine
         {
             SalesOrderLineId = 100,
             ProductDate = productDate,
-            ItemCd = "P1",
+            ItemCd = "401001",
             Quantity = 10
         });
         appDb.BaggingInputRegistrations.Add(new BaggingInputRegistration
         {
             BaggingInputRegistrationId = 1,
             ProductDate = productDate,
-            ItemCode = "P1",
+            ItemCode = "401001",
             Payload = "{}",
             IsPrinted = false,
             UpdatedAt = DateTime.UtcNow
@@ -108,7 +108,7 @@ public class BaggingPrintedStateTests
         {
             BaggedQuantityId = 1,
             ProductDate = productDate,
-            ParentItemCode = "P1",
+            ParentItemCode = "401001",
             ChildItemCode = "C1",
             InputOrder = 1,
             IsPrinted = true,
@@ -122,5 +122,97 @@ public class BaggingPrintedStateTests
 
         var group = Assert.Single(groups);
         Assert.True(group.IsPrinted);
+    }
+
+    [Fact]
+    public async Task SearchBaggingGroupedAsync_returns_only_parent_items_starting_with_40()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var appDb = NewAppDb(dbName);
+        await using var otherDb = NewOtherDb(dbName);
+        var productDate = new DateOnly(2026, 5, 12);
+
+        appDb.Items.AddRange(
+            new Item { ItemCd = "401001", ItemName = "Bagging parent" },
+            new Item { ItemCd = "501001", ItemName = "Non bagging parent" });
+        appDb.SalesOrderLines.AddRange(
+            new SalesOrderLine
+            {
+                SalesOrderLineId = 100,
+                ProductDate = productDate,
+                ItemCd = "401001",
+                Quantity = 10
+            },
+            new SalesOrderLine
+            {
+                SalesOrderLineId = 101,
+                ProductDate = productDate,
+                ItemCd = "501001",
+                Quantity = 20
+            });
+        await appDb.SaveChangesAsync();
+
+        var service = new SearchService(appDb, otherDb);
+        var groups = await service.SearchBaggingGroupedAsync("20260512", null);
+
+        var group = Assert.Single(groups);
+        Assert.Equal("401001", group.Itemcd);
+        Assert.Equal(10, group.TotalJobordqun);
+    }
+
+    [Fact]
+    public async Task GetRequiredQuantitiesAsync_defaults_spec_from_std_and_rounds_reference_quantity_up()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var appDb = NewAppDb(dbName);
+        await using var otherDb = NewOtherDb(dbName);
+        var productDate = new DateOnly(2026, 5, 12);
+        var parent = new Item { ItemCd = "401001", ItemName = "Parent" };
+        var child = new Item { ItemCd = "700001", ItemName = "Child" };
+        var addInfo = new ItemAdditionalInformation
+        {
+            ItemCd = "401001",
+            Std = "7.5",
+            Car0 = 99m,
+            Item = parent
+        };
+        parent.AdditionalInformation = addInfo;
+
+        appDb.Items.AddRange(parent, child);
+        appDb.ItemAdditionalInformations.Add(addInfo);
+        var salesOrder = new SalesOrder { SalesOrderId = 1 };
+        appDb.SalesOrders.Add(salesOrder);
+        appDb.SalesOrderLines.Add(new SalesOrderLine
+        {
+            SalesOrderLineId = 100,
+            SalesOrderId = salesOrder.SalesOrderId,
+            SalesOrder = salesOrder,
+            ProductDate = productDate,
+            ItemCd = "401001",
+            Item = parent,
+            Quantity = 12.1m
+        });
+        appDb.Boms.Add(new Bom
+        {
+            BomId = 1,
+            ParentItemCd = "401001",
+            ChildItemCd = "700001",
+            ChildItem = child,
+            InputQty = 1m,
+            OutputQty = 1m,
+            ProductionOrder = 1m
+        });
+        await appDb.SaveChangesAsync();
+
+        var search = new SearchService(appDb, otherDb);
+        var calculator = new BaggingCalculatorService(
+            search,
+            new StockService(appDb),
+            new BaggingInputService(appDb, otherDb));
+        var result = await calculator.GetRequiredQuantitiesAsync(new[] { 100L });
+
+        var line = Assert.Single(result.Lines);
+        Assert.Equal(7.5m, line.SpecQty);
+        Assert.Equal(13m, line.ReferenceQty);
     }
 }

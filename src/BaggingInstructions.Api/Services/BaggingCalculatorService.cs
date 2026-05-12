@@ -53,7 +53,7 @@ public class BaggingCalculatorService
                 items, first.Divisor, first.SeasoningBoms, mboms, globalTotals);
         }
 
-        // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は Car0 のデフォルトで補完）
+        // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は品目マスタ STD のデフォルトで補完）
         var effectivePayload = payload?.Lines is { Count: > 0 }
             ? payload
             : new BaggingInputPayloadDto
@@ -62,7 +62,7 @@ public class BaggingCalculatorService
                 {
                     Citemcd = m.Citemcd ?? "",
                     InputOrder = j + 1,
-                    SpecQty = first.Car0 > 0 ? first.Car0 : null,
+                    SpecQty = first.DefaultSpecQty,
                     TotalQty = j < globalTotals.Count ? globalTotals[j] : null
                 }).ToList()
             };
@@ -180,18 +180,20 @@ public class BaggingCalculatorService
 
         var total = rows.Sum(r => r.Jobordqun);
         var mboms = rows[0].Mboms;
-        var car0 = rows[0].Car0;
+        var defaultSpecQty = rows[0].DefaultSpecQty;
         var globals = BaggingSavedInputApplier.ComputeDefaultGlobalTotals(total, mboms);
         var lines = new List<BaggingInputLineDto>();
         for (var j = 0; j < mboms.Count; j++)
         {
+            var referenceQty = j < globals.Count ? Math.Ceiling(globals[j]) : (decimal?)null;
             lines.Add(new BaggingInputLineDto
             {
                 Citemcd = mboms[j].Citemcd ?? "",
                 ChildItemName = mboms[j].ChildItem?.Itemnm,
                 InputOrder = j + 1,
-                SpecQty = car0 > 0 ? car0 : null,
-                TotalQty = j < globals.Count ? globals[j] : null
+                SpecQty = defaultSpecQty,
+                TotalQty = referenceQty,
+                ReferenceQty = referenceQty
             });
         }
 
