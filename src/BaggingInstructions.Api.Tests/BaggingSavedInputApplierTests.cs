@@ -137,4 +137,75 @@ public class BaggingSavedInputApplierTests
         Assert.Equal(30m, items[0].SeasoningAmounts[0].CalculatedAmount);
         Assert.Equal(70m, items[1].SeasoningAmounts[0].CalculatedAmount);
     }
+
+    [Fact]
+    public void ApplySavedInputPerFacilityRounding_non_gram_first_child_uses_order_quantity_divided_by_spec()
+    {
+        var seasoningBoms = new List<SeasoningBomRow>
+        {
+            new() { Otp = 1, Amu = 1, ChildItemCd = "C1", ChildUnitName = "ml" }
+        };
+        var mboms = new List<MbomDetailDto>
+        {
+            new()
+            {
+                Citemcd = "C1",
+                Proutno = 0,
+                ChildItem = new ItemDetailDto
+                {
+                    Itemcd = "C1",
+                    Uni = new UniDetailDto { Uninm = "ml" }
+                }
+            }
+        };
+        var items = new List<BaggingInstructionItemDto>
+        {
+            new()
+            {
+                PlannedQuantity = 13.2m,
+                Item = new ItemDetailDto { Itemcd = "401001", Uni = new UniDetailDto { Uninm = "ｇ" } }
+            }
+        };
+
+        BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
+            items, 6m, seasoningBoms, mboms, null, 6m);
+
+        Assert.Equal(2, items[0].StandardBags);
+        Assert.Equal(2m, items[0].IrregularQuantity);
+    }
+
+    [Fact]
+    public void ApplySavedInputPerFacilityRounding_gram_first_child_uses_allocated_entered_quantity_divided_by_spec()
+    {
+        var seasoningBoms = new List<SeasoningBomRow>
+        {
+            new() { Otp = 1, Amu = 1, ChildItemCd = "C1", ChildUnitName = "g" }
+        };
+        var mboms = new List<MbomDetailDto>
+        {
+            new()
+            {
+                Citemcd = "C1",
+                Proutno = 0,
+                ChildItem = new ItemDetailDto
+                {
+                    Itemcd = "C1",
+                    Uni = new UniDetailDto { Uninm = "g" }
+                }
+            }
+        };
+        var items = new List<BaggingInstructionItemDto>
+        {
+            new() { PlannedQuantity = 25m },
+            new() { PlannedQuantity = 75m }
+        };
+
+        BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
+            items, 10m, seasoningBoms, mboms, new List<decimal> { 120m }, 10m);
+
+        Assert.Equal(3, items[0].StandardBags);
+        Assert.Equal(0m, items[0].IrregularQuantity);
+        Assert.Equal(9, items[1].StandardBags);
+        Assert.Equal(0m, items[1].IrregularQuantity);
+    }
 }

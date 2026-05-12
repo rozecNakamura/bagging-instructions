@@ -60,6 +60,7 @@ public static class BaggingSavedInputApplier
     /// <summary>
     /// 登録投入量でバッチ全体量（右上）は <see cref="ResolveGlobalTotals"/> のまま。
     /// 親品目の規格袋数・端数は施設別 <see cref="BaggingInstructionItemDto.PlannedQuantity"/> で <see cref="RoundingService.RoundUpQuantityWithSeasoning"/>。
+    /// <paramref name="specQty"/> 指定時は、先頭レシピ子品目の単位に応じて STD 規格量で袋数を上書きする。
     /// <paramref name="globalTotalsForSeasoning"/> を渡すと、子品目（調味液等）は <c>globalTotals[j] × (施設受注 / 受注合計)</c> で按分（仕様②③）。
     /// </summary>
     public static void ApplySavedInputPerFacilityRounding(
@@ -67,7 +68,8 @@ public static class BaggingSavedInputApplier
         decimal divisor,
         IReadOnlyList<SeasoningBomRow> seasoningBoms,
         IReadOnlyList<MbomDetailDto> mboms,
-        IReadOnlyList<decimal>? globalTotalsForSeasoning = null)
+        IReadOnlyList<decimal>? globalTotalsForSeasoning = null,
+        decimal? specQty = null)
     {
         if (items.Count == 0) return;
 
@@ -123,6 +125,77 @@ public static class BaggingSavedInputApplier
 
             item.SeasoningAmounts = proportional;
         }
+
+        if (specQty is decimal sq && sq > 0)
+            ApplySpecBagCounts(items, sq, mboms, globalTotalsForSeasoning);
+    }
+
+    public static void ApplySpecBagCounts(
+        List<BaggingInstructionItemDto> items,
+        decimal specQty,
+        IReadOnlyList<MbomDetailDto> mboms,
+        IReadOnlyList<decimal>? globalTotalsForSeasoning = null)
+    {
+        if (items.Count == 0 || specQty <= 0) return;
+
+        var totalOrder = items.Sum(i => i.PlannedQuantity);
+        var firstChildIndex = FirstRecipeChildIndex(mboms);
+        var useAllocatedChildQuantity = firstChildIndex >= 0
+                                        && IsGramOrKg(ChildUnitName(mboms[firstChildIndex]))
+                                        && globalTotalsForSeasoning is { Count: > 0 }
+                                        && firstChildIndex < globalTotalsForSeasoning.Count
+                                        && totalOrder > 0;
+
+        foreach (var item in items)
+        {
+            var baseQuantity = item.PlannedQuantity;
+            if (useAllocatedChildQuantity)
+            {
+                var share = item.PlannedQuantity / totalOrder;
+                baseQuantity = globalTotalsForSeasoning![firstChildIndex] * share;
+            }
+
+            var (standardBags, irregularQuantity) = CalculateBagsAndRoundedRemainder(baseQuantity, specQty);
+            item.StandardBags = standardBags;
+            item.IrregularQuantity = irregularQuantity;
+            item.AdjustedQuantity = standardBags + irregularQuantity;
+            item.QuantityForInstruction = item.AdjustedQuantity;
+        }
+    }
+
+    private static (int StandardBags, decimal IrregularQuantity) CalculateBagsAndRoundedRemainder(decimal quantity, decimal specQty)
+    {
+        if (specQty <= 0) return (0, quantity);
+        var standardBags = (int)Math.Floor(quantity / specQty);
+        var remainder = quantity % specQty;
+        const decimal epsilon = 0.0000000001m;
+        var roundedRemainder = remainder > epsilon ? Math.Ceiling(remainder) : 0m;
+        return (standardBags, roundedRemainder);
+    }
+
+    private static int FirstRecipeChildIndex(IReadOnlyList<MbomDetailDto> mboms)
+    {
+        if (mboms.Count == 0) return -1;
+        var zeroIndex = Enumerable.Range(0, mboms.Count)
+            .FirstOrDefault(i => mboms[i].Proutno == 0);
+        if (zeroIndex >= 0 && mboms[zeroIndex].Proutno == 0)
+            return zeroIndex;
+
+        return Enumerable.Range(0, mboms.Count)
+            .OrderBy(i => mboms[i].Proutno)
+            .First();
+    }
+
+    private static string? ChildUnitName(MbomDetailDto mbom) =>
+        mbom.ChildItem?.Uni?.Uninm ?? mbom.ChildItem?.Uni?.Uniinfnm;
+
+    private static bool IsGramOrKg(string? unitName)
+    {
+        if (string.IsNullOrWhiteSpace(unitName)) return false;
+        var normalized = unitName.Trim().ToLowerInvariant();
+        return normalized is "g" or "ｇ" or "kg" or "ｋｇ" or "㎏"
+               || normalized.Contains("グラム", StringComparison.Ordinal)
+               || normalized.Contains("キログラム", StringComparison.Ordinal);
     }
 
     /// <summary>BOM と受注合計から行ごとの既定総数量を算出（必要量セット）。</summary>

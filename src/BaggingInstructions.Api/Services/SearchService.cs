@@ -300,6 +300,8 @@ public class SearchService
         {
             var boms = await _db.Boms.AsNoTracking()
                 .Where(b => b.ParentItemCd == itemCd)
+                .OrderBy(b => b.ProductionOrder ?? decimal.MaxValue)
+                .ThenBy(b => b.ChildItemCd)
                 .Include(b => b.ChildItem)
                     .ThenInclude(c => c!.Unit0)
                 .Include(b => b.ChildItem)

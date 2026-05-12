@@ -46,11 +46,13 @@ public class BaggingCalculatorService
 
         var q = items.Sum(x => x.PlannedQuantity);
         var globalTotals = BaggingSavedInputApplier.ResolveGlobalTotals(q, mboms, payload);
+        var effectiveSpecFillQty = payload?.Lines?.FirstOrDefault(l => l.SpecQty.HasValue && l.SpecQty > 0)?.SpecQty
+                                  ?? first.DefaultSpecQty;
 
         if (payload?.Lines is { Count: > 0 })
         {
             BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
-                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals);
+                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals, effectiveSpecFillQty);
         }
 
         // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は品目マスタ STD のデフォルトで補完）
@@ -68,7 +70,6 @@ public class BaggingCalculatorService
             };
 
         var displayRows = BaggingSavedInputApplier.BuildIngredientDisplayRows(mboms, globalTotals, effectivePayload);
-        var effectiveSpecFillQty = effectivePayload.Lines?.FirstOrDefault(l => l.SpecQty.HasValue && l.SpecQty > 0)?.SpecQty;
         return new BaggingCalculateResult { Items = items, IngredientDisplayRows = displayRows, EffectiveSpecFillQty = effectiveSpecFillQty };
     }
 
@@ -119,7 +120,7 @@ public class BaggingCalculatorService
 
             var itemnm = first.Jobordmernm ?? first.Itemcd ?? "";
 
-            results.Add(new BaggingInstructionItemDto
+            var result = new BaggingInstructionItemDto
             {
                 Shpctrcd = shpctrcd,
                 Shpctrnm = shpctrnm,
@@ -143,7 +144,13 @@ public class BaggingCalculatorService
                 Cusmcd = first.Cusmcd,
                 Jobordno = first.Jobordno,
                 Jobordmernm = first.Jobordmernm
-            });
+            };
+
+            if (first.DefaultSpecQty is decimal specQty && specQty > 0)
+                BaggingSavedInputApplier.ApplySpecBagCounts(
+                    new List<BaggingInstructionItemDto> { result }, specQty, first.Mboms, null);
+
+            results.Add(result);
         }
 
         var aggregated = new Dictionary<string, BaggingInstructionItemDto>();
