@@ -138,6 +138,8 @@ ORDER BY slotcode
                         strpos(lower(COALESCE(ot.itemcode, i.itemcode, '')), lower(@item_term)) > 0
                         OR strpos(lower(COALESCE(i.itemname, '')), lower(@item_term)) > 0
                       ))
+                  AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
+                  AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
                 ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 """,
                 conn);
@@ -268,6 +270,7 @@ ORDER BY slotcode
                     ChildUnitName = "",
                     ChildYieldPercentDisplay = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    WorkcenterName = h.WorkcenterName,
                     SlotDisplay = h.SlotDisplay,
                     ParentItemPrintAddinfo = printAddinfo
                 });
@@ -294,6 +297,7 @@ ORDER BY slotcode
                     ChildUnitName = b.ChildUnitname ?? "",
                     ChildYieldPercentDisplay = yieldDisplay,
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    WorkcenterName = h.WorkcenterName,
                     SlotDisplay = h.SlotDisplay,
                     ParentItemPrintAddinfo = printAddinfo
                 });
@@ -334,6 +338,7 @@ ORDER BY slotcode
                   i.conversionvalue2 AS cv2,
                   i.conversionvalue3 AS cv3,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
+                  COALESCE(wc.workcentername, '') AS workcenter_name,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.releasedate,
                   ot.ordertableid::text AS order_no,
@@ -359,6 +364,7 @@ ORDER BY slotcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
+                LEFT JOIN workcenter wc ON wc.workcentercode = ot.workcentercode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                 ORDER BY ot.ordertableid
@@ -392,24 +398,25 @@ ORDER BY slotcode
                     ConversionValue2 = ReadDecimalNullable(reader, 15),
                     ConversionValue3 = ReadDecimalNullable(reader, 16),
                     SlotDisplay = reader.GetString(17),
-                    NeedDate = ReadDateNullable(reader, 18),
-                    ReleaseDate = ReadDateNullable(reader, 19),
-                    OrderNo = reader.GetString(20),
-                    IaAddinfo05 = reader.GetString(21),
-                    IaAddinfo06 = reader.GetString(22),
-                    IaAddinfo07 = reader.GetString(23),
-                    IaAddinfo08 = reader.GetString(24),
-                    IaAddinfo09 = reader.GetString(25),
-                    IaAddinfo10 = reader.GetString(26),
-                    IaAddinfo11 = reader.GetString(27),
-                    IaAddinfo12 = reader.GetString(28),
-                    IaAddinfo13 = reader.GetString(29),
-                    IaAddinfo14 = reader.GetString(30),
-                    IaAddinfo15 = reader.GetString(31),
-                    IaAddinfo16 = reader.GetString(32),
-                    IaAddinfo17 = reader.GetString(33),
-                    IaSterItemPrange = ReadDecimalFlexible(reader, 34),
-                    IaSteriTime = ReadDecimalFlexible(reader, 35)
+                    WorkcenterName = reader.GetString(18),
+                    NeedDate = ReadDateNullable(reader, 19),
+                    ReleaseDate = ReadDateNullable(reader, 20),
+                    OrderNo = reader.GetString(21),
+                    IaAddinfo05 = reader.GetString(22),
+                    IaAddinfo06 = reader.GetString(23),
+                    IaAddinfo07 = reader.GetString(24),
+                    IaAddinfo08 = reader.GetString(25),
+                    IaAddinfo09 = reader.GetString(26),
+                    IaAddinfo10 = reader.GetString(27),
+                    IaAddinfo11 = reader.GetString(28),
+                    IaAddinfo12 = reader.GetString(29),
+                    IaAddinfo13 = reader.GetString(30),
+                    IaAddinfo14 = reader.GetString(31),
+                    IaAddinfo15 = reader.GetString(32),
+                    IaAddinfo16 = reader.GetString(33),
+                    IaAddinfo17 = reader.GetString(34),
+                    IaSterItemPrange = ReadDecimalFlexible(reader, 35),
+                    IaSteriTime = ReadDecimalFlexible(reader, 36)
                 });
             }
 
@@ -587,6 +594,7 @@ internal sealed class ProductionInstructionLineHeaderRow
     public decimal? ConversionValue2 { get; set; }
     public decimal? ConversionValue3 { get; set; }
     public string SlotDisplay { get; set; } = "";
+    public string WorkcenterName { get; set; } = "";
     public DateOnly? NeedDate { get; set; }
     public DateOnly? ReleaseDate { get; set; }
     public string OrderNo { get; set; } = "";

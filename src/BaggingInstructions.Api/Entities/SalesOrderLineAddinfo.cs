@@ -2,6 +2,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BaggingInstructions.Api.Entities;
 
+/// <summary>
+/// 受注明細付帯。運用想定: addinfo01＝1人あたり分量、addinfo02／addinfo02name＝食種コード／名称、
+/// addinfo03／addinfo03name＝製造便コード／名称、addinfo04／addinfo04name＝配送便（出荷便）コード／名称。
+/// </summary>
 [Table("salesorderlineaddinfo")]
 public class SalesOrderLineAddinfo
 {

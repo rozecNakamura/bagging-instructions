@@ -121,7 +121,7 @@ public sealed class AcceptanceRecordService
                   COALESCE(TRIM(MAX(i.itemname)), ''),
                   COALESCE(TRIM(MAX(u0.unitname)), ''),
                   SUM(sol.quantity),
-                  MIN(COALESCE(a.addinfo02, ''))
+                  MIN(COALESCE(a.addinfo01, ''))
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -184,7 +184,7 @@ public sealed class AcceptanceRecordService
                     ItemName = reader.IsDBNull(5) ? "" : reader.GetString(5),
                     UnitName = reader.IsDBNull(6) ? "" : reader.GetString(6),
                     LineQuantity = reader.IsDBNull(7) ? 0m : reader.GetDecimal(7),
-                    Addinfo02 = reader.IsDBNull(8) ? "" : reader.GetString(8)
+                    Addinfo01 = reader.IsDBNull(8) ? "" : reader.GetString(8)
                 });
             }
 
@@ -223,7 +223,7 @@ public sealed class AcceptanceRecordService
                   COALESCE(i.itemname, '') AS itemname,
                   COALESCE(u0.unitname, '') AS unitname,
                   sol.quantity AS line_qty,
-                  COALESCE(a.addinfo02, '') AS addinfo02
+                  COALESCE(a.addinfo01, '') AS addinfo01
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -252,7 +252,7 @@ public sealed class AcceptanceRecordService
                 var itemCode = reader.IsDBNull(5) ? "" : reader.GetString(5);
                 var itemName = reader.IsDBNull(6) ? "" : reader.GetString(6);
                 var lineQty = reader.GetDecimal(8);
-                var addinfo02 = reader.IsDBNull(9) ? "" : reader.GetString(9);
+                var addinfo01 = reader.IsDBNull(9) ? "" : reader.GetString(9);
 
                 var childText = string.IsNullOrEmpty(itemCode)
                     ? itemName
@@ -269,11 +269,11 @@ public sealed class AcceptanceRecordService
                     EatDateDisplay = needDate?.ToString("MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = reader.IsDBNull(4) ? "" : reader.GetString(4),
                     ChildItemText = childText,
-                    MealCountDisplay = BentoPdfService.FormatMealCountDisplay(lineQty, addinfo02),
+                    MealCountDisplay = BentoPdfService.FormatMealCountDisplay(lineQty, addinfo01),
                     TotalQtyDisplay = lineQty.ToString("0.###", CultureInfo.InvariantCulture),
                     UnitName = reader.GetString(7),
                     LineQuantity = lineQty,
-                    Addinfo02 = addinfo02
+                    Addinfo01 = addinfo01
                 });
             }
 
@@ -301,7 +301,7 @@ public sealed class AcceptanceRecordService
             EatDate = eatDate,
             MealTime = r.SlotDisplay ?? "",
             ChildItem = childItem,
-            MealCountDisplay = BentoPdfService.FormatMealCountDisplay(r.LineQuantity, r.Addinfo02 ?? ""),
+            MealCountDisplay = BentoPdfService.FormatMealCountDisplay(r.LineQuantity, r.Addinfo01 ?? ""),
             TotalQtyDisplay = r.LineQuantity.ToString("0.###", CultureInfo.InvariantCulture),
             UnitName = r.UnitName ?? ""
         };
@@ -324,7 +324,7 @@ public sealed class AcceptanceRecordService
             {
                 var rows = g.OrderBy(x => x.SalesOrderLineId).ToList();
                 var qty = rows.Sum(x => x.LineQuantity);
-                var addinfo = rows.Select(x => x.Addinfo02).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "";
+                var addinfo = rows.Select(x => x.Addinfo01).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "";
                 var head = rows[0];
 
                 return new AcceptanceRecordPdfLineModel
@@ -342,7 +342,7 @@ public sealed class AcceptanceRecordService
                     TotalQtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture),
                     UnitName = head.UnitName ?? "",
                     LineQuantity = qty,
-                    Addinfo02 = addinfo
+                    Addinfo01 = addinfo
                 };
             })
             .OrderBy(x => x.DeliveryLocationName, StringComparer.Ordinal)
@@ -418,5 +418,5 @@ internal sealed class AcceptanceRecordSearchSqlRow
     public string? ItemName { get; set; }
     public string? UnitName { get; set; }
     public decimal LineQuantity { get; set; }
-    public string? Addinfo02 { get; set; }
+    public string? Addinfo01 { get; set; }
 }

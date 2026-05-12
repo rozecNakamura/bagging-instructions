@@ -1,7 +1,7 @@
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 作業前準備書.rxz を用いた PDF。中分類ごとにページ塊を分け、1ページ最大12明細行。
+/// 作業前準備書.rxz を用いた PDF。明細は製造日・作業区・殺菌温度・注番・親品目・子品目でソートし、1ページ最大12明細行。
 /// </summary>
 public class PreparationWorkPdfService
 {
@@ -25,26 +25,24 @@ public class PreparationWorkPdfService
         var printNow = DateTime.Now;
         var pages = new List<Dictionary<string, string>>();
 
-        var orderedGroups = lines
-            .GroupBy(l => l.MiddleClassificationName)
-            .OrderBy(g => g.Key, StringComparer.Ordinal);
-
-        var totalPages = orderedGroups.Sum(g => Math.Max(1, (g.Count() + RowsPerPage - 1) / RowsPerPage));
-        if (totalPages < 1) totalPages = 1;
+        var sorted = PreparationWorkReportSort.SortPdfLines(lines);
+        var totalPages = Math.Max(1, (sorted.Count + RowsPerPage - 1) / RowsPerPage);
 
         var pageNum = 0;
-        foreach (var grp in orderedGroups)
+        for (var off = 0; off < sorted.Count; off += RowsPerPage)
         {
-            var list = grp.ToList();
-            for (var off = 0; off < list.Count; off += RowsPerPage)
-            {
-                var chunk = list.Skip(off).Take(RowsPerPage).ToList();
-                pageNum++;
-                var tags = BuildPageTagValues(chunk, grp.Key, chunk.FirstOrDefault()?.DateDisplay ?? "");
-                JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
-                tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
-                pages.Add(tags);
-            }
+            var chunk = sorted.Skip(off).Take(RowsPerPage).ToList();
+            var first = chunk[0];
+            pageNum++;
+            var tags = BuildPageTagValues(
+                chunk,
+                first.MiddleClassificationName ?? "",
+                first.DateDisplay ?? "",
+                first.WorkplaceName ?? "",
+                first.TemperatureRange ?? "");
+            JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
+            tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
+            pages.Add(tags);
         }
 
         return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "作業前準備書");
@@ -53,12 +51,16 @@ public class PreparationWorkPdfService
     private static Dictionary<string, string> BuildPageTagValues(
         IReadOnlyList<PreparationPdfLineModel> chunk,
         string middleClassificationName,
-        string dateDisplay)
+        string dateDisplay,
+        string workplaceName,
+        string temperatureRange)
     {
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        tags["LOCATIONFROM01"] = workplaceName;
         tags["GENRE01"] = middleClassificationName;
         tags["ITEMTYPE01"] = middleClassificationName;
         tags["DATE01"] = dateDisplay;
+        tags["TEMP"] = temperatureRange;
 
         for (var i = 0; i < TemplateRowCount; i++)
         {
@@ -79,18 +81,10 @@ public class PreparationWorkPdfService
         {
             var r = chunk[i];
             var nn = i.ToString("D2");
-            var parentCell = string.IsNullOrEmpty(r.ParentItemcode)
-                ? r.ParentItemname
-                : $"{r.ParentItemcode}\n{r.ParentItemname}";
-            var childCell = string.IsNullOrEmpty(r.ChildItemcode)
-                ? r.ChildItemname
-                : $"{r.ChildItemcode}\n{r.ChildItemname}";
-
-            // 親品目・子品目セルは「コード\n名称」の2行表示にする
-            tags[$"ITEMPALNUM{nn}"] = parentCell;
-            tags[$"ITEMPALNM{nn}"] = "";
-            tags[$"ITEMCHINUM{nn}"] = childCell;
-            tags[$"ITEMCHINM{nn}"] = "";
+            tags[$"ITEMPALNUM{nn}"] = r.ParentItemcode;
+            tags[$"ITEMPALNM{nn}"] = r.ParentItemname;
+            tags[$"ITEMCHINUM{nn}"] = r.ChildItemcode;
+            tags[$"ITEMCHINM{nn}"] = r.ChildItemname;
             tags[$"ORDERNO{nn}"] = r.OrderNo;
             tags[$"ORDER{nn}"] = (i + 1).ToString();
             tags[$"STANDARD{nn}"] = r.Standard;

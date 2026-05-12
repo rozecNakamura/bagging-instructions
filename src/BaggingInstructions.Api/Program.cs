@@ -33,12 +33,17 @@ builder.Services.AddDbContext<CstmeatDbContext>(options =>
     options.UseNpgsql(connOther));
 
 builder.Services.AddScoped<SearchService>();
+builder.Services.AddScoped<ProductLabelPdfService>();
 builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<BaggingInputService>();
 builder.Services.AddScoped<BaggingCalculatorService>();
+builder.Services.AddScoped<BaggingLabelPdfService>();
 builder.Services.AddScoped<JuicePdfService>();
 builder.Services.AddScoped<PreparationWorkService>();
 builder.Services.AddScoped<PreparationWorkPdfService>();
+builder.Services.AddScoped<CutPreparationService>();
+builder.Services.AddScoped<CutPreparationPdfService>();
+builder.Services.AddScoped<CutPreparationExcelService>();
 builder.Services.AddScoped<AggregateSummaryService>();
 builder.Services.AddScoped<AggregateSummaryPdfService>();
 builder.Services.AddScoped<DeliveryNoteService>();
@@ -58,6 +63,9 @@ builder.Services.AddScoped<AcceptanceRecordService>();
 builder.Services.AddScoped<AcceptanceRecordPdfService>();
 builder.Services.AddScoped<SortingInquiryService>();
 builder.Services.AddScoped<SortingInquiryExcelService>();
+builder.Services.AddScoped<YoteiShokusuService>();
+builder.Services.AddScoped<YoteiShokusuExcelService>();
+builder.Services.AddScoped<ScalesLinkService>();
 
 builder.Services.AddCors(options =>
 {
@@ -68,6 +76,11 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// IIS の子アプリケーション（例: /BaggingInstructions.Api）のとき ANCM が ASPNETCORE_PATHBASE を渡すことがある。
+var pathBase = Environment.GetEnvironmentVariable("ASPNETCORE_PATHBASE")?.Trim().TrimEnd('/');
+if (!string.IsNullOrEmpty(pathBase))
+    app.UsePathBase(pathBase);
 
 app.UseCors();
 app.UseSwagger();
@@ -84,7 +97,7 @@ app.MapGet("/health", (IConfiguration config) => new
 // 汁仕分表.rxz テンプレートを返す（静的ファイル404対策）
 app.MapGet("/api/templates/juice", (IWebHostEnvironment env) =>
 {
-    var path = Path.Combine(env.ContentRootPath, "..", "..", "static", "templates", "汁仕分表.rxz");
+    var path = Path.Combine(AppContentPaths.TemplatesDirectory(env), "汁仕分表.rxz");
     var fullPath = Path.GetFullPath(path);
     if (!File.Exists(fullPath))
         return Results.NotFound();
@@ -93,21 +106,22 @@ app.MapGet("/api/templates/juice", (IWebHostEnvironment env) =>
 
 app.MapGet("/api/templates/preparation-work", (IWebHostEnvironment env) =>
 {
-    var path = Path.Combine(env.ContentRootPath, "..", "..", "static", "templates", "作業前準備書.rxz");
+    var path = Path.Combine(AppContentPaths.TemplatesDirectory(env), "作業前準備書.rxz");
     var fullPath = Path.GetFullPath(path);
     if (!File.Exists(fullPath))
         return Results.NotFound();
     return Results.File(fullPath, "application/xml", "作業前準備書.rxz");
 });
 
-// ルート "/" はフロントの index へリダイレクト（/static/index.html を参照するため）
-app.MapGet("/", () => Results.Redirect("/static/index.html", permanent: false));
+// ルート "/" はフロントの index へリダイレクト（子アプリ時は PathBase を付ける）
+app.MapGet("/", (HttpContext ctx) =>
+    Results.Redirect($"{ctx.Request.PathBase}/static/index.html", permanent: false));
 
 // 静的ファイル（現行の /static に合わせる）
 app.UseDefaultFiles();
 app.UseStaticFiles();
-var staticPath = Path.Combine(app.Environment.ContentRootPath, "..", "..", "static");
+var staticPath = AppContentPaths.StaticRoot(app.Environment);
 if (Directory.Exists(staticPath))
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(Path.GetFullPath(staticPath)), RequestPath = "/static" });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(staticPath), RequestPath = "/static" });
 
 app.Run();

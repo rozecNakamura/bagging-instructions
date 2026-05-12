@@ -13,6 +13,10 @@ public class CalculateRequestDto
     /// <summary>登録済み投入量を読み、右上・按分計算に反映する。</summary>
     [JsonPropertyName("use_saved_input")]
     public bool UseSavedInput { get; set; }
+
+    /// <summary>ラベル賞味期限の上書き（yyyyMMdd 形式）。未指定時は 製造日+品目の賞味期限加算日数。</summary>
+    [JsonPropertyName("expiry_date_override")]
+    public string? ExpiryDateOverride { get; set; }
 }
 
 public class SeasoningAmountDto
@@ -147,6 +151,9 @@ public class BaggingInputLineDto
     [JsonPropertyName("citemcd")]
     public string Citemcd { get; set; } = "";
 
+    [JsonPropertyName("citem_name")]
+    public string? ChildItemName { get; set; }
+
     /// <summary>BOM 行順（1 始まり）。袋詰投入量テーブル input_order と対応。</summary>
     [JsonPropertyName("input_order")]
     public int? InputOrder { get; set; }
@@ -208,4 +215,6 @@ public class BaggingCalculateResult
 {
     public List<BaggingInstructionItemDto> Items { get; set; } = new();
     public List<BaggingIngredientRowDto>? IngredientDisplayRows { get; set; }
+    /// <summary>有効な規格充填量（ユーザー登録 spec_qty 優先、未登録時は addInfo.Car0）。</summary>
+    public decimal? EffectiveSpecFillQty { get; set; }
 }

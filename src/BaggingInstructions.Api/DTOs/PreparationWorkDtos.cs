@@ -62,8 +62,9 @@ public class PreparationWorkFilterRequestDto
     [JsonPropertyName("delvedt")]
     public string? Delvedt { get; set; }
 
-    [JsonPropertyName("slot")]
-    public string? Slot { get; set; }
+    /// <summary>製造便コード（<c>salesorderlineaddinfo.addinfo03</c>）。複数指定時は OR。</summary>
+    [JsonPropertyName("manufacturing_route_codes")]
+    public List<string>? ManufacturingRouteCodes { get; set; }
 
     [JsonPropertyName("itemcd")]
     public string? Itemcd { get; set; }
@@ -73,6 +74,45 @@ public class PreparationWorkFilterRequestDto
 
     [JsonPropertyName("middleclassificationid")]
     public long? Middleclassificationid { get; set; }
+
+    [JsonPropertyName("workcenter_ids")]
+    public List<long>? WorkcenterIds { get; set; }
+
+    [JsonPropertyName("warehouse_ids")]
+    public List<long>? WarehouseIds { get; set; }
+}
+
+/// <summary>作業区マスタ（作業前準備書プルダウン用）。</summary>
+public sealed class PreparationWorkWorkcenterOptionDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
+/// <summary>倉庫マスタ（作業前準備書プルダウン用）。親品目 <c>item.warehousecode</c> との突合用。</summary>
+public sealed class PreparationWorkWarehouseOptionDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
+/// <summary>製造便（受注明細付帯）。納期当日のオーダに現れるコードの一覧。</summary>
+public sealed class PreparationWorkManufacturingRouteOptionDto
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
 }
 
 public class PreparationWorkExportRequestDto : PreparationWorkFilterRequestDto

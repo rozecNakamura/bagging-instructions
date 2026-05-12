@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.Services;
 
 namespace BaggingInstructions.Api.Controllers;
@@ -24,7 +25,7 @@ public class JuiceController : ControllerBase
         if (request?.Rows == null || request.Rows.Count == 0)
             return BadRequest(new { detail = "印刷する行を選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "汁仕分表.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "汁仕分表.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "汁仕分表テンプレートが見つかりません" });
@@ -36,7 +37,7 @@ public class JuiceController : ControllerBase
             Jobordmernm = r.Jobordmernm,
             Shpctrnm = r.Shpctrnm,
             Jobordqun = r.Jobordqun,
-            Addinfo02 = r.Addinfo02
+            Addinfo01 = r.Addinfo01
         }).ToList();
 
         var pdfBytes = _juicePdfService.GeneratePdfFromRows(fullPath, rows);
@@ -63,6 +64,6 @@ public class JuicePrintRowRequest
     public string? Shpctrnm { get; set; }
     [JsonPropertyName("jobordqun")]
     public decimal Jobordqun { get; set; }
-    [JsonPropertyName("addinfo02")]
-    public string? Addinfo02 { get; set; }
+    [JsonPropertyName("addinfo01")]
+    public string? Addinfo01 { get; set; }
 }

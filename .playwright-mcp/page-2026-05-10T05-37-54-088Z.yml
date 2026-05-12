@@ -1,0 +1,68 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - heading "メニュー" [level=2] [ref=e4]
+    - list [ref=e5]:
+      - listitem [ref=e6]:
+        - button "袋詰指示書・ラベル管理" [ref=e7] [cursor=pointer]
+      - listitem [ref=e8]:
+        - button "汁仕分表" [ref=e9] [cursor=pointer]
+      - listitem [ref=e10]:
+        - button "弁当箱盛り付け指示書（ご飯）" [ref=e11] [cursor=pointer]
+      - listitem [ref=e12]:
+        - button "納品書" [ref=e13] [cursor=pointer]
+      - listitem [ref=e14]:
+        - button "個人配送指示書・個人配送指示書（集計）" [ref=e15] [cursor=pointer]
+      - listitem [ref=e16]:
+        - button "現品票印刷" [ref=e17] [cursor=pointer]
+      - listitem [ref=e18]:
+        - button "集計表" [ref=e19] [cursor=pointer]
+      - listitem [ref=e20]:
+        - button "カット前準備書・現品ラベル" [ref=e21] [cursor=pointer]
+      - listitem [ref=e22]:
+        - button "作業前準備書" [ref=e23] [cursor=pointer]
+      - listitem [ref=e24]:
+        - button "調理指示書" [ref=e25] [cursor=pointer]
+      - listitem [ref=e26]:
+        - button "調味液配合表仕様" [ref=e27] [cursor=pointer]
+      - listitem [ref=e28]:
+        - button "生産指示書_ホイコーロー" [ref=e29] [cursor=pointer]
+      - listitem [ref=e30]:
+        - button "生産指示書_がんもの炊き合わせ" [ref=e31] [cursor=pointer]
+      - listitem [ref=e32]:
+        - button "生産指示書_キャベツとウィンナーのソティ" [ref=e33] [cursor=pointer]
+      - listitem [ref=e34]:
+        - button "検品記録簿" [ref=e35] [cursor=pointer]
+      - listitem [ref=e36]:
+        - button "予定食数" [ref=e37] [cursor=pointer]
+      - listitem [ref=e38]:
+        - button "仕分け照会" [ref=e39] [cursor=pointer]
+      - listitem [ref=e40]:
+        - button "計量器連携" [ref=e41] [cursor=pointer]
+      - listitem [ref=e42]:
+        - button "検収の記録簿" [ref=e43] [cursor=pointer]
+  - generic [ref=e60]:
+    - banner [ref=e61]:
+      - heading "予定食数" [level=1] [ref=e62]
+    - generic [ref=e63]:
+      - heading "検索条件" [level=2] [ref=e64]
+      - generic [ref=e65]:
+        - generic [ref=e66]:
+          - generic [ref=e67]: "喫食日*:"
+          - textbox "喫食日必須:" [ref=e68]: 2026-05-17
+        - generic [ref=e69]:
+          - generic [ref=e70]: "便:"
+          - generic [ref=e71]:
+            - generic [ref=e72] [cursor=pointer]:
+              - generic [ref=e73]: 1件選択
+              - generic [ref=e74]: ▼
+            - generic [ref=e798]:
+              - generic [ref=e799]:
+                - checkbox "朝" [ref=e800]
+                - generic [ref=e801]: 朝
+              - generic [ref=e802]:
+                - checkbox "昼" [checked] [ref=e803]
+                - generic [ref=e804]: 昼
+              - generic [ref=e805]:
+                - checkbox "夕" [ref=e806]
+                - generic [ref=e807]: 夕
+        - button "検索" [ref=e75] [cursor=pointer]

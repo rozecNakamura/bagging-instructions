@@ -1,0 +1,56 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - heading "HTTP Error 404.0 - Not Found" [level=3] [ref=e4]
+    - heading "The resource you are looking for has been removed, had its name changed, or is temporarily unavailable." [level=4] [ref=e5]
+  - group [ref=e7]:
+    - heading "Most likely causes:" [level=4] [ref=e8]
+    - list [ref=e9]:
+      - listitem [ref=e10]: The directory or file specified does not exist on the Web server.
+      - listitem [ref=e11]: The URL contains a typographical error.
+      - listitem [ref=e12]: A custom filter or module, such as URLScan, restricts access to the file.
+  - group [ref=e14]:
+    - heading "Things you can try:" [level=4] [ref=e15]
+    - list [ref=e16]:
+      - listitem [ref=e17]: Create the content on the Web server.
+      - listitem [ref=e18]: Review the browser URL.
+      - listitem [ref=e19]:
+        - text: Create a tracing rule to track failed requests for this HTTP status code and see which module is calling SetStatus. For more information about creating a tracing rule for failed requests, click
+        - link "here" [ref=e20] [cursor=pointer]:
+          - /url: http://go.microsoft.com/fwlink/?LinkID=66439
+        - text: .
+  - group [ref=e22]:
+    - heading "Detailed Error Information:" [level=4] [ref=e23]
+    - table [ref=e25]:
+      - rowgroup [ref=e26]:
+        - row "Module IIS Web Core" [ref=e27]:
+          - rowheader "Module" [ref=e28]
+          - cell "IIS Web Core" [ref=e29]
+        - row "Notification MapRequestHandler" [ref=e30]:
+          - rowheader "Notification" [ref=e31]
+          - cell "MapRequestHandler" [ref=e32]
+        - row "Handler StaticFile" [ref=e33]:
+          - rowheader "Handler" [ref=e34]
+          - cell "StaticFile" [ref=e35]
+        - row "Error Code 0x80070002" [ref=e36]:
+          - rowheader "Error Code" [ref=e37]
+          - cell "0x80070002" [ref=e38]
+    - table [ref=e40]:
+      - rowgroup [ref=e41]:
+        - row "Requested URL http://localhost:80/bagging" [ref=e42]:
+          - rowheader "Requested URL" [ref=e43]
+          - cell "http://localhost:80/bagging" [ref=e44]
+        - row "Physical Path C:\\inetpub\\wwwroot\\bagging" [ref=e45]:
+          - rowheader "Physical Path" [ref=e46]
+          - cell "C:\\inetpub\\wwwroot\\bagging" [ref=e47]
+        - row "Logon Method Anonymous" [ref=e48]:
+          - rowheader "Logon Method" [ref=e49]
+          - cell "Anonymous" [ref=e50]
+        - row "Logon User Anonymous" [ref=e51]:
+          - rowheader "Logon User" [ref=e52]
+          - cell "Anonymous" [ref=e53]
+  - group [ref=e55]:
+    - heading "More Information:" [level=4] [ref=e56]
+    - text: This error means that the file or directory does not exist on the server. Create the file or directory and try the request again.
+    - paragraph [ref=e57]:
+      - link "View more information »" [ref=e58] [cursor=pointer]:
+        - /url: https://go.microsoft.com/fwlink/?LinkID=62293&IIS70Error=404,0,0x80070002,26200

@@ -91,6 +91,7 @@ public static partial class EntityToDtoMapper
             Steritemprange = addInfo?.SterItemPrange?.ToString(),
             Steritime = addInfo?.SteriTime,
             Kikunip = addInfo?.Car0,
+            ShelflifeDays = i.ShelflifeDays,
             Classification1Code = i.Classification1Code,
             Classification2Code = i.Classification2Code,
             Classification3Code = i.Classification3Code,
@@ -154,7 +155,7 @@ public static partial class EntityToDtoMapper
         if (ci == null) return null;
         return new CusmcdDetailDto
         {
-            Prkey = DbTextId.ToInt64(ci.CustomerItemId),
+            Prkey = ci.CustomerItemId,
             Merfctcd = null,
             Cuscd = customer?.CustomerCode,
             Cusitemcd = ci.CustomerCode ?? "",

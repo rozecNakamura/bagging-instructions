@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 
@@ -56,8 +57,8 @@ public class PersonalDeliveryController : ControllerBase
         if (variant != "detail" && variant != "summary")
             return BadRequest(new { detail = "variant は 'detail' または 'summary' を指定してください" });
 
-        var templateDetailPath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "個人配送指示書.rxz");
-        var templateSummaryPath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "個人配送指示書（集計）.rxz");
+        var templateDetailPath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "個人配送指示書.rxz");
+        var templateSummaryPath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "個人配送指示書（集計）.rxz");
         var fullDetailPath = Path.GetFullPath(templateDetailPath);
         var fullSummaryPath = Path.GetFullPath(templateSummaryPath);
 

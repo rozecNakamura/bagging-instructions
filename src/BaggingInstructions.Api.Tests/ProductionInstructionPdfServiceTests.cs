@@ -28,20 +28,21 @@ public class ProductionInstructionPdfServiceTests
             }
         };
 
-        var tags = ProductionInstructionPdfService.BuildPageTagValues(lines, "1便", "2024/04/01");
+        var tags = ProductionInstructionPdfService.BuildPageTagValues(lines, "1便", "2024/04/01", "第1作業区");
 
+        Assert.Equal("第1作業区", tags["GENRE01"]);
         Assert.Equal("2024/04/01", tags["DATE01"]);
         Assert.Equal("1便", tags["ITEMTYPE01"]);
 
-        Assert.Equal("P001 親品目１\n1001", tags["ITEMPALNM00"]);
-        Assert.Equal("C001 子品目１", tags["ITEMCHINM00"]);
-        Assert.Equal("", tags["ITEMPALNUM00"]);
-        Assert.Equal("", tags["ITEMCHINUM00"]);
+        Assert.Equal("親品目１", tags["ITEMPALNM00"]);
+        Assert.Equal("子品目１", tags["ITEMCHINM00"]);
+        Assert.Equal("P001", tags["ITEMPALNUM00"]);
+        Assert.Equal("C001", tags["ITEMCHINUM00"]);
         Assert.Equal("10", tags["MAKEQUNPLAN00"]);
         Assert.Equal("5", tags["USEQUNPLAN00"]);
         Assert.Equal("kg", tags["UNITPAR00"]);
         Assert.Equal("g", tags["UNITCHI00"]);
-        Assert.Equal("", tags["ORDERNO00"]);
+        Assert.Equal("1001", tags["ORDERNO00"]);
         Assert.Equal("規格A", tags["ITEMSPEC00"]);
     }
 

@@ -6,7 +6,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 個人配送指示書画面用：salesorderline を配送日（planneddeliverydate）で検索し、
-/// 配送日・喫食時間（salesorderlineaddinfo.addinfo01name）・配送エリア（customerdeliverylocationaddinfo.addinfo01）の一覧を返す。
+/// 配送日・配送便名称（salesorderlineaddinfo.addinfo04name）・配送エリア（customerdeliverylocationaddinfo.addinfo01）の一覧を返す。
 /// 配送エリア未設定（null/空）の組み合わせは検索結果に含めない。
 /// </summary>
 public class PersonalDeliveryService
@@ -18,7 +18,7 @@ public class PersonalDeliveryService
         _db = db;
     }
 
-    /// <summary>配送日（YYYYMMDD）で salesorderline を検索し、配送エリアが設定されている組み合わせに限り、配送日・喫食時間・配送エリアの distinct 一覧を返す。</summary>
+    /// <summary>配送日（YYYYMMDD）で salesorderline を検索し、配送エリアが設定されている組み合わせに限り、配送日・配送便名称・配送エリアの distinct 一覧を返す。</summary>
     public async Task<List<PersonalDeliverySearchResultDto>> SearchByDeliveryDateAsync(string delvedt, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(delvedt) || delvedt.Length != 8)
@@ -37,7 +37,7 @@ public class PersonalDeliveryService
             .Select(l => new
             {
                 PlannedDeliveryDate = l.PlannedDeliveryDate,
-                TimeName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+                TimeName = l.Addinfo != null ? l.Addinfo.Addinfo04Name : null,
                 Area = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null && l.SalesOrder.CustomerDeliveryLocation.Addinfo != null
                     ? l.SalesOrder.CustomerDeliveryLocation.Addinfo.Addinfo01
                     : null

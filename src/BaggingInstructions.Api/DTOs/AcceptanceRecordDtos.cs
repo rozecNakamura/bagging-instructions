@@ -81,8 +81,8 @@ public sealed class AcceptanceRecordPdfLineModel
     /// <summary>集計用数量（salesorderline.quantity の合算前）。</summary>
     public decimal LineQuantity { get; set; }
 
-    /// <summary><c>salesorderlineaddinfo.addinfo02</c>（食数表示計算用）。</summary>
-    public string Addinfo02 { get; set; } = "";
+    /// <summary><c>salesorderlineaddinfo.addinfo01</c>（1人あたり分量・食数表示計算用）。</summary>
+    public string Addinfo01 { get; set; } = "";
 
     public string EatDateDisplay { get; set; } = "";
     public string SlotDisplay { get; set; } = "";

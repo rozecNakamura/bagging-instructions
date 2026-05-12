@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 
@@ -80,7 +81,7 @@ public class InspectionRecordController : ControllerBase
         if (string.IsNullOrEmpty(body.NeedDate) || body.NeedDate.Length != 8)
             return BadRequest(new { detail = "納期はYYYYMMDD形式（8桁）で指定してください。" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "検品記録簿.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "検品記録簿.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "検品記録簿テンプレートが見つかりません" });

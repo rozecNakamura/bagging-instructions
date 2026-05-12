@@ -3,7 +3,7 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 調理指示書.rxz を用いた PDF。便（SlotDisplay）ごとにページ塊を分ける。
+/// 調理指示書.rxz を用いた PDF。作業区名 + 日付ごとにページ塊を分ける。
 /// 規格は <c>STANDARD00</c>〜<c>STANDARD12</c>（子品目の <see cref="CookingInstructionPdfLineModel.Standard"/>）。
 /// </summary>
 public sealed class CookingInstructionPdfService
@@ -27,8 +27,11 @@ public sealed class CookingInstructionPdfService
         var pages = new List<Dictionary<string, string>>();
 
         var orderedGroups = lines
-            .GroupBy(l => l.SlotDisplay ?? "")
-            .OrderBy(g => g.Key, StringComparer.Ordinal);
+            .GroupBy(l => new PagingKey(
+                l.WorkplaceNames ?? string.Empty,
+                l.NeedDateDisplay ?? string.Empty))
+            .OrderBy(g => g.Key.WorkplaceNames, StringComparer.Ordinal)
+            .ThenBy(g => g.Key.NeedDateDisplay, StringComparer.Ordinal);
 
         var totalPages = orderedGroups.Sum(g => Math.Max(1, (g.Count() + RowsPerPage - 1) / RowsPerPage));
         if (totalPages < 1) totalPages = 1;
@@ -41,7 +44,10 @@ public sealed class CookingInstructionPdfService
             {
                 var chunk = list.Skip(off).Take(RowsPerPage).ToList();
                 pageNum++;
-                var tags = BuildPageTagValues(chunk, grp.Key, chunk.FirstOrDefault()?.NeedDateDisplay ?? "");
+                var tags = BuildPageTagValues(
+                    chunk,
+                    chunk.FirstOrDefault()?.SlotDisplay ?? string.Empty,
+                    grp.Key.NeedDateDisplay);
                 JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
                 tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
                 pages.Add(tags);
@@ -61,7 +67,7 @@ public sealed class CookingInstructionPdfService
 
         var header = chunk.FirstOrDefault();
         // Header fields
-        tags["GENRE01"] = header?.WorkplaceNames ?? string.Empty;      // 作業名：
+        tags["GENRE01"] = header?.WorkplaceNames ?? string.Empty;      // 作業区名：
         tags["DATE01"] = needDateDisplay ?? string.Empty;              // 日付：
         tags["ITEMTYPE01"] = slotDisplay ?? string.Empty;              // 製造便：
 
@@ -90,16 +96,19 @@ public sealed class CookingInstructionPdfService
             var r = chunk[i];
             var nn = i.ToString("D2");
 
-            // 親品目注番: rxz では ITEMPALNUM が上寄せ・上余白、ITEMPALNM が下寄せ・下余白の同一セル。
-            // 注番は下段（ITEMPALNM）、親品目は上段（ITEMPALNUM）。予定製造量は MAKEQUNPLAN 列。
-            var parentName = FormatItemCodeName(r.ParentItemCode, r.ParentItemName);
+            // 指定マッピング:
+            // ORDERNO=ordertableid, ITEMPALNUM=親品目コード, ITEMCHINUM=子品目コード,
+            // ITEMPALNM=親品目名称, ITEMCHINM=子品目名称
             var orderNo = (r.OrderNo ?? "").Trim();
-            var childText = FormatItemCodeName(r.ChildItemCode, r.ChildItemName);
+            var parentCode = (r.ParentItemCode ?? "").Trim();
+            var parentName = (r.ParentItemName ?? "").Trim();
+            var childCode = (r.ChildItemCode ?? "").Trim();
+            var childName = (r.ChildItemName ?? "").Trim();
 
-            tags[$"ITEMPALNM{nn}"] = orderNo;
-            tags[$"ITEMCHINM{nn}"] = childText ?? string.Empty;
-            tags[$"ITEMPALNUM{nn}"] = parentName ?? string.Empty;
-            tags[$"ITEMCHINUM{nn}"] = "";
+            tags[$"ITEMPALNM{nn}"] = parentName;
+            tags[$"ITEMCHINM{nn}"] = childName;
+            tags[$"ITEMPALNUM{nn}"] = parentCode;
+            tags[$"ITEMCHINUM{nn}"] = childCode;
             if (i <= 12)
                 tags[$"STANDARD{nn}"] = (r.Standard ?? "").Trim();
             tags[$"MAKEQUNPLAN{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
@@ -110,7 +119,7 @@ public sealed class CookingInstructionPdfService
             var unitParNn = UnitParTagIndexForDataRow(i).ToString("D2");
             tags[$"UNITPAR{unitParNn}"] = (r.PlanUnitName ?? "").Trim();
             tags[$"UNITCHI{nn}"] = (r.ChildUnitName ?? "").Trim();
-            tags[$"ORDERNO{nn}"] = "";
+            tags[$"ORDERNO{nn}"] = orderNo;
         }
 
         return tags;
@@ -143,5 +152,7 @@ public sealed class CookingInstructionPdfService
             1 => 0,
             _ => dataRowIndex
         };
+
+    private sealed record PagingKey(string WorkplaceNames, string NeedDateDisplay);
 }
 

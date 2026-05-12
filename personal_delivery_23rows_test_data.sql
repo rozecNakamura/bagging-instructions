@@ -5,7 +5,7 @@
 --   - customerid=1, itemid=1 が存在すること
 --   - customerdeliverylocation に 23 件以上の納入場所があること（ID 4〜26 を想定。customerdeliverylocation_insert_25.sql で 1〜25 の場所を入れている場合は、ID が deliverylocationid の連番に依存）
 --
--- 実行後: 配送日 2026-03-04 で検索 → 「喫食時間 朝」「配送エリア 01」の行を選択 → 個人配送指示書出力で 23 行以上になり、2ページ目にまたがることを確認。
+-- 実行後: 配送日 2026-03-04 で検索 → 「配送便名称 朝」「配送エリア 01」の行を選択 → 個人配送指示書出力で 23 行以上になり、2ページ目にまたがることを確認。
 --
 -- 【既に juice_test_data_insert.sql を実行している場合】
 --   受注・明細は 25 件あるので、以下の「1)」だけ実行し、納入場所に addinfo01='01' を付けると、
@@ -37,6 +37,6 @@ lines AS (
     FROM orders
     RETURNING salesorderlineid
 )
-INSERT INTO salesorderlineaddinfo (salesorderlineid, addinfo01, addinfo01name, addinfo02, addinfo03name)
-SELECT salesorderlineid, '朝', '朝', '1', 'テスト'
+INSERT INTO salesorderlineaddinfo (salesorderlineid, addinfo01, addinfo04name)
+SELECT salesorderlineid, '1', '朝'
 FROM lines;

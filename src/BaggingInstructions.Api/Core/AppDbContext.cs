@@ -197,6 +197,10 @@ public class AppDbContext : DbContext
                 nameof(CustomerDeliveryLocation.LocationCode))
             .IsRequired(false);
 
+        // CustomerItem（主キー customeritemid = bigint）
+        modelBuilder.Entity<CustomerItem>()
+            .HasKey(ci => ci.CustomerItemId);
+
         // CustomerItem -> Customer, Item（customer は customercode で結合）
         modelBuilder.Entity<CustomerItem>()
             .HasOne(ci => ci.Customer)

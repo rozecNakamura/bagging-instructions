@@ -9,25 +9,31 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 仕分け照会: salesorderline を喫食日（planneddeliverydate）・便（slotcode）で検索し、
-/// 品目×食種×（得意先コード＋納入場所コード）別に数量を集計する（同一納入場所キーに複数明細は合算）。
+/// 品目×代表食種×（得意先コード＋納入場所コード）別に数量を集計する（同一納入場所キーに複数明細は合算）。
+/// 出力対象は得意先コード 200・210 のみ。
+/// 代表食種は m_shokushu.priority_order が小さい食種を優先して選択する（マスタ未登録は後回し）。
 /// 一覧・Excel は品目コード・品目名称・食種のあと、検索結果に現れる各納入場所列を1列とする（列キーは得意先と納入場所コードの合成）。
 /// 列見出し4段目は納入場所表示（名称優先、無ければコード。重複時は得意先コードで区別）。
-/// 同一品目×食種行で複数納入場所列が並び、同日に複数拠点が同一品目を取引したことが分かる。
-/// 最後に合計列とする。行データの食種キーは addinfo（<see cref="SalesOrderLineAddinfo.Addinfo02Name"/>／<see cref="SalesOrderLineAddinfo.Addinfo02"/>）。Excel の列見出しのみ「適用」とする。
+/// 同一品目行で複数納入場所列が並び、同日に複数拠点が同一品目を取引したことが分かる。
+/// 最後に合計列とする。行データの食種は <see cref="SalesOrderLineAddinfo.Addinfo02"/>／<see cref="SalesOrderLineAddinfo.Addinfo02Name"/>。Excel の列見出しのみ「適用」とする。
 /// 仕訳表 Excel の 1〜2 行目は <see cref="SortingInquirySearchResponseDto.StoreHeaderCodes"/>／<see cref="SortingInquirySearchResponseDto.StoreHeaders"/>（納入場所コード・表示名）。
-/// 仕訳表用の列別収容は、明細ごとの単位0換算数量（<see cref="CookingInstructionQuantity.ResolveParentQtyInUnit0"/>）を
-/// <see cref="SalesOrderLineAddinfo.Addinfo01"/> は DB 上は文字列だが、仕訳表の収容計算では正の数値としてパースして除算し、納入場所列ごとに合算する。
+/// 仕訳表用の列別収容は、明細ごとの単位0換算数量（<see cref="CookingInstructionQuantity.ResolveParentQtyInUnit0"/>）を、<see cref="SalesOrderLineAddinfo.Addinfo01"/>（1人あたり分量）をパースした正の除数で除算し、納入場所列ごとに合算する。
 /// </summary>
 public sealed class SortingInquiryService
 {
     /// <summary>列キー用: 得意先コードと納入場所コードの区切り（JSON/API に含まれるが通常データに含まれない）。</summary>
-    private const char DeliveryColumnKeySeparator = '\u001e';
+    private const char DeliveryColumnKeySeparator = '';
+
+    /// <summary>出力対象の得意先コード（要件①）。</summary>
+    private static readonly string[] TargetCustomerCodes = ["200", "210"];
 
     private readonly AppDbContext _db;
+    private readonly CstmeatDbContext _cstmeatDb;
 
-    public SortingInquiryService(AppDbContext db)
+    public SortingInquiryService(AppDbContext db, CstmeatDbContext cstmeatDb)
     {
         _db = db;
+        _cstmeatDb = cstmeatDb;
     }
 
     public async Task<List<ProductionInstructionSlotOptionDto>> ListSlotsAsync(CancellationToken ct = default)
@@ -71,6 +77,8 @@ ORDER BY slotcode
 
         IReadOnlyDictionary<string, string> customersOnDate;
         IReadOnlyList<SortingInquiryLineMaterial> materials;
+        IReadOnlyDictionary<string, int> shokushuPriorities;
+
         if (_db.Database.IsRelational())
         {
             customersOnDate = await LoadCustomerHeadersRelationalAsync(date.Value, slots, ct);
@@ -82,7 +90,12 @@ ORDER BY slotcode
             materials = await LoadLinesForSearchInMemoryAsync(date.Value, slots, ct);
         }
 
-        return BuildSearchResponse(materials, customersOnDate);
+        if (_cstmeatDb.Database.IsRelational())
+            shokushuPriorities = await LoadShokushuPrioritiesRelationalAsync(ct);
+        else
+            shokushuPriorities = await LoadShokushuPrioritiesInMemoryAsync(ct);
+
+        return BuildSearchResponse(materials, customersOnDate, shokushuPriorities);
     }
 
     /// <summary>
@@ -94,6 +107,7 @@ ORDER BY slotcode
         CancellationToken ct)
     {
         var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
+        var customerCodes = TargetCustomerCodes;
         var rows = await _db.Database
             .SqlQuery<SortingInquiryCustomerHeaderSqlRow>($@"
 SELECT
@@ -112,6 +126,7 @@ FROM (
     AND ({slotArr.Length} = 0
          OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
          OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
+    AND s0.customercode = ANY ({customerCodes})
 ) x
 WHERE x.custcode <> ''
 GROUP BY x.custcode
@@ -136,7 +151,8 @@ GROUP BY x.custcode
             .AsNoTracking()
             .Include(l => l.SalesOrder!)
                 .ThenInclude(so => so!.Customer)
-            .Where(l => l.PlannedDeliveryDate == plannedDate);
+            .Where(l => l.PlannedDeliveryDate == plannedDate)
+            .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)
             query = query.Where(l =>
@@ -170,6 +186,7 @@ GROUP BY x.custcode
         CancellationToken ct)
     {
         var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
+        var customerCodes = TargetCustomerCodes;
         var rows = await _db.Database
             .SqlQuery<SortingInquiryLineSqlRow>($@"
 SELECT
@@ -207,6 +224,7 @@ WHERE s.planneddeliverydate = {plannedDate}
   AND ({slotArr.Length} = 0
        OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
        OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
+  AND s0.customercode = ANY ({customerCodes})
 ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 ")
             .ToListAsync(ct);
@@ -246,7 +264,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .Include(l => l.Item)
                 .ThenInclude(i => i!.AdditionalInformation)
             .Include(l => l.Addinfo)
-            .Where(l => l.PlannedDeliveryDate == plannedDate);
+            .Where(l => l.PlannedDeliveryDate == plannedDate)
+            .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)
             query = query.Where(l =>
@@ -280,6 +299,31 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             l.Addinfo?.Addinfo02Name)).ToList();
     }
 
+    private async Task<IReadOnlyDictionary<string, int>> LoadShokushuPrioritiesRelationalAsync(CancellationToken ct)
+    {
+        var rows = await _cstmeatDb.Database
+            .SqlQuery<ShokushuPrioritySqlRow>($@"
+SELECT shokushu_code AS ""ShokushuCd"", priority_order AS ""PriorityOrder""
+FROM m_shokushu
+WHERE priority_order IS NOT NULL
+")
+            .ToListAsync(ct);
+
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.ShokushuCd) && r.PriorityOrder.HasValue)
+            .GroupBy(r => r.ShokushuCd!.Trim(), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (int)g.Min(r => r.PriorityOrder!.Value), StringComparer.Ordinal);
+    }
+
+    private async Task<IReadOnlyDictionary<string, int>> LoadShokushuPrioritiesInMemoryAsync(CancellationToken ct)
+    {
+        var rows = await _cstmeatDb.Mshokushus.AsNoTracking().ToListAsync(ct);
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.ShokushuCode) && r.PriorityOrder.HasValue)
+            .GroupBy(r => r.ShokushuCode!.Trim(), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (int)g.Min(r => r.PriorityOrder!.Value), StringComparer.Ordinal);
+    }
+
     private static string SortingInquiryDeliveryColumnKey(string customerCode, string locationCode)
     {
         var c = (customerCode ?? "").Trim();
@@ -289,7 +333,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 
     private static SortingInquirySearchResponseDto BuildSearchResponse(
         IReadOnlyList<SortingInquiryLineMaterial> lines,
-        IReadOnlyDictionary<string, string> customersOnDate)
+        IReadOnlyDictionary<string, string> customersOnDate,
+        IReadOnlyDictionary<string, int> shokushuPriorities)
     {
         if (customersOnDate.Count == 0 && lines.Count == 0)
             return new SortingInquirySearchResponseDto();
@@ -349,9 +394,33 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .ThenBy(k => k, StringComparer.Ordinal)
             .ToList();
 
+        // 品目ごとの代表食種を決定（priority_order 昇順、同順は食種表示名昇順）
+        var itemFoodTypeCandidates = new Dictionary<string, List<(string Code, string Display)>>(StringComparer.Ordinal);
+        foreach (var line in lines)
+        {
+            var itemCode = line.ItemCode;
+            if (itemCode.Length == 0) continue;
+            var foodCode = (line.Addinfo02 ?? "").Trim();
+            var foodDisplay = ResolveFoodTypeFromStrings(line.Addinfo02, line.Addinfo02Name);
+            if (!itemFoodTypeCandidates.TryGetValue(itemCode, out var list))
+                itemFoodTypeCandidates[itemCode] = list = new();
+            if (!list.Any(x => x.Code == foodCode))
+                list.Add((foodCode, foodDisplay));
+        }
+
+        var representativeFoodType = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (itemCode, candidates) in itemFoodTypeCandidates)
+        {
+            var rep = candidates
+                .OrderBy(x => shokushuPriorities.TryGetValue(x.Code, out var p) ? p : int.MaxValue)
+                .ThenBy(x => x.Display, StringComparer.Ordinal)
+                .First();
+            representativeFoodType[itemCode] = rep.Display;
+        }
+
         var itemNameByCode = new Dictionary<string, string>(StringComparer.Ordinal);
-        var aggregates = new Dictionary<(string ItemCode, string FoodType), Dictionary<string, decimal>>();
-        var ratioAggregates = new Dictionary<(string ItemCode, string FoodType), Dictionary<string, decimal>>();
+        var aggregates = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
+        var ratioAggregates = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -368,24 +437,22 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             if (itemCode.Length > 0 && !itemNameByCode.ContainsKey(itemCode))
                 itemNameByCode[itemCode] = itemName;
 
-            var food = ResolveFoodTypeFromStrings(line.Addinfo02, line.Addinfo02Name);
-            var groupKey = (itemCode, food);
-
-            if (!aggregates.TryGetValue(groupKey, out var byColumn))
+            if (!aggregates.TryGetValue(itemCode, out var byColumn))
             {
                 byColumn = new Dictionary<string, decimal>(StringComparer.Ordinal);
-                aggregates[groupKey] = byColumn;
+                aggregates[itemCode] = byColumn;
             }
 
-            byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + line.Quantity;
-
             var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
+            var displayQty = div.HasValue ? line.Quantity / div.Value : line.Quantity;
+            byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + displayQty;
+
             if (div.HasValue)
             {
-                if (!ratioAggregates.TryGetValue(groupKey, out var byRatio))
+                if (!ratioAggregates.TryGetValue(itemCode, out var byRatio))
                 {
                     byRatio = new Dictionary<string, decimal>(StringComparer.Ordinal);
-                    ratioAggregates[groupKey] = byRatio;
+                    ratioAggregates[itemCode] = byRatio;
                 }
 
                 byRatio[colKey] = byRatio.GetValueOrDefault(colKey) + line.QtyInUnit0 / div.Value;
@@ -410,13 +477,12 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         }
 
         var rows = aggregates
-            .OrderBy(a => a.Key.ItemCode, StringComparer.Ordinal)
-            .ThenBy(a => a.Key.FoodType, StringComparer.Ordinal)
+            .OrderBy(a => a.Key, StringComparer.Ordinal)
             .Select(a => new SortingInquirySearchRowDto
             {
-                ItemCode = a.Key.ItemCode,
-                ItemName = itemNameByCode.GetValueOrDefault(a.Key.ItemCode) ?? "",
-                FoodType = a.Key.FoodType,
+                ItemCode = a.Key,
+                ItemName = itemNameByCode.GetValueOrDefault(a.Key) ?? "",
+                FoodType = representativeFoodType.GetValueOrDefault(a.Key) ?? "",
                 QuantitiesByStore = a.Value.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal),
                 RatioQuantitiesByStore = ratioAggregates.TryGetValue(a.Key, out var ratios)
                     ? ratios.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
@@ -506,13 +572,13 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
     }
 
     /// <summary>
-    /// 仕訳表収容用: <c>salesorderlineaddinfo.addinfo01</c> は DB では text/varchar だが、ここでは数値として解釈する（Excel 収容行の除数）。
+    /// 仕訳表収容用: <c>salesorderlineaddinfo.addinfo01</c>（1人あたり分量）を正の数値として解釈する（Excel 収容行の除数）。
     /// </summary>
-    private static decimal? ParseSortingInquiryAddinfoDivisor(string? addinfo01)
+    private static decimal? ParseSortingInquiryAddinfoDivisor(string? perCapitaPortionText)
     {
-        if (string.IsNullOrWhiteSpace(addinfo01))
+        if (string.IsNullOrWhiteSpace(perCapitaPortionText))
             return null;
-        var t = addinfo01.Trim().Replace("\u00a0", "", StringComparison.Ordinal);
+        var t = perCapitaPortionText.Trim().Replace(" ", "", StringComparison.Ordinal);
         const NumberStyles styles = NumberStyles.Number;
         if (decimal.TryParse(t, styles, CultureInfo.InvariantCulture, out var inv) && inv > 0)
             return inv;
@@ -619,6 +685,13 @@ internal sealed class SortingInquiryLineSqlRow
     public decimal? ItemIaCar2 { get; set; }
     public decimal? ItemIaCar3 { get; set; }
     public decimal? ItemCar0 { get; set; }
+}
+
+/// <summary>m_shokushu から食種コードと優先順を読み取る SQL 行。</summary>
+internal sealed class ShokushuPrioritySqlRow
+{
+    public string? ShokushuCd { get; set; }
+    public int? PriorityOrder { get; set; }
 }
 
 internal readonly record struct SortingInquiryLineMaterial(

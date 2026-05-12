@@ -13,6 +13,8 @@ public class CstmeatDbContext : DbContext
     public DbSet<Foodtype> Foodtypes => Set<Foodtype>();
     public DbSet<Eattime> Eattimes => Set<Eattime>();
     public DbSet<BaggedQuantity> BaggedQuantities => Set<BaggedQuantity>();
+    public DbSet<Mshokushu> Mshokushus => Set<Mshokushu>();
+    public DbSet<MShisetsu> MShisetsus => Set<MShisetsu>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,9 +27,10 @@ public class CstmeatDbContext : DbContext
 
         modelBuilder.Entity<BaggedQuantity>()
             .HasKey(e => e.BaggedQuantityId);
+        // baggedquantityid はアプリ側で採番（テーブルに GENERATED … AS IDENTITY / nextval 既定が無い DDL でも保存可能）
         modelBuilder.Entity<BaggedQuantity>()
             .Property(e => e.BaggedQuantityId)
-            .UseIdentityByDefaultColumn();
+            .ValueGeneratedNever();
         modelBuilder.Entity<BaggedQuantity>()
             .Property(e => e.ParentItemCode)
             .HasMaxLength(128);
@@ -39,5 +42,8 @@ public class CstmeatDbContext : DbContext
             .HasConversion(dateOnlyConverter);
         modelBuilder.Entity<BaggedQuantity>()
             .HasIndex(e => new { e.ProductDate, e.ParentItemCode });
+
+        modelBuilder.Entity<Mshokushu>().HasKey(m => m.Id);
+        modelBuilder.Entity<MShisetsu>().HasKey(s => s.Id);
     }
 }

@@ -5,7 +5,7 @@ namespace BaggingInstructions.Api.Services;
 
 public static class LabelGeneratorService
 {
-    private const int DefaultDaysAfter = 3;
+    public const int DefaultDaysAfter = 3;
 
     public static string CalculateExpiryDate(string delvedt, int daysAfter = DefaultDaysAfter)
     {
@@ -65,7 +65,9 @@ public static class LabelGeneratorService
         string delvedt,
         string? shptm,
         int standardBags,
-        decimal? standardFillQty = null)
+        decimal? standardFillQty = null,
+        string? expiryDateOverride = null,
+        string? unitName = null)
     {
         if (standardBags <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
@@ -77,11 +79,12 @@ public static class LabelGeneratorService
                 Shptm = shptm,
                 Itemcd = itemcd,
                 Itemnm = itemnm,
-                ExpiryDate = CalculateExpiryDate(delvedt),
+                ExpiryDate = !string.IsNullOrEmpty(expiryDateOverride) ? expiryDateOverride : CalculateExpiryDate(delvedt),
                 Strtemp = strtemp,
                 Kikunip = kikunip,
                 StandardFillQty = standardFillQty,
-                Count = standardBags
+                Count = standardBags,
+                UnitName = unitName
             }
         };
     }
@@ -94,7 +97,9 @@ public static class LabelGeneratorService
         string delvedt,
         string? shptm,
         string shpctrnm,
-        decimal irregularQuantity)
+        decimal irregularQuantity,
+        string? expiryDateOverride = null,
+        string? unitName = null)
     {
         if (irregularQuantity <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
@@ -106,11 +111,12 @@ public static class LabelGeneratorService
                 Shptm = shptm,
                 Itemcd = itemcd,
                 Itemnm = itemnm,
-                ExpiryDate = CalculateExpiryDate(delvedt),
+                ExpiryDate = !string.IsNullOrEmpty(expiryDateOverride) ? expiryDateOverride : CalculateExpiryDate(delvedt),
                 Strtemp = strtemp,
                 Shpctrnm = shpctrnm,
                 IrregularQuantity = irregularQuantity,
-                Count = 1
+                Count = 1,
+                UnitName = unitName
             }
         };
     }

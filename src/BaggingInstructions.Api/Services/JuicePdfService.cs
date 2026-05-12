@@ -103,7 +103,7 @@ public class JuicePdfService
         foreach (var r in rows)
         {
             totalGram += r.Jobordqun;
-            var div = ParseDivisor(r.Addinfo02);
+            var div = ParseDivisor(r.Addinfo01);
             if (div.HasValue && div.Value != 0)
             {
                 var pack = r.Jobordqun / div.Value;
@@ -129,10 +129,10 @@ public class JuicePdfService
         return tagValues;
     }
 
-    private static decimal? ParseDivisor(string? addinfo02)
+    private static decimal? ParseDivisor(string? perCapitaPortionText)
     {
-        if (string.IsNullOrWhiteSpace(addinfo02)) return null;
-        if (decimal.TryParse(addinfo02.Trim(), out var v) && v != 0) return v;
+        if (string.IsNullOrWhiteSpace(perCapitaPortionText)) return null;
+        if (decimal.TryParse(perCapitaPortionText.Trim(), out var v) && v != 0) return v;
         return null;
     }
 
@@ -189,6 +189,9 @@ public class JuicePdfService
             if (layers == null) continue;
             foreach (var layer in layers)
             {
+                // 印刷用PDF生成ではレイヤの VisibleAtPrint を尊重する。
+                if (!IsLayerVisibleAtPrint(layer)) continue;
+
                 var objectsEl = layer.Element("Objects");
                 if (objectsEl == null) continue;
 
@@ -230,6 +233,16 @@ public class JuicePdfService
 
         list.Sort((a, b) => a.DrawSeq.CompareTo(b.DrawSeq));
         return list;
+    }
+
+    /// <summary>
+    /// Layer の VisibleAtPrint を解釈する。未設定時は既定で表示扱い。
+    /// </summary>
+    private static bool IsLayerVisibleAtPrint(XElement layer)
+    {
+        var visibleAtPrint = (string?)layer.Element("VisibleAtPrint");
+        if (string.IsNullOrWhiteSpace(visibleAtPrint)) return true;
+        return bool.TryParse(visibleAtPrint, out var parsed) ? parsed : true;
     }
 
     /// <summary>
@@ -311,20 +324,8 @@ public class JuicePdfService
             name.StartsWith("MAKEQUNPLAN", StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith("USEQUNPLAN", StringComparison.OrdinalIgnoreCase))
             item.ShrinkToFit = true;
-        // 調理指示書等: 子品目名・製造予定・使用予定を枠内の中央（横・縦）に。
-        if (name.StartsWith("ITEMCHINM", StringComparison.OrdinalIgnoreCase) ||
-            name.StartsWith("MAKEQUNPLAN", StringComparison.OrdinalIgnoreCase) ||
-            name.StartsWith("USEQUNPLAN", StringComparison.OrdinalIgnoreCase))
-        {
-            item.Alignment = 3;
-            item.AlignVertical = 2;
-        }
-        // 親品目セル下段（注番）: 右寄せ＋下寄せで右下隅（rxz の AlignVertical=3 と整合）。
-        else if (name.StartsWith("ITEMPALNM", StringComparison.OrdinalIgnoreCase))
-        {
-            item.Alignment = 2;
-            item.AlignVertical = 3;
-        }
+        // 品目名称系（ITEMPALNM/ITEMCHINM）や数量系（MAKEQUNPLAN/USEQUNPLAN）の寄せは、
+        // テンプレート定義を優先して描画する。
         return true;
     }
 
@@ -693,12 +694,26 @@ public class JuicePdfService
     /// <summary>
     /// 複数ページ分のタグ値を受け取り、1 ページずつ描画して PDF を生成する（弁当箱盛り付け指示書などで使用）。
     /// </summary>
-    public byte[] GeneratePdfMultiPage(string rxzTemplatePath, IReadOnlyList<Dictionary<string, string>> pagesTagValues, string? documentTitle = null)
+    /// <param name="alignmentOverrides">フィールド名ごとのアライメント上書き（1=左 2=右 3=中央）。テンプレート定義より優先。</param>
+    public byte[] GeneratePdfMultiPage(
+        string rxzTemplatePath,
+        IReadOnlyList<Dictionary<string, string>> pagesTagValues,
+        string? documentTitle = null,
+        IReadOnlyDictionary<string, int>? alignmentOverrides = null)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
 
         var items = ParseRxzDataElements(rxzTemplatePath);
+        if (alignmentOverrides != null)
+        {
+            foreach (var item in items)
+            {
+                if (alignmentOverrides.TryGetValue(item.Name, out var align))
+                    item.Alignment = align;
+            }
+        }
+
         var (pageWidth, pageHeight, marginLeft, marginTop, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
 
         var doc = new PdfDocument();
@@ -742,5 +757,6 @@ public class JuicePrintRowDto
     public string? Jobordmernm { get; set; }
     public string? Shpctrnm { get; set; }
     public decimal Jobordqun { get; set; }
-    public string? Addinfo02 { get; set; }
+    /// <summary>1人あたり分量（salesorderlineaddinfo.addinfo01）。PACK＝jobordqun÷本値。</summary>
+    public string? Addinfo01 { get; set; }
 }

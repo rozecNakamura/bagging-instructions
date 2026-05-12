@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 
@@ -34,20 +35,80 @@ public class PreparationWorkController : ControllerBase
         return Ok(list);
     }
 
-    /// <summary>納期・便・品目・大分類・中分類で受注明細を集約（日付×大分類×中分類ごとの件数）。</summary>
-    [HttpGet("search")]
-    public async Task<ActionResult<PreparationWorkSearchResponseDto>> Search(
+    [HttpGet("workcenters")]
+    public async Task<ActionResult<List<PreparationWorkWorkcenterOptionDto>>> ListWorkcenters(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _preparationWorkService.ListWorkcentersAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"作業区マスタ取得エラー: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("warehouses")]
+    public async Task<ActionResult<List<PreparationWorkWarehouseOptionDto>>> ListWarehouses(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _preparationWorkService.ListWarehousesAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"倉庫マスタ取得エラー: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("manufacturing-routes")]
+    public async Task<ActionResult<List<PreparationWorkManufacturingRouteOptionDto>>> ListManufacturingRoutes(
         [FromQuery] string delvedt,
-        [FromQuery] string? slot,
-        [FromQuery] string? itemcd,
-        [FromQuery] long? majorclassificationid,
-        [FromQuery] long? middleclassificationid,
         CancellationToken ct)
     {
         try
         {
+            var list = await _preparationWorkService.ListManufacturingRoutesForNeedDateAsync(delvedt, ct);
+            return Ok(list);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"製造便一覧取得エラー: {ex.Message}" });
+        }
+    }
+
+    /// <summary>納期・製造便・作業区・倉庫・品目・大分類・中分類で受注明細を集約（日付×大分類×中分類ごとの件数）。</summary>
+    [HttpGet("search")]
+    public async Task<ActionResult<PreparationWorkSearchResponseDto>> Search(
+        [FromQuery] string delvedt,
+        [FromQuery(Name = "manufacturing_route_code")] string[]? manufacturingRouteCode,
+        [FromQuery] string? itemcd,
+        [FromQuery] long? majorclassificationid,
+        [FromQuery] long? middleclassificationid,
+        [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
+        [FromQuery(Name = "warehouse_id")] long[]? warehouseId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var mfg = manufacturingRouteCode ?? Array.Empty<string>();
+            var wc = workcenterId ?? Array.Empty<long>();
+            var wh = warehouseId ?? Array.Empty<long>();
             var groups = await _preparationWorkService.SearchGroupsAsync(
-                delvedt, slot, itemcd, majorclassificationid, middleclassificationid, ct);
+                delvedt,
+                mfg,
+                itemcd,
+                majorclassificationid,
+                middleclassificationid,
+                wc,
+                wh,
+                ct);
             return Ok(new PreparationWorkSearchResponseDto { Total = groups.Count, Groups = groups });
         }
         catch (ArgumentException ex)
@@ -94,7 +155,7 @@ public class PreparationWorkController : ControllerBase
         if (body?.GroupKeys == null || body.GroupKeys.Count == 0)
             return BadRequest(new { detail = "印刷するグループを選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "作業前準備書.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "作業前準備書.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "作業前準備書テンプレートが見つかりません" });

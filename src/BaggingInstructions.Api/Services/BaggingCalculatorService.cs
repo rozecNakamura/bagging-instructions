@@ -38,22 +38,38 @@ public class BaggingCalculatorService
         if (string.IsNullOrEmpty(prddt) || string.IsNullOrEmpty(itemcd))
             return new BaggingCalculateResult { Items = items, IngredientDisplayRows = null };
 
-        var payload = await _baggingInputService.TryGetPayloadAsync(prddt, itemcd, request.JobordPrkeys, ct);
-        if (payload?.Lines == null || payload.Lines.Count == 0)
-            return new BaggingCalculateResult { Items = items, IngredientDisplayRows = null };
-
         var mboms = first.Mboms;
         if (mboms.Count == 0)
             return new BaggingCalculateResult { Items = items, IngredientDisplayRows = null };
 
+        var payload = await _baggingInputService.TryGetPayloadAsync(prddt, itemcd, request.JobordPrkeys, ct);
+
         var q = items.Sum(x => x.PlannedQuantity);
         var globalTotals = BaggingSavedInputApplier.ResolveGlobalTotals(q, mboms, payload);
 
-        BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
-            items, first.Divisor, first.SeasoningBoms, mboms, globalTotals);
-        var displayRows = BaggingSavedInputApplier.BuildIngredientDisplayRows(mboms, globalTotals, payload);
+        if (payload?.Lines is { Count: > 0 })
+        {
+            BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
+                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals);
+        }
 
-        return new BaggingCalculateResult { Items = items, IngredientDisplayRows = displayRows };
+        // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は Car0 のデフォルトで補完）
+        var effectivePayload = payload?.Lines is { Count: > 0 }
+            ? payload
+            : new BaggingInputPayloadDto
+            {
+                Lines = mboms.Select((m, j) => new BaggingInputLineDto
+                {
+                    Citemcd = m.Citemcd ?? "",
+                    InputOrder = j + 1,
+                    SpecQty = first.Car0 > 0 ? first.Car0 : null,
+                    TotalQty = j < globalTotals.Count ? globalTotals[j] : null
+                }).ToList()
+            };
+
+        var displayRows = BaggingSavedInputApplier.BuildIngredientDisplayRows(mboms, globalTotals, effectivePayload);
+        var effectiveSpecFillQty = effectivePayload.Lines?.FirstOrDefault(l => l.SpecQty.HasValue && l.SpecQty > 0)?.SpecQty;
+        return new BaggingCalculateResult { Items = items, IngredientDisplayRows = displayRows, EffectiveSpecFillQty = effectiveSpecFillQty };
     }
 
     /// <summary>受注ベースの袋詰計算（従来ロジック）。</summary>
@@ -164,6 +180,7 @@ public class BaggingCalculatorService
 
         var total = rows.Sum(r => r.Jobordqun);
         var mboms = rows[0].Mboms;
+        var car0 = rows[0].Car0;
         var globals = BaggingSavedInputApplier.ComputeDefaultGlobalTotals(total, mboms);
         var lines = new List<BaggingInputLineDto>();
         for (var j = 0; j < mboms.Count; j++)
@@ -171,8 +188,9 @@ public class BaggingCalculatorService
             lines.Add(new BaggingInputLineDto
             {
                 Citemcd = mboms[j].Citemcd ?? "",
+                ChildItemName = mboms[j].ChildItem?.Itemnm ?? "",
                 InputOrder = j + 1,
-                SpecQty = null,
+                SpecQty = car0 > 0 ? car0 : null,
                 TotalQty = j < globals.Count ? globals[j] : null
             });
         }

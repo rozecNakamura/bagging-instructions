@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.Services;
 
 namespace BaggingInstructions.Api.Controllers;
@@ -24,7 +25,7 @@ public class BentoController : ControllerBase
         if (request?.Rows == null || request.Rows.Count == 0)
             return BadRequest(new { detail = "印刷する行を選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "弁当箱盛り付け指示書（ご飯）.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "弁当箱盛り付け指示書（ご飯）.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "弁当箱盛り付け指示書（ご飯）テンプレートが見つかりません" });
@@ -36,7 +37,7 @@ public class BentoController : ControllerBase
             Jobordmernm = r.Jobordmernm,
             Jobordqun = r.Jobordqun,
             Quantity = r.Quantity,
-            Addinfo02 = r.Addinfo02
+            Addinfo01 = r.Addinfo01
         }).ToList();
 
         var pagesTagValues = new List<Dictionary<string, string>>();
@@ -76,6 +77,6 @@ public class BentoPrintRowRequest
     public decimal Jobordqun { get; set; }
     [JsonPropertyName("quantity")]
     public decimal Quantity { get; set; }
-    [JsonPropertyName("addinfo02")]
-    public string? Addinfo02 { get; set; }
+    [JsonPropertyName("addinfo01")]
+    public string? Addinfo01 { get; set; }
 }

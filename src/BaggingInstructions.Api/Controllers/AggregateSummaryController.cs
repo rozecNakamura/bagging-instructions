@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 
@@ -80,7 +81,7 @@ public class AggregateSummaryController : ControllerBase
         if (body == null || body.SummaryKeys == null || body.SummaryKeys.Count == 0)
             return BadRequest(new { detail = "印刷するグループを選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "冷凍野菜集計表.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "冷凍野菜集計表.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "冷凍野菜集計表テンプレートが見つかりません" });

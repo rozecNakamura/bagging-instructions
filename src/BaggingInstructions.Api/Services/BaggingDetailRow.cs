@@ -9,7 +9,7 @@ public class BaggingDetailRow
     public string? Prddt { get; set; }
     public string? Delvedt { get; set; }
     public string? Shptm { get; set; }
-    /// <summary>喫食時間名称（addinfo01name）。集計ルール判定に使用。</summary>
+    /// <summary>配送便（出荷便）名称（salesorderlineaddinfo.addinfo04name）。集計ルール判定に使用。</summary>
     public string? ShptmName { get; set; }
     public string? Cuscd { get; set; }
     public string? Shpctrcd { get; set; }

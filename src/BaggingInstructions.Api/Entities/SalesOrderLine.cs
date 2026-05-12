@@ -51,9 +51,9 @@ public class SalesOrderLine
     [Column("productdate")]
     public DateOnly? ProductDate { get; set; }
 
-    /// <summary>得意先品目（customeritem.customeritemid。text の DB あり）。</summary>
+    /// <summary>得意先品目（customeritem.customeritemid）。craftlineax は bigint。</summary>
     [Column("customeritemid")]
-    public string? CustomerItemId { get; set; }
+    public long? CustomerItemId { get; set; }
 
     [Column("status")]
     public string? Status { get; set; }

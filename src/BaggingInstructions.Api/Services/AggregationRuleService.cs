@@ -23,18 +23,18 @@ public static class AggregationRuleService
     };
 
     /// <summary>
-    /// addinfo01（時刻コード等）と addinfo01name（朝/昼/夕）から集計用の喫食キーを決定する。
+    /// salesorderlineaddinfo の配送便コード・名称（addinfo04 / addinfo04name）から集計用の喫食キーを決定する。
     /// </summary>
-    public static string ResolveMealPeriodKey(string? addinfo01, string? addinfo01Name)
+    public static string ResolveMealPeriodKey(string? deliverySlotCode, string? deliverySlotName)
     {
-        var name = addinfo01Name ?? "";
+        var name = deliverySlotName ?? "";
         foreach (var kv in EatingTimeMap.OrderByDescending(x => x.Key.Length))
         {
             if (name.Contains(kv.Key, StringComparison.Ordinal))
                 return kv.Value;
         }
 
-        var code = (addinfo01 ?? "").Trim();
+        var code = (deliverySlotCode ?? "").Trim();
         if (code.Length >= 2 && int.TryParse(code.AsSpan(0, 2), out var hour))
         {
             if (hour < 10) return "morning";

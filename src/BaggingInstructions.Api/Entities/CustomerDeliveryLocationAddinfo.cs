@@ -22,5 +22,11 @@ public class CustomerDeliveryLocationAddinfo
     [Column("addinfo01")]
     public string? Addinfo01 { get; set; }
 
+    [Column("addinfo12")]
+    public string? Addinfo12 { get; set; }
+
+    [Column("addinfo13")]
+    public string? Addinfo13 { get; set; }
+
     public virtual CustomerDeliveryLocation CustomerDeliveryLocation { get; set; } = null!;
 }

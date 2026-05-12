@@ -1,5 +1,5 @@
 -- 汁仕分表テスト用: salesorder / salesorderline / salesorderlineaddinfo に 25 行追加
--- 条件: customerid=1, customerdeliverylocationid=4〜28, itemid=1, 喫食日 2026-03-04 朝
+-- 条件: customerid=1, customerdeliverylocationid=4〜28, itemid=1, 喫食日 2026-03-04（配送便名称「朝」）
 -- 実行前にシーケンスを同期する場合は、既存データがある場合に主キー重複を防ぐため
 -- 以下を必要に応じて実行してください:
 --   SELECT setval('salesorder_salesorderid_seq', (SELECT COALESCE(MAX(salesorderid), 0) FROM salesorder));
@@ -42,6 +42,6 @@ lines AS (
     FROM orders
     RETURNING salesorderlineid
 )
-INSERT INTO salesorderlineaddinfo (salesorderlineid, addinfo01, addinfo01name, addinfo02)
-SELECT salesorderlineid, '朝', '朝', '1'
+INSERT INTO salesorderlineaddinfo (salesorderlineid, addinfo01, addinfo02, addinfo02name, addinfo04name)
+SELECT salesorderlineid, '1', 'JU1', '汁用', '朝'
 FROM lines;

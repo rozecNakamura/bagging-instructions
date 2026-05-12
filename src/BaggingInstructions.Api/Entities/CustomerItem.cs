@@ -5,9 +5,9 @@ namespace BaggingInstructions.Api.Entities;
 [Table("customeritem")]
 public class CustomerItem
 {
-    /// <summary>主キー。craftlineax では text 列の場合あり。</summary>
+    /// <summary>主キー（内部採番）。craftlineax は bigint。</summary>
     [Column("customeritemid")]
-    public string CustomerItemId { get; set; } = "";
+    public long CustomerItemId { get; set; }
 
     /// <summary>品目コード（item.itemcode へ。craftlineax は itemid 列なし）。</summary>
     [Column("itemcode")]

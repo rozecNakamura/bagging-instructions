@@ -12,5 +12,11 @@ public sealed class PreparationWorkGroupSqlRow
 
 public sealed class PreparationWorkLineIdSqlRow
 {
-    public long Salesorderlineid { get; set; }
+    public long Ordertableid { get; set; }
+}
+
+public sealed class PreparationWorkManufacturingRouteSqlRow
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
 }

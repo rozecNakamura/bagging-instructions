@@ -78,6 +78,7 @@ public sealed class ProductionInstructionPdfLineModel
     public string ChildYieldPercentDisplay { get; set; } = "";
 
     public string NeedDateDisplay { get; set; } = "";
+    public string WorkcenterName { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
 
     /// <summary>

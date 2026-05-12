@@ -4,7 +4,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 弁当箱盛り付け指示書（ご飯）.rxz 用のタグ値を構築する。
-/// PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo02, GRAM＝ordertable.qty（受注数量）, LOCATIONNM＝なし。
+/// PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo01（1人あたり分量）, GRAM＝ordertable.qty（受注数量）, LOCATIONNM＝なし。
 /// </summary>
 public class BentoPdfService
 {
@@ -13,7 +13,7 @@ public class BentoPdfService
 
     /// <summary>
     /// 選択行から弁当箱盛り付け指示書用タグ値を構築する。
-    /// Date=喫食日, Time=喫食時間, ITEMNM=品目名, LOCATIONNM=なし, GRAM=qty, PACK=quantity/addinfo02。
+    /// Date=喫食日, Time=配送便表示, ITEMNM=品目名, LOCATIONNM=なし, GRAM=qty, PACK=quantity/addinfo01。
     /// </summary>
     public static Dictionary<string, string> BuildTagValues(IReadOnlyList<BentoPrintRowDto> rows)
     {
@@ -31,26 +31,26 @@ public class BentoPdfService
             tagValues[$"LOCATIONNM{nn}"] = ""; // なし
             // GRAM＝ordertable.qty（受注数量）。InvariantCulture で小数点表記を統一
             tagValues[$"GRAM{nn}"] = r != null ? r.Jobordqun.ToString(CultureInfo.InvariantCulture) : "";
-            // PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo02
-            tagValues[$"PACK{nn}"] = r != null ? FormatMealCountDisplay(r.Quantity, r.Addinfo02) : "";
+            // PACK＝salesorderline.quantity / salesorderlineaddinfo.addinfo01（1人あたり分量）
+            tagValues[$"PACK{nn}"] = r != null ? FormatMealCountDisplay(r.Quantity, r.Addinfo01) : "";
         }
 
         return tagValues;
     }
 
-    /// <summary>quantity ÷ addinfo02（1食当たりの量）。除数が無効な場合は空文字。</summary>
-    public static string FormatMealCountDisplay(decimal quantity, string? addinfo02)
+    /// <summary>quantity ÷ addinfo01（1人あたり分量）。除数が無効な場合は空文字。</summary>
+    public static string FormatMealCountDisplay(decimal quantity, string? perCapitaPortionText)
     {
-        var divisor = ParseDivisor(addinfo02);
+        var divisor = ParseDivisor(perCapitaPortionText);
         if (!divisor.HasValue || divisor.Value == 0) return "";
         var value = quantity / divisor.Value;
         return value.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static decimal? ParseDivisor(string? addinfo02)
+    private static decimal? ParseDivisor(string? perCapitaPortionText)
     {
-        if (string.IsNullOrWhiteSpace(addinfo02)) return null;
-        if (decimal.TryParse(addinfo02.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) && v != 0)
+        if (string.IsNullOrWhiteSpace(perCapitaPortionText)) return null;
+        if (decimal.TryParse(perCapitaPortionText.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) && v != 0)
             return v;
         return null;
     }
@@ -65,6 +65,6 @@ public class BentoPrintRowDto
     public decimal Jobordqun { get; set; }
     /// <summary>GRAM 計算用: SalesOrderLine.Quantity</summary>
     public decimal Quantity { get; set; }
-    /// <summary>GRAM 計算用: SalesOrderLineAddinfo.Addinfo02（除数）</summary>
-    public string? Addinfo02 { get; set; }
+    /// <summary>PACK 計算用: SalesOrderLineAddinfo.Addinfo01（1人あたり分量）</summary>
+    public string? Addinfo01 { get; set; }
 }

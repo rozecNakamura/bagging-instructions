@@ -40,9 +40,19 @@ public class LabelItemDto
     /// <summary>1袋あたりの充填規格量（親品目の規格除算と同じ値）。</summary>
     [JsonPropertyName("standard_fill_qty")]
     public decimal? StandardFillQty { get; set; }
+
+    /// <summary>品目の単位0名称（item.uni0）。</summary>
+    [JsonPropertyName("unit_name")]
+    public string? UnitName { get; set; }
 }
 
 public class LabelResponseDto
+{
+    [JsonPropertyName("items")]
+    public List<LabelItemDto> Items { get; set; } = new();
+}
+
+public class LabelPdfRequestDto
 {
     [JsonPropertyName("items")]
     public List<LabelItemDto> Items { get; set; } = new();

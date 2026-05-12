@@ -5,9 +5,9 @@ namespace BaggingInstructions.Api.Entities;
 [Table("itemadditionalinformation")]
 public class ItemAdditionalInformation
 {
-    /// <summary>サロゲート ID。DB が text の場合あり（EF 主キーは <see cref="ItemCd"/>）。</summary>
+    /// <summary>内部採番 ID。craftlineax は bigint（EF の主キーは <see cref="ItemCd"/>）。</summary>
     [Column("itemadditionalinformationid")]
-    public string? ItemAdditionalInformationId { get; set; }
+    public long ItemAdditionalInformationId { get; set; }
 
     /// <summary>品目コード（item.itemcode へ。主キー）。</summary>
     [Column("itemcode")]
@@ -40,6 +40,19 @@ public class ItemAdditionalInformation
 
     [Column("addinfo02")]
     public string? Addinfo02 { get; set; }
+
+    [Column("addinfo03")]
+    public string? Addinfo03 { get; set; }
+
+    [Column("addinfo04")]
+    public string? Addinfo04 { get; set; }
+
+    [Column("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
+    /// <summary>計量器品目コード等（計量器連携 CSV の ITEMCD 等）。</summary>
+    [Column("addinfo06")]
+    public string? Addinfo06 { get; set; }
 
     // [Column("n_wei")]
     // public decimal? Nwei { get; set; }

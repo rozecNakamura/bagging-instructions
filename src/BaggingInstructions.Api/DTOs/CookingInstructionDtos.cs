@@ -49,6 +49,16 @@ public sealed class CookingInstructionSlotOptionDto
     public string Name { get; set; } = "";
 }
 
+/// <summary>製造便（<c>salesorderlineaddinfo.addinfo03</c>／<c>addinfo03name</c>）。納期当日の MO に現れるコードの一覧。</summary>
+public sealed class CookingInstructionManufacturingRouteOptionDto
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
 /// <summary>調理指示書 PDF 1 行分のモデル。</summary>
 public sealed class CookingInstructionPdfLineModel
 {

@@ -17,7 +17,7 @@ public sealed class SortingInquirySearchRowDto
     [JsonPropertyName("quantitiesByStore")]
     public Dictionary<string, decimal> QuantitiesByStore { get; set; } = new();
 
-    /// <summary>列キー → Σ(単位0換算数量 ÷ addinfo01)（有効な addinfo01 の行のみ）。仕訳表自動調整 Excel の数量セル用。</summary>
+    /// <summary>列キー → Σ(単位0換算数量 ÷ 1人あたり分量)（有効な salesorderlineaddinfo.addinfo01 の行のみ）。仕訳表自動調整 Excel の数量セル用。</summary>
     [JsonPropertyName("ratioQuantitiesByStore")]
     public Dictionary<string, decimal> RatioQuantitiesByStore { get; set; } = new();
 }
@@ -43,7 +43,7 @@ public sealed class SortingInquirySearchResponseDto
     [JsonPropertyName("storeHeaderDeliveryNames")]
     public Dictionary<string, string> StoreHeaderDeliveryNames { get; set; } = new();
 
-    /// <summary>列キー → Σ(単位0換算数量 ÷ addinfo01)（API 用）。仕訳表自動調整 Excel の 3 行目は明細列の最大値から算出し、この辞書は参照しない。</summary>
+    /// <summary>列キー → Σ(単位0換算数量 ÷ 1人あたり分量)（API 用）。仕訳表自動調整 Excel の 3 行目は明細列の最大値から算出し、この辞書は参照しない。</summary>
     [JsonPropertyName("storeHeaderCapacities")]
     public Dictionary<string, decimal> StoreHeaderCapacities { get; set; } = new();
 

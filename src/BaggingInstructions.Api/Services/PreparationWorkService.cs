@@ -39,19 +39,94 @@ public class PreparationWorkService
             .ToListAsync(ct);
     }
 
-    public async Task<List<PreparationWorkGroupDto>> SearchGroupsAsync(
+    public async Task<List<PreparationWorkWorkcenterOptionDto>> ListWorkcentersAsync(CancellationToken ct = default)
+    {
+        var rows = await _db.Workcenters.AsNoTracking()
+            .OrderBy(w => w.SortOrder ?? int.MaxValue)
+            .ThenBy(w => w.WorkcenterName ?? "")
+            .ToListAsync(ct);
+        return rows.ConvertAll(w => new PreparationWorkWorkcenterOptionDto
+        {
+            Id = w.WorkcenterId ?? 0,
+            Name = w.WorkcenterName ?? ""
+        });
+    }
+
+    public async Task<List<PreparationWorkWarehouseOptionDto>> ListWarehousesAsync(CancellationToken ct = default)
+    {
+        var rows = await _db.Warehouses.AsNoTracking()
+            .OrderBy(w => w.WarehouseCode ?? "")
+            .ThenBy(w => w.WarehouseName ?? "")
+            .ToListAsync(ct);
+        return rows
+            .Select(w => new PreparationWorkWarehouseOptionDto
+            {
+                Id = w.WarehouseId,
+                Code = w.WarehouseCode ?? "",
+                Name = w.WarehouseName ?? ""
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// 指定納期のオーダに紐づく製造便（<c>salesorderlineaddinfo.addinfo03</c>）の一覧。コード順。
+    /// </summary>
+    public async Task<List<PreparationWorkManufacturingRouteOptionDto>> ListManufacturingRoutesForNeedDateAsync(
         string delvedt,
-        string? slot,
-        string? itemcd,
-        long? majorClassificationId,
-        long? middleClassificationId,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(delvedt);
         if (!date.HasValue)
             throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
 
-        var slotF = slot?.Trim() ?? "";
+        var rows = await _db.Database
+            .SqlQuery<PreparationWorkManufacturingRouteSqlRow>($@"
+SELECT
+  TRIM(COALESCE(a.addinfo03, '')) AS ""Code"",
+  COALESCE(MAX(TRIM(COALESCE(a.addinfo03name, ''))), '') AS ""Name""
+FROM ordertable ot
+LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+INNER JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
+WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+  AND TRIM(COALESCE(a.addinfo03, '')) <> ''
+GROUP BY TRIM(COALESCE(a.addinfo03, ''))
+ORDER BY TRIM(COALESCE(a.addinfo03, ''))
+")
+            .ToListAsync(ct);
+
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Code))
+            .Select(r => new PreparationWorkManufacturingRouteOptionDto
+            {
+                Code = r.Code ?? "",
+                Name = string.IsNullOrWhiteSpace(r.Name) ? (r.Code ?? "") : r.Name!
+            })
+            .ToList();
+    }
+
+    public async Task<List<PreparationWorkGroupDto>> SearchGroupsAsync(
+        string delvedt,
+        IReadOnlyList<string> manufacturingRouteCodes,
+        string? itemcd,
+        long? majorClassificationId,
+        long? middleClassificationId,
+        IReadOnlyList<long> workcenterIds,
+        IReadOnlyList<long> warehouseIds,
+        CancellationToken ct = default)
+    {
+        var date = ParseYyyymmdd(delvedt);
+        if (!date.HasValue)
+            throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
+
+        var mfgRoutes = (manufacturingRouteCodes ?? Array.Empty<string>())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var wcIds = (workcenterIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
+        var whIds = (warehouseIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
+
         var itemF = itemcd?.Trim() ?? "";
 
         // major / middle は ID ではなく「コード」で SQL フィルタする（NULL パラメータ型不明エラー回避）
@@ -77,25 +152,40 @@ public class PreparationWorkService
         var rows = await _db.Database
             .SqlQuery<PreparationWorkGroupSqlRow>($@"
 SELECT
-  TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD') AS ""Delvedt"",
+  TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') AS ""Delvedt"",
   COALESCE(mc.majorclassificationcode, '') AS ""MajorCode"",
   COALESCE(mc.majorclassificationname, '') AS ""MajorName"",
   COALESCE(mid.middleclassificationcode, '') AS ""MiddleCode"",
   COALESCE(mid.middleclassificationname, '') AS ""MiddleName"",
   COUNT(*)::int AS ""LineCount""
-FROM salesorderline sol
-INNER JOIN item i ON i.itemcode = sol.itemcode
+FROM ordertable ot
+LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
   AND mid.middleclassificationcode = i.middleclassficationcode
-LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-WHERE sol.planneddeliverydate = {date.Value}
-  AND ({slotF} = '' OR COALESCE(ds.slotcode, '') ILIKE '%' || {slotF} || '%' OR COALESCE(ds.slotname, '') ILIKE '%' || {slotF} || '%')
+WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+  AND ({mfgRoutes.Length} = 0 OR EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo sai
+        WHERE sai.salesorderlineid = sol.salesorderlineid
+          AND TRIM(COALESCE(sai.addinfo03, '')) = ANY ({mfgRoutes})
+      ))
+  AND ({wcIds.Length} = 0 OR EXISTS (
+        SELECT 1 FROM itemworkcentermapping m3
+        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+        WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
+          AND wc.workcenterid = ANY ({wcIds})
+      ))
+  AND ({whIds.Length} = 0 OR EXISTS (
+        SELECT 1 FROM warehouses wh_f
+        WHERE wh_f.warehouseid = ANY ({whIds})
+          AND TRIM(COALESCE(wh_f.warehousecode, '')) = TRIM(COALESCE(i.warehousecode, ''))
+      ))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ({majorCodeFilter} = '' OR mc.majorclassificationcode = {majorCodeFilter})
   AND ({middleCodeFilter} = '' OR mid.middleclassificationcode = {middleCodeFilter})
 GROUP BY
-  TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD'),
+  TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
   mc.majorclassificationcode,
   mc.majorclassificationname,
   mid.middleclassificationcode,
@@ -131,7 +221,15 @@ ORDER BY ""MajorCode"", ""MiddleCode""
         if (!date.HasValue)
             throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(filter.Delvedt));
 
-        var slotF = filter.Slot?.Trim() ?? "";
+        var mfgRoutes = (filter.ManufacturingRouteCodes ?? new List<string>())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var wcIds = (filter.WorkcenterIds ?? new List<long>()).Where(id => id > 0).Distinct().ToArray();
+        var whIds = (filter.WarehouseIds ?? new List<long>()).Where(id => id > 0).Distinct().ToArray();
+
         var itemF = filter.Itemcd?.Trim() ?? "";
 
         var all = new HashSet<long>();
@@ -141,59 +239,42 @@ ORDER BY ""MajorCode"", ""MiddleCode""
             var mid = key.MiddleClassificationCode ?? "";
             var ids = await _db.Database
                 .SqlQuery<PreparationWorkLineIdSqlRow>($@"
-SELECT sol.salesorderlineid AS ""Salesorderlineid""
-FROM salesorderline sol
-INNER JOIN item i ON i.itemcode = sol.itemcode
+SELECT ot.ordertableid AS ""Ordertableid""
+FROM ordertable ot
+LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
 LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassficationcode
   AND midt.middleclassificationcode = i.middleclassficationcode
-LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-WHERE sol.planneddeliverydate = {date.Value}
-  AND TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD') = {key.Delvedt}
+WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+  AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}
-  AND ({slotF} = '' OR COALESCE(ds.slotcode, '') ILIKE '%' || {slotF} || '%' OR COALESCE(ds.slotname, '') ILIKE '%' || {slotF} || '%')
+  AND ({mfgRoutes.Length} = 0 OR EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo sai
+        WHERE sai.salesorderlineid = sol.salesorderlineid
+          AND TRIM(COALESCE(sai.addinfo03, '')) = ANY ({mfgRoutes})
+      ))
+  AND ({wcIds.Length} = 0 OR EXISTS (
+        SELECT 1 FROM itemworkcentermapping m3
+        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+        WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
+          AND wc.workcenterid = ANY ({wcIds})
+      ))
+  AND ({whIds.Length} = 0 OR EXISTS (
+        SELECT 1 FROM warehouses wh_f
+        WHERE wh_f.warehouseid = ANY ({whIds})
+          AND TRIM(COALESCE(wh_f.warehousecode, '')) = TRIM(COALESCE(i.warehousecode, ''))
+      ))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
+  AND ot.ordertableid IS NOT NULL
 ")
                 .ToListAsync(ct);
             foreach (var row in ids)
-                all.Add(row.Salesorderlineid);
+                all.Add(row.Ordertableid);
         }
 
         return all.OrderBy(x => x).ToList();
-    }
-
-    /// <summary>
-    /// 子品目の保管場所: stock と warehouses を warehousecode 昇順で最初の1件（複数倉庫時の既定）。
-    /// </summary>
-    public async Task<string> GetPrimaryWarehouseNameForItemAsync(string childItemcode, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(childItemcode))
-            return "";
-        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
-        var opened = conn.State != ConnectionState.Open;
-        if (opened)
-            await conn.OpenAsync(ct);
-        try
-        {
-            await using var cmd = new NpgsqlCommand(
-                """
-                SELECT COALESCE(w.warehousename, w.warehousecode, '')
-                FROM stock s
-                INNER JOIN warehouses w ON w.warehousecode = s.warehousecode
-                WHERE s.itemcode = @c
-                ORDER BY w.warehousecode
-                LIMIT 1
-                """, conn);
-            cmd.Parameters.AddWithValue("c", childItemcode);
-            var o = await cmd.ExecuteScalarAsync(ct);
-            return o?.ToString() ?? "";
-        }
-        finally
-        {
-            if (opened && conn.State == ConnectionState.Open)
-                await conn.CloseAsync();
-        }
     }
 
     public async Task<List<PreparationCsvRow>> BuildCsvRowsAsync(IReadOnlyList<long> lineIds, CancellationToken ct = default)
@@ -203,7 +284,6 @@ WHERE sol.planneddeliverydate = {date.Value}
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
         var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
-        var whCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         var rows = new List<PreparationCsvRow>();
         foreach (var h in headers)
@@ -219,11 +299,12 @@ WHERE sol.planneddeliverydate = {date.Value}
             {
                 rows.Add(new PreparationCsvRow
                 {
+                    SterilizationTemperatureRange = "",
                     WorkplaceName = h.WorkplaceNames,
                     DeliveryDate = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     Slot = h.SlotDisplay,
                     SmallClassName = h.MinorClassName,
-                    OrderNo = h.Salesorderid.ToString(CultureInfo.InvariantCulture),
+                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
                     ParentItemcode = h.ParentItemcode,
                     ParentItemname = h.ParentItemname,
                     ChildItemcode = "",
@@ -236,21 +317,16 @@ WHERE sol.planneddeliverydate = {date.Value}
 
             foreach (var b in boms)
             {
-                if (!whCache.TryGetValue(b.ChildItemcode, out var wh))
-                {
-                    wh = await GetPrimaryWarehouseNameForItemAsync(b.ChildItemcode, ct);
-                    whCache[b.ChildItemcode] = wh;
-                }
-
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
                 rows.Add(new PreparationCsvRow
                 {
+                    SterilizationTemperatureRange = b.ChildSteriTempRange ?? "",
                     WorkplaceName = h.WorkplaceNames,
                     DeliveryDate = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     Slot = h.SlotDisplay,
                     SmallClassName = h.MinorClassName,
-                    OrderNo = h.Salesorderid.ToString(CultureInfo.InvariantCulture),
+                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
                     ParentItemcode = h.ParentItemcode,
                     ParentItemname = h.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
@@ -261,7 +337,7 @@ WHERE sol.planneddeliverydate = {date.Value}
             }
         }
 
-        return rows;
+        return PreparationWorkReportSort.SortCsvRows(rows);
     }
 
     public async Task<List<PreparationPdfLineModel>> BuildPdfLineModelsAsync(IReadOnlyList<long> lineIds, CancellationToken ct = default)
@@ -271,7 +347,6 @@ WHERE sol.planneddeliverydate = {date.Value}
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
         var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
-        var whCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         var lines = new List<PreparationPdfLineModel>();
         foreach (var h in headers)
@@ -289,12 +364,14 @@ WHERE sol.planneddeliverydate = {date.Value}
                 {
                     MiddleClassificationName = h.MiddleClassName,
                     DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    OrderNo = h.Salesorderid.ToString(CultureInfo.InvariantCulture),
+                    WorkplaceName = h.WorkplaceNames,
+                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
                     ParentItemcode = h.ParentItemcode,
                     ParentItemname = h.ParentItemname,
                     ChildItemcode = "",
                     ChildItemname = "",
                     Standard = "",
+                    TemperatureRange = "",
                     Quantity = "",
                     Unit = "",
                     WarehouseName = ""
@@ -304,27 +381,23 @@ WHERE sol.planneddeliverydate = {date.Value}
 
             foreach (var b in boms)
             {
-                if (!whCache.TryGetValue(b.ChildItemcode, out var wh))
-                {
-                    wh = await GetPrimaryWarehouseNameForItemAsync(b.ChildItemcode, ct);
-                    whCache[b.ChildItemcode] = wh;
-                }
-
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
                 lines.Add(new PreparationPdfLineModel
                 {
                     MiddleClassificationName = h.MiddleClassName,
                     DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    OrderNo = h.Salesorderid.ToString(CultureInfo.InvariantCulture),
+                    WorkplaceName = h.WorkplaceNames,
+                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
                     ParentItemcode = h.ParentItemcode,
                     ParentItemname = h.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
                     Standard = b.ChildStd ?? "",
+                    TemperatureRange = b.ChildSteriTempRange ?? "",
                     Quantity = qtyDisplay,
                     Unit = b.ChildUnitname ?? "",
-                    WarehouseName = wh
+                    WarehouseName = b.ChildWarehouseName ?? ""
                 });
             }
         }
@@ -394,42 +467,40 @@ WHERE sol.planneddeliverydate = {date.Value}
             await using var cmd = new NpgsqlCommand(
                 """
                 SELECT
-                  sol.salesorderlineid,
-                  sol.salesorderid,
-                  COALESCE(
-                    (SELECT ot.qty FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
-                    (SELECT ot.qty FROM ordertable ot WHERE ot.itemcode = sol.itemcode
-                     ORDER BY abs(ot.needdate - sol.planneddeliverydate) NULLS LAST, ot.ordertableid DESC LIMIT 1),
-                    sol.quantity
-                  ) AS mfg_qty,
+                  COALESCE(ot.ordertableid, 0),
+                  COALESCE(sol.salesorderlineid, 0),
+                  COALESCE(sol.salesorderid, 0),
+                  COALESCE(ot.qty, sol.quantity) AS mfg_qty,
                   i.itemcode AS parent_itemcode,
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(mn.minorclassificationname, '') AS minor_class_name,
                   COALESCE(mid.middleclassificationname, '') AS middle_class_name,
                   COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
-                  COALESCE((
-                    SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
-                    FROM itemworkcentermapping m2
-                    INNER JOIN workcenter wc ON wc.workcentercode = m2.workcentercode
-                    WHERE m2.itemcode = i.itemcode
-                  ), '') AS workplace_names,
-                  sol.planneddeliverydate,
                   COALESCE(
-                    (SELECT ot.needdate FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
-                    (SELECT ot.needdate FROM ordertable ot WHERE ot.itemcode = sol.itemcode AND ot.needdate IS NOT NULL
-                     ORDER BY abs(ot.needdate - sol.planneddeliverydate) NULLS LAST, ot.ordertableid DESC LIMIT 1),
-                    sol.planneddeliverydate
-                  ) AS need_date
-                FROM salesorderline sol
-                INNER JOIN item i ON i.itemcode = sol.itemcode
+                    NULLIF(TRIM(BOTH FROM wc_ord.workcentername), ''),
+                    (SELECT string_agg(DISTINCT wc_map.workcentername, '、' ORDER BY wc_map.workcentername)
+                     FROM itemworkcentermapping m2
+                     INNER JOIN workcenter wc_map ON wc_map.workcentercode = m2.workcentercode
+                     WHERE m2.itemcode = i.itemcode),
+                    ''
+                  ) AS workplace_names,
+                  COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
+                  COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date
+                FROM ordertable ot
+                LEFT JOIN workcenter wc_ord ON (
+                     wc_ord.workcentercode = TRIM(BOTH FROM ot.workcentercode)
+                  OR wc_ord.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
+                )
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+                INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                 LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassficationcode
                   AND mn.middleclassificationcode = i.middleclassficationcode
                   AND mn.minorclassificationcode = i.minorclassficationcode
                 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
                   AND mid.middleclassificationcode = i.middleclassficationcode
-                LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
-                WHERE sol.salesorderlineid = ANY(@ids)
-                ORDER BY sol.salesorderlineid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(sol.slotcode, ot.slotcode)
+                WHERE ot.ordertableid = ANY(@ids)
+                ORDER BY ot.ordertableid
                 """, conn);
             cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array)
             {
@@ -441,17 +512,18 @@ WHERE sol.planneddeliverydate = {date.Value}
             {
                 list.Add(new PreparationLineHeaderRow
                 {
-                    Salesorderlineid = reader.GetInt64(0),
-                    Salesorderid = reader.GetInt64(1),
-                    MfgQty = reader.GetDecimal(2),
-                    ParentItemcode = reader.GetString(3),
-                    ParentItemname = reader.GetString(4),
-                    MinorClassName = reader.GetString(5),
-                    MiddleClassName = reader.GetString(6),
-                    SlotDisplay = reader.GetString(7),
-                    WorkplaceNames = reader.GetString(8),
-                    PlannedDeliveryDate = ReadDateNullable(reader, 9),
-                    NeedDate = ReadDateNullable(reader, 10)
+                    Ordertableid = reader.GetInt64(0),
+                    Salesorderlineid = reader.GetInt64(1),
+                    Salesorderid = reader.GetInt64(2),
+                    MfgQty = reader.GetDecimal(3),
+                    ParentItemcode = reader.GetString(4),
+                    ParentItemname = reader.GetString(5),
+                    MinorClassName = reader.GetString(6),
+                    MiddleClassName = reader.GetString(7),
+                    SlotDisplay = reader.GetString(8),
+                    WorkplaceNames = reader.GetString(9),
+                    PlannedDeliveryDate = ReadDateNullable(reader, 10),
+                    NeedDate = ReadDateNullable(reader, 11)
                 });
             }
 
@@ -481,9 +553,15 @@ WHERE sol.planneddeliverydate = {date.Value}
                   b.yieldpercent,
                   COALESCE(ci.itemname, '') AS child_itemname,
                   COALESCE(u.unitname, '') AS child_unitname,
-                  COALESCE(BTRIM(COALESCE(ia.std::text, '')), '') AS child_std
+                  COALESCE(BTRIM(COALESCE(ia.std::text, '')), '') AS child_std,
+                  CASE
+                    WHEN ia.steritemprange IS NULL THEN ''
+                    ELSE TO_CHAR(ia.steritemprange, 'FM999999990.###')
+                  END AS child_steritemprange,
+                  COALESCE(wh_child.warehousename, wh_child.warehousecode, '') AS child_warehouse_name
                 FROM bom b
                 LEFT JOIN item ci ON TRIM(ci.itemcode) = TRIM(b.childitemcode)
+                LEFT JOIN warehouses wh_child ON wh_child.warehousecode = ci.warehousecode
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
                 LEFT JOIN itemadditionalinformation ia ON TRIM(ia.itemcode) = TRIM(b.childitemcode)
                 WHERE b.parentitemcode = @p
@@ -506,7 +584,9 @@ WHERE sol.planneddeliverydate = {date.Value}
                     YieldPercent = reader.GetDecimal(3),
                     ChildItemname = reader.GetString(4),
                     ChildUnitname = reader.GetString(5),
-                    ChildStd = reader.GetString(6)
+                    ChildStd = reader.GetString(6),
+                    ChildSteriTempRange = reader.GetString(7),
+                    ChildWarehouseName = reader.GetString(8)
                 });
             }
 
@@ -530,6 +610,9 @@ WHERE sol.planneddeliverydate = {date.Value}
 
 public sealed class PreparationCsvRow
 {
+    /// <summary>子品目の殺菌温度レンジ（ソートキー用。CSV の列には出力しない）。</summary>
+    public string SterilizationTemperatureRange { get; set; } = "";
+
     public string WorkplaceName { get; set; } = "";
     public string DeliveryDate { get; set; } = "";
     public string Slot { get; set; } = "";
@@ -547,12 +630,14 @@ public sealed class PreparationPdfLineModel
 {
     public string MiddleClassificationName { get; set; } = "";
     public string DateDisplay { get; set; } = "";
+    public string WorkplaceName { get; set; } = "";
     public string OrderNo { get; set; } = "";
     public string ParentItemcode { get; set; } = "";
     public string ParentItemname { get; set; } = "";
     public string ChildItemcode { get; set; } = "";
     public string ChildItemname { get; set; } = "";
     public string Standard { get; set; } = "";
+    public string TemperatureRange { get; set; } = "";
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
     public string WarehouseName { get; set; } = "";
@@ -560,6 +645,7 @@ public sealed class PreparationPdfLineModel
 
 internal sealed class PreparationLineHeaderRow
 {
+    public long Ordertableid { get; set; }
     public long Salesorderlineid { get; set; }
     public long Salesorderid { get; set; }
     public decimal MfgQty { get; set; }
@@ -584,4 +670,8 @@ internal sealed class PreparationBomSqlRow
     public string? ChildUnitname { get; set; }
     /// <summary>子品目の規格（<c>itemadditionalinformation.std</c> のみ）。</summary>
     public string? ChildStd { get; set; }
+    /// <summary>子品目の殺菌温度レンジ（<c>itemadditionalinformation.steritemprange</c>）。</summary>
+    public string? ChildSteriTempRange { get; set; }
+    /// <summary>子品目の保管倉庫名（<c>item.warehousecode</c> → <c>warehouses.warehousename</c>）。</summary>
+    public string? ChildWarehouseName { get; set; }
 }

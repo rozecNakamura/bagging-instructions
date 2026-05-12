@@ -13,10 +13,11 @@ public class JobordItemDto
     [JsonPropertyName("delvedt")]
     public string? Delvedt { get; set; }
 
+    /// <summary>配送便（出荷便）コード（salesorderlineaddinfo.addinfo04）。</summary>
     [JsonPropertyName("shptm")]
     public string? Shptm { get; set; }
 
-    /// <summary>喫食時間表示用（addinfo01name）。汁仕分表で使用。</summary>
+    /// <summary>配送便（出荷便）名称（salesorderlineaddinfo.addinfo04name）。汁仕分表で使用。</summary>
     [JsonPropertyName("shptm_name")]
     public string? ShptmName { get; set; }
 
@@ -35,7 +36,7 @@ public class JobordItemDto
     [JsonPropertyName("jobordqun")]
     public decimal Jobordqun { get; set; }
 
-    /// <summary>受注数量（SalesOrderLine.Quantity）。弁当箱盛り付け指示書（ご飯）の GRAM＝quantity/addinfo02 用。</summary>
+    /// <summary>受注数量（SalesOrderLine.Quantity）。弁当箱盛り付け指示書（ご飯）の GRAM 用。</summary>
     [JsonPropertyName("quantity")]
     public decimal Quantity { get; set; }
 
@@ -43,9 +44,9 @@ public class JobordItemDto
     [JsonPropertyName("shpctrnm")]
     public string? Shpctrnm { get; set; }
 
-    /// <summary>食数計算用除数（addinfo02）。汁仕分表テンプレート用。</summary>
-    [JsonPropertyName("addinfo02")]
-    public string? Addinfo02 { get; set; }
+    /// <summary>1人あたり分量（salesorderlineaddinfo.addinfo01）。食数・PACK＝quantity÷本値。汁仕分表テンプレート用。</summary>
+    [JsonPropertyName("addinfo01")]
+    public string? Addinfo01 { get; set; }
 
     /// <summary>品目付加情報 addinfo01（ご飯量等）。弁当箱盛り付け指示書（ご飯）の GRAM 用。</summary>
     [JsonPropertyName("addinfo01_item")]
@@ -337,6 +338,10 @@ public class ItemDetailDto
     [JsonPropertyName("kikunip")]
     public decimal? Kikunip { get; set; }
 
+    /// <summary>賞味期限加算日数（item.shelflifedays）。</summary>
+    [JsonPropertyName("shelflife_days")]
+    public int? ShelflifeDays { get; set; }
+
     /// <summary>分類1コード（品目付加情報・classification1 code）。</summary>
     [JsonPropertyName("classification1_code")]
     public string? Classification1Code { get; set; }
@@ -590,7 +595,7 @@ public class DeliveryNoteSearchResponseDto
     public List<DeliveryNoteSearchResultDto> Items { get; set; } = new();
 }
 
-/// <summary>個人配送指示書検索結果1件（配送日・喫食時間・配送エリア）</summary>
+/// <summary>個人配送指示書検索結果1件（配送日・配送便名称・配送エリア）</summary>
 public class PersonalDeliverySearchResultDto
 {
     [JsonPropertyName("delivery_date")]
@@ -613,7 +618,7 @@ public class PersonalDeliverySearchResponseDto
     public List<PersonalDeliverySearchResultDto> Items { get; set; } = new();
 }
 
-/// <summary>汁仕分表用：同一喫食日・喫食時間・品目の1納入場所分</summary>
+/// <summary>汁仕分表用：同一喫食日・配送便・品目の1納入場所分</summary>
 public class JuiceSearchLocationDto
 {
     [JsonPropertyName("shpctrnm")]
@@ -622,11 +627,11 @@ public class JuiceSearchLocationDto
     [JsonPropertyName("jobordqun")]
     public decimal Jobordqun { get; set; }
 
-    [JsonPropertyName("addinfo02")]
-    public string? Addinfo02 { get; set; }
+    [JsonPropertyName("addinfo01")]
+    public string? Addinfo01 { get; set; }
 }
 
-/// <summary>汁仕分表用：喫食日・喫食時間・品目でまとめた1グループ</summary>
+/// <summary>汁仕分表用：喫食日・配送便・品目でまとめた1グループ</summary>
 public class JuiceSearchGroupDto
 {
     [JsonPropertyName("delvedt")]
@@ -655,7 +660,7 @@ public class JuiceSearchGroupResponseDto
     public List<JuiceSearchGroupDto> Groups { get; set; } = new();
 }
 
-/// <summary>弁当箱盛り付け指示書（ご飯）用：同一喫食日・喫食時間・品目の1納入場所分</summary>
+/// <summary>弁当箱盛り付け指示書（ご飯）用：同一喫食日・配送便・品目の1納入場所分</summary>
 public class BentoSearchLocationDto
 {
     [JsonPropertyName("shpctrnm")]
@@ -667,11 +672,11 @@ public class BentoSearchLocationDto
     [JsonPropertyName("quantity")]
     public decimal Quantity { get; set; }
 
-    [JsonPropertyName("addinfo02")]
-    public string? Addinfo02 { get; set; }
+    [JsonPropertyName("addinfo01")]
+    public string? Addinfo01 { get; set; }
 }
 
-/// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・喫食時間・品目でまとめた1グループ</summary>
+/// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・配送便・品目でまとめた1グループ</summary>
 public class BentoSearchGroupDto
 {
     [JsonPropertyName("delvedt")]

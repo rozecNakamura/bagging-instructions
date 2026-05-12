@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 
@@ -49,7 +50,7 @@ public class DeliveryNoteController : ControllerBase
         if (request?.Rows == null || request.Rows.Count == 0)
             return BadRequest(new { detail = "印刷する行を選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "納品書.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "納品書.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "納品書テンプレートが見つかりません" });

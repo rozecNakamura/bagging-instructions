@@ -60,12 +60,55 @@ ORDER BY slotcode
     }
 
     /// <summary>
-    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便は未選択なら絞り込まない。
+    /// 指定納期の MO 受注に紐づく製造便（<c>salesorderlineaddinfo.addinfo03</c>）の一覧。コード順。
+    /// </summary>
+    public async Task<List<CookingInstructionManufacturingRouteOptionDto>> ListManufacturingRoutesForNeedDateAsync(
+        string needDate,
+        CancellationToken ct = default)
+    {
+        var date = ParseYyyymmdd(needDate);
+        if (!date.HasValue)
+            throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needDate));
+
+        var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
+        var rows = await _db.Database
+            .SqlQuery<CookingInstructionManufacturingRouteSqlRow>($@"
+SELECT
+  TRIM(COALESCE(a.addinfo03, '')) AS ""Code"",
+  COALESCE(MAX(TRIM(COALESCE(a.addinfo03name, ''))), '') AS ""Name""
+FROM ordertable ot
+INNER JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+INNER JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
+WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  AND TO_CHAR(
+        COALESCE(ot.needdate, ot.releasedate),
+        'YYYYMMDD'
+      ) = {needDateYyyymmdd}
+  AND TRIM(COALESCE(a.addinfo03, '')) <> ''
+GROUP BY TRIM(COALESCE(a.addinfo03, ''))
+ORDER BY TRIM(COALESCE(a.addinfo03, ''))
+")
+            .ToListAsync(ct);
+
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Code))
+            .Select(r => new CookingInstructionManufacturingRouteOptionDto
+            {
+                Code = r.Code ?? "",
+                Name = string.IsNullOrWhiteSpace(r.Name) ? (r.Code ?? "") : r.Name!
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便・製造便は未選択なら絞り込まない。
     /// </summary>
     public async Task<List<CookingInstructionSearchRowDto>> SearchAsync(
         string needDate,
         IReadOnlyList<long>? workcenterIds,
         IReadOnlyList<string>? slotCodes,
+        IReadOnlyList<string>? manufacturingRouteCodes,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(needDate);
@@ -74,6 +117,11 @@ ORDER BY slotcode
 
         var wcIds = (workcenterIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
         var slots = (slotCodes ?? Array.Empty<string>())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var mfgRoutes = (manufacturingRouteCodes ?? Array.Empty<string>())
             .Select(s => (s ?? "").Trim())
             .Where(s => s.Length > 0)
             .Distinct(StringComparer.Ordinal)
@@ -101,11 +149,18 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
         'YYYYMMDD'
       ) = {needDateYyyymmdd}
   AND ({slots.Length} = 0 OR COALESCE(ds.slotcode, '') = ANY ({slots}))
+  AND ({mfgRoutes.Length} = 0 OR EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo sai
+        WHERE sai.salesorderlineid = sol.salesorderlineid
+          AND TRIM(COALESCE(sai.addinfo03, '')) = ANY ({mfgRoutes})
+      ))
   AND ({wcIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM itemworkcentermapping m3
         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
         WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY ({wcIds})
       ))
+  AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
+  AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
 ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 ")
             .ToListAsync(ct);
@@ -445,6 +500,12 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
 }
 
 internal sealed class CookingInstructionSlotSqlRow
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
+internal sealed class CookingInstructionManufacturingRouteSqlRow
 {
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";

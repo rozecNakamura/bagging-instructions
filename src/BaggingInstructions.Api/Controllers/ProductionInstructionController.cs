@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 using static BaggingInstructions.Api.ProductionInstructionReportKinds;
@@ -124,7 +125,7 @@ public class ProductionInstructionController : ControllerBase
             return BadRequest(new { detail = InvalidVariantDetail });
 
         var templateFile = TemplateFileName(variant);
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", templateFile);
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), templateFile);
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = TemplateMissingMessage(variant) });

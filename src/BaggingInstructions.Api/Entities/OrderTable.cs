@@ -48,5 +48,9 @@ public class OrderTable
     [Column("suppliercode")]
     public string? SupplierCode { get; set; }
 
+    /// <summary>作業区コード（workcenter マスタ参照）。</summary>
+    [Column("workcentercode")]
+    public string? WorkCenterCode { get; set; }
+
     public virtual SalesOrderLine SalesOrderLine { get; set; } = null!;
 }

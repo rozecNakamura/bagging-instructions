@@ -1,4 +1,8 @@
+using System.Data;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using NpgsqlTypes;
 using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.Entities;
 using BaggingInstructions.Api.DTOs;
@@ -42,7 +46,7 @@ public class SearchService
             Prkey = l.SalesOrderLineId,
             Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
             Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
-            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
+            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo04 : null,
             Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
             Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
             Itemcd = l.Item != null ? l.Item.ItemCd : null,
@@ -122,15 +126,15 @@ public class SearchService
             Prkey = l.SalesOrderLineId,
             Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
             Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
-            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
-            ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo04 : null,
+            ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo04Name : null,
             Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
             Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
             Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
             Itemcd = l.Item != null ? l.Item.ItemCd : null,
             Jobordmernm = l.Item != null ? l.Item.ItemName : null,
             Jobordqun = l.Quantity,
-            Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null
+            Addinfo01 = l.Addinfo != null ? l.Addinfo.Addinfo01 : null
         }).ToList();
     }
 
@@ -156,7 +160,7 @@ public class SearchService
                 {
                     Shpctrnm = x.Shpctrnm,
                     Jobordqun = x.Jobordqun,
-                    Addinfo02 = x.Addinfo02
+                    Addinfo01 = x.Addinfo01
                 }).ToList()
             })
             .OrderBy(x => x.Delvedt).ThenBy(x => x.ShptmDisplay).ThenBy(x => x.Itemcd)
@@ -196,15 +200,15 @@ public class SearchService
             Prkey = l.SalesOrderLineId,
             Prddt = l.ProductDate.HasValue ? l.ProductDate.Value.ToString("yyyyMMdd") : null,
             Delvedt = l.PlannedDeliveryDate.HasValue ? l.PlannedDeliveryDate.Value.ToString("yyyyMMdd") : null,
-            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
-            ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo01Name : null,
+            Shptm = l.Addinfo != null ? l.Addinfo.Addinfo04 : null,
+            ShptmName = l.Addinfo != null ? l.Addinfo.Addinfo04Name : null,
             Cuscd = l.SalesOrder != null && l.SalesOrder.Customer != null ? l.SalesOrder.Customer.CustomerCode : null,
             Shpctrcd = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationCode : null,
             Shpctrnm = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null ? l.SalesOrder.CustomerDeliveryLocation.LocationName : null,
             Itemcd = l.Item != null ? l.Item.ItemCd : null,
             Jobordmernm = l.Item != null ? l.Item.ItemName : null,
             Jobordqun = l.OrderTable != null ? l.OrderTable.Qty : l.Quantity,
-            Addinfo02 = l.Addinfo != null ? l.Addinfo.Addinfo02 : null,
+            Addinfo01 = l.Addinfo != null ? l.Addinfo.Addinfo01 : null,
             Addinfo01Item = l.Item != null && l.Item.AdditionalInformation != null ? l.Item.AdditionalInformation.Addinfo01 : null,
             Quantity = l.Quantity
         }).ToList();
@@ -233,7 +237,7 @@ public class SearchService
                     Shpctrnm = x.Shpctrnm,
                     Jobordqun = x.Jobordqun,
                     Quantity = x.Quantity,
-                    Addinfo02 = x.Addinfo02
+                    Addinfo01 = x.Addinfo01
                 }).ToList()
             })
             .OrderBy(x => x.Delvedt).ThenBy(x => x.ShptmDisplay).ThenBy(x => x.Itemcd)
@@ -323,8 +327,8 @@ public class SearchService
                 Prkey = l.SalesOrderLineId,
                 Prddt = l.ProductDate?.ToString("yyyyMMdd"),
                 Delvedt = l.PlannedDeliveryDate?.ToString("yyyyMMdd"),
-                Shptm = l.Addinfo?.Addinfo01,
-                ShptmName = l.Addinfo?.Addinfo01Name,
+                Shptm = l.Addinfo?.Addinfo04,
+                ShptmName = l.Addinfo?.Addinfo04Name,
                 Cuscd = cust?.CustomerCode,
                 Shpctrcd = loc?.LocationCode,
                 Itemcd = item?.ItemCd,
@@ -346,47 +350,320 @@ public class SearchService
         return rows;
     }
 
-    /// <summary>現品票：ordertable を納期で検索し、同一納期・品目で数量を合算。大分類が指定されていれば絞り込み。</summary>
-    public async Task<List<ProductLabelRowDto>> SearchProductLabelAsync(string needdateYyyymmdd, long? majorClassificationId, CancellationToken ct = default)
+    /// <summary>
+    /// 現品票：ordertable を納期で明細検索。
+    /// 対象はMO品目かつBOM childitemcodeに存在しない品目（親品目が存在しない品目）のみ。
+    /// 大分類・品目コード・作業区・倉庫で絞り込み可能（すべて任意）。
+    /// </summary>
+    public async Task<List<ProductLabelRowDto>> SearchProductLabelAsync(
+        string needdateYyyymmdd,
+        long? majorClassificationId,
+        string? itemCode = null,
+        long? workcenterId = null,
+        long? warehouseId = null,
+        CancellationToken ct = default)
     {
         var date = ParseProductDate(needdateYyyymmdd);
         if (!date.HasValue)
             throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needdateYyyymmdd));
 
-        List<ProductLabelSqlRow> raw;
-        if (majorClassificationId is long mid and > 0)
+        string? majorCode = null;
+        if (majorClassificationId.HasValue && majorClassificationId.Value > 0)
         {
-            raw = await _db.Database
-                .SqlQuery<ProductLabelSqlRow>($@"
-            SELECT o.needdate AS ""NeedDate"", i.itemcd AS ""ItemCd"", COALESCE(i.itemname, '') AS ""ItemName"", SUM(COALESCE(o.qty, 0)) AS ""Qty""
-            FROM ordertable AS o
-            INNER JOIN item AS i ON o.itemcd = i.itemcd
-            WHERE o.needdate = {date.Value} AND i.majorclassficationid = {mid}
-            GROUP BY o.needdate, i.itemcd, i.itemname
-            ORDER BY i.itemcd")
-                .ToListAsync(ct);
-        }
-        else
-        {
-            raw = await _db.Database
-                .SqlQuery<ProductLabelSqlRow>($@"
-            SELECT o.needdate AS ""NeedDate"", i.itemcd AS ""ItemCd"", COALESCE(i.itemname, '') AS ""ItemName"", SUM(COALESCE(o.qty, 0)) AS ""Qty""
-            FROM ordertable AS o
-            INNER JOIN item AS i ON o.itemcd = i.itemcd
-            WHERE o.needdate = {date.Value}
-            GROUP BY o.needdate, i.itemcd, i.itemname
-            ORDER BY i.itemcd")
-                .ToListAsync(ct);
+            majorCode = await _db.MajorClassifications.AsNoTracking()
+                .Where(m => m.MajorClassificationId == majorClassificationId.Value)
+                .Select(m => m.MajorClassificationCode)
+                .FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(majorCode))
+                return new List<ProductLabelRowDto>();
         }
 
-        return raw.Select(r => new ProductLabelRowDto
+        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var shouldClose = conn.State != ConnectionState.Open;
+        if (shouldClose) await conn.OpenAsync(ct);
+        try
         {
-            NeedDate = r.NeedDate.ToString("yyyyMMdd"),
-            ItemDisplay = string.IsNullOrEmpty(r.ItemCd)
-                ? r.ItemName
-                : $"{r.ItemName}（{r.ItemCd}）",
-            Qty = r.Qty
-        }).ToList();
+            var joinWh = warehouseId.HasValue && warehouseId.Value > 0;
+            var sql = new StringBuilder("""
+                SELECT
+                  ot.ordertableid,
+                  ot.releasedate,
+                  COALESCE(ot.itemcode, ''),
+                  COALESCE(i.itemname, ''),
+                  COALESCE(ot.qty, 0),
+                  COALESCE(w.workcentername, ''),
+                  (SELECT COUNT(*) FROM bom b WHERE b.parentitemcode = ot.itemcode)
+                FROM ordertable ot
+                INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN workcenter w ON (
+                  w.workcentercode = TRIM(BOTH FROM ot.workcentercode)
+                  OR w.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
+                )
+                """);
+            if (joinWh)
+                sql.AppendLine("LEFT JOIN warehouses wh ON wh.warehousecode = TRIM(COALESCE(i.warehousecode, ''))");
+
+            sql.AppendLine("WHERE ot.needdate = @needDate");
+            sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
+            sql.AppendLine("AND NOT EXISTS (SELECT 1 FROM bom b2 WHERE b2.childitemcode = ot.itemcode)");
+
+            await using var cmd = new NpgsqlCommand("", conn);
+            cmd.Parameters.AddWithValue("needDate", date.Value);
+
+            if (majorCode != null)
+            {
+                sql.AppendLine("AND i.majorclassficationcode = @majorCode");
+                cmd.Parameters.AddWithValue("majorCode", majorCode);
+            }
+            if (!string.IsNullOrWhiteSpace(itemCode))
+            {
+                sql.AppendLine("AND TRIM(COALESCE(ot.itemcode, '')) ILIKE @itemCodePattern");
+                cmd.Parameters.AddWithValue("itemCodePattern", $"%{itemCode.Trim()}%");
+            }
+            if (workcenterId.HasValue && workcenterId.Value > 0)
+            {
+                sql.AppendLine("AND w.workcenterid = @workcenterId");
+                cmd.Parameters.AddWithValue("workcenterId", workcenterId.Value);
+            }
+            if (joinWh)
+            {
+                sql.AppendLine("AND wh.warehouseid = @warehouseId");
+                cmd.Parameters.AddWithValue("warehouseId", warehouseId!.Value);
+            }
+            sql.AppendLine("ORDER BY ot.ordertableid");
+            cmd.CommandText = sql.ToString();
+
+            var list = new List<ProductLabelRowDto>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                list.Add(new ProductLabelRowDto
+                {
+                    OrderTableId = reader.GetInt64(0),
+                    ReleaseDate = ReadDateOnlyNullable(reader, 1)?.ToString("yyyyMMdd") ?? "",
+                    ItemCode = reader.GetString(2),
+                    ItemName = reader.GetString(3),
+                    Qty = reader.GetDecimal(4),
+                    WorkcenterName = reader.GetString(5),
+                    ChildCount = (int)reader.GetInt64(6),
+                });
+            }
+            return list;
+        }
+        finally
+        {
+            if (shouldClose && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// 現品票 PDF 用：ordertableid 一覧を BOM（1階層）展開して取得。
+    /// 1 ordertable に複数の子品目がある場合は子品目ごとに 1 行。子品目なしの場合は子品目フィールドが空の 1 行。
+    /// 順序: ordertableid → bom.productionorder → bom.childitemcode。
+    /// </summary>
+    public async Task<List<ProductLabelOrderSqlRow>> LoadProductLabelOrdersByIdsAsync(IReadOnlyList<long> orderTableIds, CancellationToken ct = default)
+    {
+        if (orderTableIds == null || orderTableIds.Count == 0)
+            return new List<ProductLabelOrderSqlRow>();
+
+        var ids = orderTableIds.Where(id => id > 0).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new List<ProductLabelOrderSqlRow>();
+
+        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var shouldClose = conn.State != ConnectionState.Open;
+        if (shouldClose)
+            await conn.OpenAsync(ct);
+        try
+        {
+            await using var cmd = new NpgsqlCommand(
+                """
+                SELECT
+                  ot.ordertableid,
+                  ot.releasedate,
+                  COALESCE(ot.itemcode, ''),
+                  COALESCE(i.itemname, ''),
+                  COALESCE(ot.qty, 0),
+                  COALESCE(w.workcentername, ''),
+                  COALESCE(b.childitemcode, ''),
+                  COALESCE(ci.itemname, ''),
+                  CASE
+                    WHEN b.childitemcode IS NOT NULL AND COALESCE(b.outputqty, 0) <> 0
+                      THEN COALESCE(ot.qty, 0) * COALESCE(b.inputqty, 0) / b.outputqty
+                    WHEN b.childitemcode IS NOT NULL
+                      THEN COALESCE(b.inputqty, 0)
+                    ELSE COALESCE(ot.qty, 0)
+                  END,
+                  COALESCE(NULLIF(TRIM(COALESCE(cu.unitname, cu.unitsymbol, '')), ''), ''),
+                  COALESCE(i.shelflifedays, 0)
+                FROM ordertable ot
+                INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN workcenter w ON (
+                  w.workcentercode = TRIM(BOTH FROM ot.workcentercode)
+                  OR w.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
+                )
+                LEFT JOIN bom b ON b.parentitemcode = ot.itemcode
+                LEFT JOIN item ci ON ci.itemcode = b.childitemcode
+                LEFT JOIN unit cu ON cu.unitcode = ci.unitcode0
+                WHERE ot.ordertableid = ANY(@ids)
+                ORDER BY ot.ordertableid, b.productionorder NULLS LAST, b.childitemcode
+                """, conn);
+            cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array) { Value = ids });
+
+            var list = new List<ProductLabelOrderSqlRow>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                list.Add(new ProductLabelOrderSqlRow
+                {
+                    OrderTableId = reader.GetInt64(0),
+                    ReleaseDate = ReadDateOnlyNullable(reader, 1),
+                    ParentItemCode = reader.GetString(2),
+                    ParentItemName = reader.GetString(3),
+                    Qty = reader.GetDecimal(4),
+                    WorkcenterName = reader.GetString(5),
+                    ChildItemCode = reader.GetString(6),
+                    ChildItemName = reader.GetString(7),
+                    ChildQty = reader.GetDecimal(8),
+                    ChildUnitName = reader.GetString(9),
+                    ShelflifeDays = reader.GetInt32(10),
+                });
+            }
+
+            return list;
+        }
+        finally
+        {
+            if (shouldClose && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// 現品票 PDF 用：選択した ordertable から BOM を再帰探索し、指示書種別条件に一致する子品目行を返す。
+    /// instructionType: "cut"=50/51, "seasoning"=55, "cooking"=50以外。空の場合は全子品目。
+    /// 数量は各BOM階層の inputqty/outputqty を乗算して累積する（最大10階層）。
+    /// </summary>
+    public async Task<List<ProductLabelOrderSqlRow>> LoadProductLabelOrdersByBomTraversalAsync(
+        IReadOnlyList<long> orderTableIds,
+        string? instructionType,
+        CancellationToken ct = default)
+    {
+        if (orderTableIds == null || orderTableIds.Count == 0)
+            return new List<ProductLabelOrderSqlRow>();
+
+        var ids = orderTableIds.Where(id => id > 0).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new List<ProductLabelOrderSqlRow>();
+
+        var typeFilter = instructionType?.Trim().ToLowerInvariant() switch
+        {
+            "cut"      => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) IN ('50', '51')",
+            "seasoning" => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) = '55'",
+            "cooking"  => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) <> '50'",
+            _          => "TRUE",
+        };
+
+        var sql = $"""
+            WITH RECURSIVE bom_tree AS (
+              SELECT
+                ot.ordertableid,
+                ot.releasedate,
+                ot.itemcode        AS root_itemcode,
+                ot.qty             AS accumulated_qty,
+                ot.itemcode        AS current_itemcode,
+                0                  AS depth
+              FROM ordertable ot
+              WHERE ot.ordertableid = ANY(@ids)
+              UNION ALL
+              SELECT
+                bt.ordertableid,
+                bt.releasedate,
+                bt.root_itemcode,
+                CASE WHEN COALESCE(b.outputqty, 0::numeric) <> 0
+                  THEN bt.accumulated_qty * COALESCE(b.inputqty, 0::numeric) / b.outputqty
+                  ELSE COALESCE(b.inputqty, 0::numeric)
+                END,
+                b.childitemcode,
+                bt.depth + 1
+              FROM bom_tree bt
+              INNER JOIN bom b ON b.parentitemcode = bt.current_itemcode
+                AND b.childitemcode IS NOT NULL
+              WHERE bt.depth < 10
+            )
+            SELECT DISTINCT ON (bt.ordertableid, bt.current_itemcode)
+              bt.ordertableid,
+              bt.releasedate,
+              bt.root_itemcode,
+              COALESCE(ri.itemname, ''),
+              COALESCE(ot.qty, 0),
+              COALESCE(w.workcentername, ''),
+              bt.current_itemcode,
+              COALESCE(ci.itemname, ''),
+              bt.accumulated_qty,
+              COALESCE(NULLIF(TRIM(COALESCE(cu.unitname, cu.unitsymbol, '')), ''), ''),
+              COALESCE(ci.shelflifedays, 0)
+            FROM bom_tree bt
+            INNER JOIN ordertable ot ON ot.ordertableid = bt.ordertableid
+            INNER JOIN item ri ON ri.itemcode = bt.root_itemcode
+            LEFT JOIN workcenter w ON (
+              w.workcentercode = TRIM(BOTH FROM ot.workcentercode)
+              OR w.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
+            )
+            INNER JOIN item ci ON ci.itemcode = bt.current_itemcode
+            LEFT JOIN unit cu ON cu.unitcode = ci.unitcode0
+            WHERE bt.depth > 0
+              AND {typeFilter}
+            ORDER BY bt.ordertableid, bt.current_itemcode, bt.depth
+            """;
+
+        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var shouldClose = conn.State != ConnectionState.Open;
+        if (shouldClose) await conn.OpenAsync(ct);
+        try
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array) { Value = ids });
+
+            var list = new List<ProductLabelOrderSqlRow>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                list.Add(new ProductLabelOrderSqlRow
+                {
+                    OrderTableId  = reader.GetInt64(0),
+                    ReleaseDate   = ReadDateOnlyNullable(reader, 1),
+                    ParentItemCode = reader.GetString(2),
+                    ParentItemName = reader.GetString(3),
+                    Qty            = reader.GetDecimal(4),
+                    WorkcenterName = reader.GetString(5),
+                    ChildItemCode  = reader.GetString(6),
+                    ChildItemName  = reader.GetString(7),
+                    ChildQty       = reader.GetDecimal(8),
+                    ChildUnitName  = reader.GetString(9),
+                    ShelflifeDays  = reader.GetInt32(10),
+                });
+            }
+            return list;
+        }
+        finally
+        {
+            if (shouldClose && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+    }
+
+    private static DateOnly? ReadDateOnlyNullable(NpgsqlDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return null;
+        var o = reader.GetValue(ordinal);
+        if (o is DateOnly d)
+            return d;
+        if (o is DateTime dt)
+            return DateOnly.FromDateTime(dt);
+        return null;
     }
 
     public async Task<List<MajorClassificationOptionDto>> ListMajorClassificationsAsync(CancellationToken ct = default)
@@ -400,6 +677,40 @@ public class SearchService
                 Name = m.MajorClassificationName ?? ""
             })
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// 受注明細 ID（salesorderlineid）に紐づく ordertable.ordertableid を、引数の並びで返す（現品票 PDF 用）。
+    /// ordertable が無い・ordertableid が無い明細はスキップする。
+    /// </summary>
+    public async Task<List<long>> GetOrderTableIdsBySalesOrderLineIdsAsync(
+        IReadOnlyList<long> salesOrderLineIds,
+        CancellationToken ct = default)
+    {
+        if (salesOrderLineIds == null || salesOrderLineIds.Count == 0)
+            return new List<long>();
+
+        var orderedLineIds = salesOrderLineIds.Where(id => id > 0).ToList();
+        if (orderedLineIds.Count == 0)
+            return new List<long>();
+
+        var idSet = orderedLineIds.ToHashSet();
+        var rows = await _db.OrderTables.AsNoTracking()
+            .Where(o => idSet.Contains(o.SalesOrderLineId)
+                        && o.OrderTableId != null
+                        && o.OrderTableId.Value > 0)
+            .Select(o => new { o.SalesOrderLineId, OrderTableId = o.OrderTableId!.Value })
+            .ToListAsync(ct);
+
+        var byLine = rows.ToDictionary(r => r.SalesOrderLineId, r => r.OrderTableId);
+        var result = new List<long>(orderedLineIds.Count);
+        foreach (var lineId in orderedLineIds)
+        {
+            if (byLine.TryGetValue(lineId, out var otId))
+                result.Add(otId);
+        }
+
+        return result;
     }
 
     private static DateOnly? ParseProductDate(string? prddt)

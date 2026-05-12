@@ -34,16 +34,16 @@ public class CookingInstructionPdfServiceTests
         Assert.Equal("2025/03/01", tags["DATE01"]);
         Assert.Equal("朝便", tags["ITEMTYPE01"]);
 
-        Assert.Equal("10042", tags["ITEMPALNM00"]);
-        Assert.Equal("P001 親商品", tags["ITEMPALNUM00"]);
+        Assert.Equal("親商品", tags["ITEMPALNM00"]);
+        Assert.Equal("P001", tags["ITEMPALNUM00"]);
         Assert.Equal("10.5", tags["MAKEQUNPLAN00"]);
-        Assert.Equal("C001 子商品", tags["ITEMCHINM00"]);
+        Assert.Equal("子商品", tags["ITEMCHINM00"]);
         Assert.Equal("500g", tags["STANDARD00"]);
-        Assert.Equal("", tags["ITEMCHINUM00"]);
+        Assert.Equal("C001", tags["ITEMCHINUM00"]);
         Assert.Equal("2.5", tags["USEQUNPLAN00"]);
         Assert.Equal("kg", tags["UNITPAR01"]);
         Assert.Equal("g", tags["UNITCHI00"]);
-        Assert.Equal("", tags["ORDERNO00"]);
+        Assert.Equal("10042", tags["ORDERNO00"]);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
+using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using BaggingInstructions.Api.Services;
 
@@ -51,18 +52,40 @@ public class CookingInstructionController : ControllerBase
         }
     }
 
+    [HttpGet("manufacturing-routes")]
+    public async Task<ActionResult<List<CookingInstructionManufacturingRouteOptionDto>>> ListManufacturingRoutes(
+        [FromQuery(Name = "needdate")] string needDate,
+        CancellationToken ct)
+    {
+        try
+        {
+            var list = await _service.ListManufacturingRoutesForNeedDateAsync(needDate, ct);
+            return Ok(list);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"製造便一覧取得エラー: {ex.Message}" });
+        }
+    }
+
     [HttpGet("search")]
     public async Task<ActionResult<CookingInstructionSearchResponseDto>> Search(
         [FromQuery(Name = "needdate")] string needDate,
         [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "manufacturing_route_code")] string[]? manufacturingRouteCode,
         CancellationToken ct)
     {
         try
         {
             var wc = workcenterId ?? Array.Empty<long>();
             var sc = slotCode ?? Array.Empty<string>();
-            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
+            var mfg = manufacturingRouteCode ?? Array.Empty<string>();
+            var rows = await _service.SearchAsync(needDate, wc, sc, mfg, ct);
             return Ok(new CookingInstructionSearchResponseDto
             {
                 Total = rows.Count,
@@ -100,7 +123,7 @@ public class CookingInstructionController : ControllerBase
         if (body == null || orderIds.Count == 0)
             return BadRequest(new { detail = "印刷するデータを選択してください" });
 
-        var templatePath = Path.Combine(_env.ContentRootPath, "..", "..", "static", "templates", "調理指示書.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "調理指示書.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
             return NotFound(new { detail = "調理指示書テンプレートが見つかりません" });

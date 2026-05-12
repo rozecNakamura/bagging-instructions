@@ -25,7 +25,7 @@ public class PersonalDeliveryPdfService
         _juicePdfService = juicePdfService;
     }
 
-    /// <summary>選択された (配送日, 喫食時間, 配送エリア) ごとにPDFを生成。variant="detail" は明細のみ、"summary" は集計のみ。</summary>
+    /// <summary>選択された (配送日, 配送便名称, 配送エリア) ごとにPDFを生成。variant="detail" は明細のみ、"summary" は集計のみ。</summary>
     public async Task<byte[]> GeneratePdfAsync(
         string templateDetailPath,
         string templateSummaryPath,
@@ -92,7 +92,7 @@ public class PersonalDeliveryPdfService
             .Where(l => l.PlannedDeliveryDate == date);
 
         if (!string.IsNullOrEmpty(timeName))
-            query = query.Where(l => l.Addinfo != null && l.Addinfo.Addinfo01Name == timeName);
+            query = query.Where(l => l.Addinfo != null && l.Addinfo.Addinfo04Name == timeName);
         if (!string.IsNullOrEmpty(area))
             query = query.Where(l => l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null
                 && l.SalesOrder.CustomerDeliveryLocation.Addinfo != null
@@ -112,7 +112,7 @@ public class PersonalDeliveryPdfService
         return new PersonalDeliveryLine
         {
             PlannedDeliveryDate = l.PlannedDeliveryDate?.ToString("yyyy/MM/dd") ?? "",
-            TimeName = addinfo?.Addinfo01Name ?? "",
+            TimeName = addinfo?.Addinfo04Name ?? "",
             Area = loc?.Addinfo?.Addinfo01 ?? "",
             LocationCode = loc?.LocationCode ?? "",
             LocationName = loc?.LocationName ?? "",
@@ -121,20 +121,11 @@ public class PersonalDeliveryPdfService
             CustomerName = customer?.CustomerName ?? "",
             CustomerAddress1 = customer?.Address1 ?? "",
             CustomerAddress2 = customer?.Address2 ?? "",
-            FoodType = addinfo?.Addinfo03Name ?? "",
+            FoodType = addinfo?.Addinfo02Name ?? "",
             RiceType = itemAddinfo?.Addinfo02 ?? "",
             Quantity = l.Quantity,
-            Remarks = l.Remarks ?? "",
-            Addinfo02Divisor = ParseDivisor(addinfo?.Addinfo02)
+            Remarks = l.Remarks ?? ""
         };
-    }
-
-    private static decimal? ParseDivisor(string? addinfo02)
-    {
-        if (string.IsNullOrWhiteSpace(addinfo02)) return null;
-        if (decimal.TryParse(addinfo02.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) && v != 0)
-            return v;
-        return null;
     }
 
     /// <summary>個人配送指示書.rxz 用タグ: DATE, TIME, AREA, CUSTOMERNM, CUSTOMERLOC, CUSTOMERNM00-39, CUSTOMERLOC00-39, FOODTYPE00-39, RICETYPE00-39, GRAM00-39, NOTE00-39, ORDER00-39。1ページあたり RowsPerPage 行まで。指定ページ分の行を 00～21 に詰め、残りは空。</summary>
@@ -180,7 +171,8 @@ public class PersonalDeliveryPdfService
         return tagValues;
     }
 
-    /// <summary>個人配送指示書（集計）.rxz 用タグ: DATE, TIME, AREA, ORDER→なし, FOODTYPE00-39, GRAM00-39, COUNT00-39（quantity/addinfo02 を addinfo03name で集計）, NOTE00-39</summary>
+    /// <summary>個人配送指示書（集計）.rxz 用タグ: DATE, TIME, AREA, ORDER→なし, FOODTYPE00-39, COUNT00-39＝数量（同一キーの明細件数）, GRAM00-39＝ご飯量（明細の quantity／テンプレート列「ご飯量」）, NOTE00-39。
+    /// 集計キー: 配送日・配送エリア・食種（addinfo02name）・ご飯量（明細 quantity）。配送便名称はヘッダ TIME のみ。</summary>
     private static Dictionary<string, string> BuildSummaryTagValues(List<PersonalDeliveryLine> lines)
     {
         var tagValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -192,27 +184,27 @@ public class PersonalDeliveryPdfService
         tagValues["AREA"] = first.Area;
         tagValues["ORDER"] = "";
 
-        // addinfo03name (FOODTYPE) でグループ化し、COUNT = sum(quantity / addinfo02)
+        // 配送日・配送エリア・食種・ご飯量（＝明細 quantity）でグループ化。COUNT＝明細行数、GRAM＝そのキーのご飯量（印字用）
         var grouped = lines
-            .GroupBy(l => l.FoodType ?? "")
+            .GroupBy(l => (Date: l.PlannedDeliveryDate, Area: l.Area ?? "", Food: l.FoodType ?? "", RiceQty: l.Quantity))
             .Select(g => new
             {
-                FoodType = g.Key,
-                Gram = g.Sum(x => x.Quantity),
-                Count = g.Sum(x => x.Addinfo02Divisor.HasValue && x.Addinfo02Divisor.Value != 0
-                    ? x.Quantity / x.Addinfo02Divisor.Value
-                    : 0),
+                g.Key.Food,
+                g.Key.RiceQty,
+                RiceGramDisplay = g.Key.RiceQty.ToString("0", CultureInfo.InvariantCulture),
+                Count = g.Count(),
                 Note = string.Join(" ", g.Select(x => x.Remarks).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct())
             })
-            .OrderBy(x => x.FoodType)
+            .OrderBy(x => x.Food, StringComparer.Ordinal)
+            .ThenBy(x => x.RiceQty)
             .ToList();
 
         for (int i = 0; i < MaxRows; i++)
         {
             var nn = i.ToString("D2");
             var row = i < grouped.Count ? grouped[i] : null;
-            tagValues[$"FOODTYPE{nn}"] = row?.FoodType ?? "";
-            tagValues[$"GRAM{nn}"] = row != null ? row.Gram.ToString("0", CultureInfo.InvariantCulture) : "";
+            tagValues[$"FOODTYPE{nn}"] = row?.Food ?? "";
+            tagValues[$"GRAM{nn}"] = row?.RiceGramDisplay ?? "";
             tagValues[$"COUNT{nn}"] = row != null ? row.Count.ToString("0", CultureInfo.InvariantCulture) : "";
             tagValues[$"NOTE{nn}"] = row?.Note ?? "";
         }
@@ -244,6 +236,5 @@ public class PersonalDeliveryPdfService
         public string RiceType { get; set; } = "";
         public decimal Quantity { get; set; }
         public string Remarks { get; set; } = "";
-        public decimal? Addinfo02Divisor { get; set; }
     }
 }

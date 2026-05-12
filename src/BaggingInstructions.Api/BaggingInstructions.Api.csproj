@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BaggingInstructions.Api</RootNamespace>
@@ -15,17 +15,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- フロント・.rxz テンプレート（リポジトリ static を発行物に含める） -->
+    <Content Include="..\..\static\**\*.*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="static\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 汁仕分表 PDF 用フォント（.ttf を Fonts に置くと出力にコピーされ、かつ埋め込みリソースになる） -->
     <None Include="Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
     <EmbeddedResource Include="Fonts\*.ttf" Link="Fonts\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.1" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.1">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="ClosedXML" Version="0.102.3" />
   </ItemGroup>

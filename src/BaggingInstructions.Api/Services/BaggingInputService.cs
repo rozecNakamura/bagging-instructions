@@ -168,7 +168,8 @@ public class BaggingInputService
     }
 
     /// <summary>
-    /// 同一 productdate + parentitemcode の既存行を削除し、ペイロードの行を IDENTITY で挿入する。
+    /// 同一 productdate + parentitemcode の既存行を削除し、ペイロードの行を挿入する。
+    /// baggedquantityid に DB 側の IDENTITY が無い場合は、削除後のテーブル全体の max(id)+1 から連番で採番する。
     /// </summary>
     private async Task SaveToBaggedQuantityAsync(
         DateOnly productDate,
@@ -179,33 +180,48 @@ public class BaggingInputService
         var now = DateTime.UtcNow;
         var lines = payload?.Lines ?? new List<BaggingInputLineDto>();
 
-        var toRemove = await _otherDb.BaggedQuantities
-            .Where(r => r.ProductDate == productDate && r.ParentItemCode == parentItemCode)
-            .ToListAsync(ct);
-        _otherDb.BaggedQuantities.RemoveRange(toRemove);
-        await _otherDb.SaveChangesAsync(ct);
-
-        for (var idx = 0; idx < lines.Count; idx++)
+        await using var tx = await _otherDb.Database.BeginTransactionAsync(ct);
+        try
         {
-            var line = lines[idx];
-            var citem = (line.Citemcd ?? "").Trim();
-            if (string.IsNullOrEmpty(citem)) continue;
+            var toRemove = await _otherDb.BaggedQuantities
+                .Where(r => r.ProductDate == productDate && r.ParentItemCode == parentItemCode)
+                .ToListAsync(ct);
+            _otherDb.BaggedQuantities.RemoveRange(toRemove);
+            await _otherDb.SaveChangesAsync(ct);
 
-            var inputOrder = line.InputOrder is > 0 ? line.InputOrder!.Value : idx + 1;
+            var nextId = await _otherDb.BaggedQuantities.AnyAsync(ct)
+                ? await _otherDb.BaggedQuantities.MaxAsync(r => r.BaggedQuantityId, ct) + 1
+                : 1L;
 
-            _otherDb.BaggedQuantities.Add(new BaggedQuantity
+            for (var idx = 0; idx < lines.Count; idx++)
             {
-                ProductDate = productDate,
-                ParentItemCode = parentItemCode,
-                ChildItemCode = citem,
-                InputOrder = inputOrder,
-                StandardQuantity = line.SpecQty,
-                TotalQuantity = line.TotalQty,
-                UpdatedAt = now
-            });
-        }
+                var line = lines[idx];
+                var citem = (line.Citemcd ?? "").Trim();
+                if (string.IsNullOrEmpty(citem)) continue;
 
-        await _otherDb.SaveChangesAsync(ct);
+                var inputOrder = line.InputOrder is > 0 ? line.InputOrder!.Value : idx + 1;
+
+                _otherDb.BaggedQuantities.Add(new BaggedQuantity
+                {
+                    BaggedQuantityId = nextId++,
+                    ProductDate = productDate,
+                    ParentItemCode = parentItemCode,
+                    ChildItemCode = citem,
+                    InputOrder = inputOrder,
+                    StandardQuantity = line.SpecQty,
+                    TotalQuantity = line.TotalQty,
+                    UpdatedAt = now
+                });
+            }
+
+            await _otherDb.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 
     public async Task<BaggingInputPayloadDto?> TryGetPayloadAsync(
