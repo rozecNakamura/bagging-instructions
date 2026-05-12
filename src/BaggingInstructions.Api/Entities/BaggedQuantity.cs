@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BaggingInstructions.Api.Entities;
@@ -6,6 +7,8 @@ namespace BaggingInstructions.Api.Entities;
 [Table("baggedquantity")]
 public class BaggedQuantity
 {
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     [Column("baggedquantityid")]
     public long BaggedQuantityId { get; set; }
 
@@ -26,6 +29,9 @@ public class BaggedQuantity
 
     [Column("totalquantity")]
     public decimal? TotalQuantity { get; set; }
+
+    [Column("isprinted")]
+    public bool IsPrinted { get; set; }
 
     [Column("updatedat")]
     public DateTime UpdatedAt { get; set; }
