@@ -84,4 +84,17 @@ public class BaggingOrderBasedRoundingTests
         Assert.Equal(1, stdBags);
         Assert.Equal(0m, irr);
     }
+
+    [Fact]
+    public void HonUnit_no_seasoningBoms_splits_by_divisor()
+    {
+        // 単位"本": qty=130, spec=80 → stdBags=1, irregular=50
+        var parent = new ItemDetailDto { Itemcd = "100", Uni = new UniDetailDto { Uninm = "本" } };
+
+        var (_, stdBags, irr, _) = BaggingOrderBasedRounding.ApplyRoundingAndOptionalFloorAllocation(
+            130m, 80m, 80m, parent, new List<SeasoningBomRow>());
+
+        Assert.Equal(1, stdBags);
+        Assert.Equal(50m, irr);
+    }
 }
