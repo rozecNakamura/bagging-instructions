@@ -62,7 +62,7 @@ public sealed class ProductLabelPdfService
                 pages.Add(tags);
         }
 
-        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "現品票（調理）1枚", AlignmentOverrides);
+        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "現品票（調理）1枚", AlignmentOverrides, scaleContentToFillPage: true);
     }
 
     private static Dictionary<string, string> BuildPageTags(ProductLabelOrderSqlRow row)

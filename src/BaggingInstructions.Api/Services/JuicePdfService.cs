@@ -458,14 +458,51 @@ public class JuicePdfService
     /// <summary>
     /// 1ページを追加し、現在の items の TextData を描画する。rxz の Page Margin をオフセットとして反映する。
     /// </summary>
-    private static void AddPageAndDraw(PdfDocument doc, List<RxzTextItem> items, int pageWidth, int pageHeight, int marginLeft = 0, int marginTop = 0)
+    private static void AddPageAndDraw(PdfDocument doc, List<RxzTextItem> items, int pageWidth, int pageHeight, int marginLeft = 0, int marginTop = 0, double extraOffsetXPts = 0, bool scaleContentToFillPage = false)
     {
         var page = doc.AddPage();
         page.Width = XUnit.FromPoint(pageWidth / Twip);
         page.Height = XUnit.FromPoint(pageHeight / Twip);
 
-        double offsetX = marginLeft / Twip;
+        double offsetX = marginLeft / Twip + extraOffsetXPts;
         double offsetY = marginTop / Twip;
+
+        // コンテンツのバウンディングボックスを計算してページいっぱいにスケーリング
+        double scaleX = 1.0, scaleY = 1.0;
+        double contentOriginXPts = 0.0, contentOriginYPts = 0.0;
+        if (scaleContentToFillPage)
+        {
+            double minXTwips = double.MaxValue, minYTwips = double.MaxValue;
+            double maxXTwips = double.MinValue, maxYTwips = double.MinValue;
+            foreach (var it in items)
+            {
+                if (!it.Visible) continue;
+                if (it.IsVectorLine)
+                {
+                    minXTwips = Math.Min(minXTwips, Math.Min(it.StartX, it.EndX));
+                    minYTwips = Math.Min(minYTwips, Math.Min(it.StartY, it.EndY));
+                    maxXTwips = Math.Max(maxXTwips, Math.Max(it.StartX, it.EndX));
+                    maxYTwips = Math.Max(maxYTwips, Math.Max(it.StartY, it.EndY));
+                }
+                else if (it.SizeWidth > 0 || it.SizeHeight > 0)
+                {
+                    minXTwips = Math.Min(minXTwips, it.StartX);
+                    minYTwips = Math.Min(minYTwips, it.StartY);
+                    maxXTwips = Math.Max(maxXTwips, it.StartX + it.SizeWidth);
+                    maxYTwips = Math.Max(maxYTwips, it.StartY + it.SizeHeight);
+                }
+            }
+            if (minXTwips < double.MaxValue && maxXTwips > minXTwips && maxYTwips > minYTwips)
+            {
+                scaleX = pageWidth / (maxXTwips - minXTwips);
+                scaleY = pageHeight / (maxYTwips - minYTwips);
+                contentOriginXPts = minXTwips / Twip;
+                contentOriginYPts = minYTwips / Twip;
+                offsetX = 0;
+                offsetY = 0;
+            }
+        }
+        double fontScaleFactor = Math.Min(scaleX, scaleY);
 
         using var gfx = XGraphics.FromPdfPage(page);
         foreach (var item in items)
@@ -474,11 +511,11 @@ public class JuicePdfService
 
             if (item.IsVectorLine)
             {
-                double x1 = item.StartX / Twip + offsetX;
-                double y1 = item.StartY / Twip + offsetY;
-                double x2 = item.EndX / Twip + offsetX;
-                double y2 = item.EndY / Twip + offsetY;
-                var lineWidthPt = item.LineWidth / Twip;
+                double x1 = (item.StartX / Twip - contentOriginXPts) * scaleX + offsetX;
+                double y1 = (item.StartY / Twip - contentOriginYPts) * scaleY + offsetY;
+                double x2 = (item.EndX / Twip - contentOriginXPts) * scaleX + offsetX;
+                double y2 = (item.EndY / Twip - contentOriginYPts) * scaleY + offsetY;
+                var lineWidthPt = item.LineWidth / Twip * fontScaleFactor;
                 if (lineWidthPt <= 0) lineWidthPt = 0.35;
                 var penColor = ParseLineColor(item.LineColor);
                 var pen = new XPen(penColor, lineWidthPt);
@@ -486,10 +523,10 @@ public class JuicePdfService
                 continue;
             }
 
-            double x = item.StartX / Twip + offsetX;
-            double y = item.StartY / Twip + offsetY;
-            double w = item.SizeWidth / Twip;
-            double h = item.SizeHeight / Twip;
+            double x = (item.StartX / Twip - contentOriginXPts) * scaleX + offsetX;
+            double y = (item.StartY / Twip - contentOriginYPts) * scaleY + offsetY;
+            double w = item.SizeWidth / Twip * scaleX;
+            double h = item.SizeHeight / Twip * scaleY;
             var rect = new XRect(x, y, w, h);
 
             if (item.IsBox)
@@ -501,7 +538,7 @@ public class JuicePdfService
                 }
                 if (item.Frame)
                 {
-                    var lineWidthPt = item.LineWidth / Twip;
+                    var lineWidthPt = item.LineWidth / Twip * fontScaleFactor;
                     if (lineWidthPt <= 0) lineWidthPt = 0.5;
                     var penColor = ParseLineColor(item.LineColor);
                     var pen = new XPen(penColor, lineWidthPt);
@@ -512,7 +549,7 @@ public class JuicePdfService
 
             if (item.Frame)
             {
-                var lineWidthPt = item.LineWidth / Twip;
+                var lineWidthPt = item.LineWidth / Twip * fontScaleFactor;
                 if (lineWidthPt <= 0) lineWidthPt = 0.5;
                 var penColor = ParseLineColor(item.LineColor);
                 var pen = new XPen(penColor, lineWidthPt);
@@ -522,10 +559,10 @@ public class JuicePdfService
             if (string.IsNullOrEmpty(item.TextData)) continue;
 
             // Text/Data の Margin を反映（RozecCrPrintClass と同様：外枠の内側にテキスト描画領域を取る）
-            double textMarginLeft = item.MarginLeft / Twip;
-            double textMarginTop = item.MarginTop / Twip;
-            double textMarginRight = item.MarginRight / Twip;
-            double textMarginBottom = item.MarginBottom / Twip;
+            double textMarginLeft = item.MarginLeft / Twip * scaleX;
+            double textMarginTop = item.MarginTop / Twip * scaleY;
+            double textMarginRight = item.MarginRight / Twip * scaleX;
+            double textMarginBottom = item.MarginBottom / Twip * scaleY;
             double textX = x + textMarginLeft;
             double textY = y + textMarginTop;
             double textW = w - textMarginLeft - textMarginRight;
@@ -536,7 +573,7 @@ public class JuicePdfService
             var lines = item.TextData.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             if (lines.Length == 0) continue;
 
-            double fontSize = item.FontHeight / 100.0;
+            double fontSize = item.FontHeight / 100.0 * fontScaleFactor;
             if (fontSize < 1) fontSize = 11;
             double minFontSize = item.ShrinkToFitMinFontSizePts ?? DefaultShrinkToFitMinFontSizePts;
 
@@ -703,7 +740,9 @@ public class JuicePdfService
         string? documentTitle = null,
         IReadOnlyDictionary<string, int>? alignmentOverrides = null,
         IReadOnlySet<string>? shrinkToFitOverrides = null,
-        double? shrinkToFitGlobalMinFontSizePts = null)
+        double? shrinkToFitGlobalMinFontSizePts = null,
+        double extraOffsetXPts = 0,
+        bool scaleContentToFillPage = false)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
@@ -745,7 +784,7 @@ public class JuicePdfService
         foreach (var tagValues in pagesTagValues)
         {
             ApplyTagValuesToItems(items, tagValues);
-            AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop);
+            AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop, extraOffsetXPts, scaleContentToFillPage);
         }
 
         using var ms = new MemoryStream();

@@ -64,9 +64,10 @@ public static class AggregationRuleService
         {
             var method = GetAggregationMethod(row.Cuscd, row.Shptm, row.ShptmName);
             var dv = row.Delvedt ?? "";
+            var addinfo05 = row.Addinfo05 ?? "";
             var key = method == "by_facility"
-                ? $"{row.Itemcd}_{row.Shpctrcd}_{row.Shptm}_{dv}"
-                : $"{row.Itemcd}_CATERING_{row.Shptm}_{dv}";
+                ? $"{row.Itemcd}_{row.Shpctrcd}_{row.Shptm}_{dv}_{addinfo05}"
+                : $"{row.Itemcd}_CATERING_{row.Shptm}_{dv}_{addinfo05}";
             if (!grouped.ContainsKey(key))
                 grouped[key] = new List<BaggingDetailRow>();
             grouped[key].Add(row);

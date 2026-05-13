@@ -53,13 +53,15 @@ public sealed class BaggingLabelPdfService
                 pages.Add(BuildPageTags(item, i));
         }
         if (pages.Count == 0) return Array.Empty<byte>();
+        const double offsetXPts = 5.0 * 72.0 / 25.4; // 5mm 右にオフセット
         return _juicePdf.GeneratePdfMultiPage(
             rxzTemplatePath,
             pages,
             "袋詰現品票",
             AlignmentOverrides,
             ShrinkToFitOverrides,
-            ShrinkToFitGlobalMinFontPts);
+            ShrinkToFitGlobalMinFontPts,
+            extraOffsetXPts: offsetXPts);
     }
 
     private static Dictionary<string, string> BuildPageTags(LabelItemDto item, int pageIndex)
