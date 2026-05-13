@@ -11,6 +11,9 @@ public class BaggingDetailRow
     public string? Shptm { get; set; }
     /// <summary>配送便（出荷便）名称（salesorderlineaddinfo.addinfo05name）。ラベルの TIME01 に使用。</summary>
     public string? ShptmName { get; set; }
+
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1=朝,2=昼,3=夜 等。</summary>
+    public string? Addinfo05 { get; set; }
     public string? Cuscd { get; set; }
     public string? Shpctrcd { get; set; }
     public string? Itemcd { get; set; }

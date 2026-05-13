@@ -351,6 +351,7 @@ public class SearchService
                 Delvedt = l.PlannedDeliveryDate?.ToString("yyyyMMdd"),
                 Shptm = l.Addinfo?.Addinfo04,
                 ShptmName = l.Addinfo?.Addinfo05Name,
+                Addinfo05 = l.Addinfo?.Addinfo05,
                 Cuscd = cust?.CustomerCode,
                 Shpctrcd = loc?.LocationCode,
                 Itemcd = item?.ItemCd,

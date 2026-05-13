@@ -62,6 +62,11 @@ export interface BaggingInstructionItem {
   itemnm: string;
   delvedt: string;
   shptm: string | null;
+  shptm_name?: string | null;
+  /** salesorderlineaddinfo.addinfo05 */
+  addinfo05?: string | null;
+  /** 朝 / 昼 / 夜 */
+  eating_time_label?: string;
   planned_quantity: number;
   adjusted_quantity: number;
   /** 在庫用（受注合算） */

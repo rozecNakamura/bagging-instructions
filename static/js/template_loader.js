@@ -3,6 +3,18 @@
  */
 
 /**
+ * 袋詰指示書ヘッダー用の喫食時間の値（API の eating_time_label）。JSON は snake_case / camelCase の両方を読む。
+ * @param {Record<string, unknown>|null|undefined} source
+ * @returns {string}
+ */
+function resolveEatingTimeLabel(source) {
+    if (!source || typeof source !== 'object') return '';
+    return String(
+        source.eating_time_label ?? source.eatingTimeLabel ?? ''
+    ).trim();
+}
+
+/**
  * CSSをスコープ化する
  * テンプレートのスタイルがメインページのスタイルを上書きしないように、
  * すべてのセレクタに #print-preview-container プレフィックスを追加
@@ -224,19 +236,16 @@ function injectHeaderData(container, data) {
     const firstRout = routs && routs.length > 0 ? routs[0] : null;
     const firstMbom = mboms && mboms.length > 0 ? mboms[0] : null;
     
-    // 喫食日情報を更新
+    // 喫食日・喫食時間の値のみ（ラベル「喫食時間:」は付けない。API eating_time_label）
     const eatingDateElement = container.querySelector('#eatingDateInfo');
     if (eatingDateElement && sourceData) {
         const delvedt = sourceData.delvedt || '';
-        const shptm = sourceData.shptm || '';
-        let timeLabel = '';
-        if (shptm && shptm.length >= 2) {
-            const hour = parseInt(shptm.substr(0,2));
-            if (hour < 10) timeLabel = '朝';
-            else if (hour < 15) timeLabel = '昼';
-            else timeLabel = '夕';
+        const eatingTimeLabel = resolveEatingTimeLabel(sourceData);
+        let datePart = `喫食日:${delvedt}`;
+        if (eatingTimeLabel) {
+            datePart += `　${eatingTimeLabel}`;
         }
-        eatingDateElement.textContent = `喫食日:${delvedt} ${timeLabel}`;
+        eatingDateElement.textContent = datePart;
     }
     
     const headerFields = {
@@ -706,6 +715,7 @@ export function prepareBaggingInstructionData(apiResponse) {
                 prddt: item.prddt,
                 delvedt: item.delvedt,
                 shptm: item.shptm,
+                eating_time_label: resolveEatingTimeLabel(item),
                 jobordno: item.jobordno,
                 jobordmernm: item.jobordmernm,
                 current_stock: item.current_stock || 0,
@@ -792,14 +802,10 @@ export function prepareBaggingInstructionData(apiResponse) {
 }
 
 /**
- * ラベル用のデータを準備
- * APIレスポンスからラベル用のデータ構造に変換
- * @param {Object} apiResponse - APIレスポンスデータ
- * @returns {Object} ラベル用データ
- */
-/**
- * API POST /api/bagging/calculate print_type=label → LabelResponseDto（label_type, count, …）。
- * 従来の袋詰指示書形 items（standard_bags）も互換で受ける。
+ * ラベル用のデータを準備。
+ * API POST /api/bagging/calculate（print_type=label）の LabelResponseDto、または従来の袋詰指示書形 items を受ける。
+ * @param {Object} apiResponse
+ * @returns {Object}
  */
 export function prepareLabelData(apiResponse) {
     const items = apiResponse.items || [];
