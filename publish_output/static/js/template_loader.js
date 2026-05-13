@@ -3,6 +3,18 @@
  */
 
 /**
+ * 袋詰指示書ヘッダー用の喫食時間の値（API の eating_time_label）。JSON は snake_case / camelCase の両方を読む。
+ * @param {Record<string, unknown>|null|undefined} source
+ * @returns {string}
+ */
+function resolveEatingTimeLabel(source) {
+    if (!source || typeof source !== 'object') return '';
+    return String(
+        source.eating_time_label ?? source.eatingTimeLabel ?? ''
+    ).trim();
+}
+
+/**
  * CSSをスコープ化する
  * テンプレートのスタイルがメインページのスタイルを上書きしないように、
  * すべてのセレクタに #print-preview-container プレフィックスを追加
@@ -224,19 +236,16 @@ function injectHeaderData(container, data) {
     const firstRout = routs && routs.length > 0 ? routs[0] : null;
     const firstMbom = mboms && mboms.length > 0 ? mboms[0] : null;
     
-    // 喫食日情報を更新
+    // 喫食日・喫食時間の値のみ（ラベル「喫食時間:」は付けない。API eating_time_label）
     const eatingDateElement = container.querySelector('#eatingDateInfo');
     if (eatingDateElement && sourceData) {
         const delvedt = sourceData.delvedt || '';
-        const shptm = sourceData.shptm || '';
-        let timeLabel = '';
-        if (shptm && shptm.length >= 2) {
-            const hour = parseInt(shptm.substr(0,2));
-            if (hour < 10) timeLabel = '朝';
-            else if (hour < 15) timeLabel = '昼';
-            else timeLabel = '夕';
+        const eatingTimeLabel = resolveEatingTimeLabel(sourceData);
+        let datePart = `喫食日:${delvedt}`;
+        if (eatingTimeLabel) {
+            datePart += `　${eatingTimeLabel}`;
         }
-        eatingDateElement.textContent = `喫食日:${delvedt} ${timeLabel}`;
+        eatingDateElement.textContent = datePart;
     }
     
     const headerFields = {
@@ -254,6 +263,7 @@ function injectHeaderData(container, data) {
                 item?.classification3_code ?? item?.spec3,
             ].filter(Boolean);
             if (specParts.length) return specParts.join(' / ');
+            if (item?.std && String(item.std).trim()) return String(item.std).trim();
             for (const key of ['car1', 'car2', 'car3']) {
                 const v = item?.[key];
                 const n = parseFloat(v);
@@ -266,15 +276,9 @@ function injectHeaderData(container, data) {
             return '1';
         })(),
         'sterilizationTemp': formatSterilizationTemp(item?.steritemprange),
-        'mealCount': (() => {
-            const ins = sourceData.quantity_for_instruction_total ?? sourceData.quantity_for_instruction;
-            const pln = sourceData.quantity_for_inventory_total ?? sourceData.quantity_for_inventory ?? sourceData.planned_quantity;
-            if (ins != null && pln != null && Number(ins) !== Number(pln))
-                return `${ins}（指示） / ${pln}（受注）`;
-            return ins ?? sourceData.adjusted_quantity ?? pln ?? sourceData.planned_quantity ?? '';
-        })(),
+        'mealCount': '',
         'stockQuantity': sourceData.current_stock?.toFixed(2) || '',
-        'orderNumber': sourceData.jobordno || '',
+        'orderNumber': '',
         'coolingEquipment': '□ﾁﾗｰ水槽 □ﾌﾞﾗｽﾄﾁﾗｰ',
         'coolingTemp': '℃',
         'supervisor': '',
@@ -358,9 +362,26 @@ function formatBagCount(n) {
     return Number.isInteger(num) ? String(num) : formatNumber(num);
 }
 
+function resolveMainTableSizing(itemCount) {
+    const defaultRowHeight = 22;
+    const defaultBodyRowsThatFit = 26; // 25 facilities + total row fits on A4.
+    const bodyRows = Math.max(21, itemCount + 1);
+    const rowHeight = Math.max(
+        12,
+        Math.min(defaultRowHeight, Math.floor((defaultBodyRowsThatFit * defaultRowHeight) / bodyRows))
+    );
+
+    return {
+        rowHeight,
+        cellFontSize: Math.max(7, Math.min(11, rowHeight - 7)),
+        irregularFontSize: Math.max(6, Math.min(9, rowHeight - 9)),
+        lineHeight: Math.max(8, rowHeight - 8),
+    };
+}
+
 /**
  * テーブルデータを注入（新テンプレート用）
- * 常に20行を表示する
+ * 空行で水増しせず、データ行の直後に合計行を表示する
  * @param {HTMLElement} container - コンテナ要素
  * @param {Object} data - データオブジェクト
  */
@@ -372,46 +393,85 @@ function injectTableData(container, data) {
     tbody.innerHTML = '';
 
     const specQty = resolveSpecQty(data);
+    const mainTable = container.querySelector('.main-table');
+    if (mainTable) {
+        const sizing = resolveMainTableSizing(items.length);
+        mainTable.style.setProperty('--bagging-main-row-height', `${sizing.rowHeight}px`);
+        mainTable.style.setProperty('--bagging-main-cell-font-size', `${sizing.cellFontSize}px`);
+        mainTable.style.setProperty('--bagging-irregular-font-size', `${sizing.irregularFontSize}px`);
+        mainTable.style.setProperty('--bagging-main-line-height', `${sizing.lineHeight}px`);
+    }
+
+    // 一番左の子品目の単位が g または kg かどうかを判定
+    const firstMbom = data.commonInfo?.mboms?.[0] ?? data.items?.[0]?.mboms?.[0];
+    const firstUnitNm = (firstMbom?.child_item?.uni?.uninm || '').toLowerCase().trim();
+    const useGKgMode = firstUnitNm === 'g' || firstUnitNm === 'kg';
 
     // 施設ごとの規格袋数・端数を計算（受注数 / 規格数量）
     const computed = items.map(item => {
         const qty = Number(item.planned_quantity) || Number(item.adjusted_quantity) || 0;
         const stdBags = specQty > 0 ? Math.floor(qty / specQty) : (item.standard_bags || 0);
         const irregular = specQty > 0 ? (qty % specQty) : (item.irregular_quantity || 0);
-        return { stdBags, irregular };
+        // g/kg モード時：端数比率（1個目の比率を2個目以降の列にも適用）
+        const ratio = (useGKgMode && qty > 0) ? irregular / qty : null;
+        return { stdBags, irregular, ratio, qty };
+    });
+
+    // g/kgモード：調味液列の合計（端数）が規格数量を超える場合、超過分を規格袋数に加算
+    const extendedComputed = computed.map((c, idx) => {
+        if (!useGKgMode || c.ratio == null || specQty <= 0) {
+            return { ...c, bonusBags: 0, displayIrregular: c.irregular, displayStdBags: c.stdBags };
+        }
+        const sa = items[idx]?.seasoning_amounts || [];
+        const rawIrregularTotal = sa.reduce((sum, s, j) =>
+            (j < 10 && s.calculated_amount != null) ? sum + s.calculated_amount * c.ratio : sum, 0);
+        const bonusBags = Math.floor(rawIrregularTotal / specQty);
+        const displayIrregular = rawIrregularTotal % specQty;
+        return { ...c, bonusBags, displayIrregular, displayStdBags: c.stdBags + bonusBags };
     });
 
     // 合計値
     let totalStandardBags = 0;
     let totalIrregular = 0;
     const totalColumns = new Array(10).fill(0);
-    computed.forEach((c, idx) => {
-        totalStandardBags += c.stdBags;
-        totalIrregular += c.irregular;
+    extendedComputed.forEach((c, idx) => {
+        totalStandardBags += c.displayStdBags;
+        totalIrregular += c.displayIrregular;
         const seasoningAmounts = items[idx]?.seasoning_amounts || [];
         seasoningAmounts.forEach((s, j) => {
-            if (j < 10 && s.calculated_amount != null) totalColumns[j] += s.calculated_amount;
+            if (j < 10 && s.calculated_amount != null) {
+                totalColumns[j] += useGKgMode && c.ratio != null
+                    ? s.calculated_amount * c.ratio
+                    : s.calculated_amount;
+            }
         });
     });
 
-    // 21行（20行データ + 1行合計）
-    for (let i = 0; i < 21; i++) {
+    // 空行で水増しすると合計行だけが2ページ目に送られるため、データ行の直後に合計行を置く。
+    const totalRowIndex = items.length;
+    for (let i = 0; i <= totalRowIndex; i++) {
         const row = document.createElement('tr');
         const item = items[i];
-        const c = computed[i];
+        const c = extendedComputed[i];
 
-        if (i === 20) row.className = 'total-row';
+        if (i === totalRowIndex) row.className = 'total-row';
 
         // 施設名
         const facilityCell = document.createElement('td');
         const facilityContent = document.createElement('div');
         facilityContent.className = 'cell-content';
         facilityContent.style.justifyContent = 'flex-start';
-        if (i === 20) {
+        if (i === totalRowIndex) {
             facilityContent.textContent = '合計';
         } else {
-            facilityContent.textContent = item ? (item.facility_name || item.shpctrnm || '') : '';
-            if (!item) facilityContent.innerHTML = '&nbsp;';
+            const facilityText = item ? (item.facility_name || item.shpctrnm || '') : '';
+            facilityContent.textContent = facilityText || ' ';
+            // 施設名列幅: 9% of 180mm ≈ 61px、セル内パディング 6px 分を引いた 55px に収まるよう縮小
+            if (facilityText) {
+                const baseFontSize = parseFloat(mainTable?.style.getPropertyValue('--bagging-main-cell-font-size')) || 11;
+                const shrunkSize = shrinkFontSizeToFit(facilityText, 55, baseFontSize, 'MS Gothic', 6);
+                if (shrunkSize < baseFontSize) facilityContent.style.fontSize = `${shrunkSize}px`;
+            }
         }
         facilityCell.appendChild(facilityContent);
         row.appendChild(facilityCell);
@@ -420,10 +480,10 @@ function injectTableData(container, data) {
         const standardBagsCell = document.createElement('td');
         const standardBagsContent = document.createElement('div');
         standardBagsContent.className = 'cell-content';
-        if (i === 20) {
+        if (i === totalRowIndex) {
             standardBagsContent.textContent = totalStandardBags > 0 ? String(totalStandardBags) : '';
         } else if (item) {
-            standardBagsContent.textContent = c.stdBags > 0 ? String(c.stdBags) : '';
+            standardBagsContent.textContent = c.displayStdBags > 0 ? String(c.displayStdBags) : '';
         } else {
             standardBagsContent.innerHTML = '&nbsp;';
         }
@@ -432,7 +492,7 @@ function injectTableData(container, data) {
 
         // 規格外袋（端数）内の各調味液列 - 10列
         const seasoningAmounts = item?.seasoning_amounts || [];
-        if (i === 20) {
+        if (i === totalRowIndex) {
             for (let j = 0; j < 10; j++) {
                 const amountCell = document.createElement('td');
                 const amountContent = document.createElement('div');
@@ -446,21 +506,28 @@ function injectTableData(container, data) {
                 const amountCell = document.createElement('td');
                 const amountContent = document.createElement('div');
                 amountContent.className = 'cell-content';
-                const amount = seasoningAmounts[j]?.calculated_amount;
-                amountContent.innerHTML = (amount != null && amount !== 0) ? formatNumber(amount) : '&nbsp;';
+                const rawAmount = seasoningAmounts[j]?.calculated_amount;
+                let displayAmount;
+                if (useGKgMode && c.ratio != null && rawAmount != null) {
+                    // g/kg モード：端数比率を掛けた量を表示（2個目以降も同じ比率）
+                    displayAmount = rawAmount * c.ratio;
+                } else {
+                    displayAmount = rawAmount;
+                }
+                amountContent.innerHTML = (displayAmount != null && displayAmount !== 0) ? formatNumber(displayAmount) : '&nbsp;';
                 amountCell.appendChild(amountContent);
                 row.appendChild(amountCell);
             }
         }
 
-        // 端数列（受注数 ÷ 規格数量 の余り）
+        // 端数列（g/kgモード：調味液列合計の規格数量余り、それ以外：受注数 ÷ 規格数量 の余り）
         const irregularCell = document.createElement('td');
         const irregularContent = document.createElement('div');
         irregularContent.className = 'cell-content';
-        if (i === 20) {
+        if (i === totalRowIndex) {
             irregularContent.innerHTML = totalIrregular > 0 ? formatBagCount(totalIrregular) : '&nbsp;';
         } else if (item) {
-            irregularContent.innerHTML = c.irregular > 0 ? formatBagCount(c.irregular) : '&nbsp;';
+            irregularContent.innerHTML = c.displayIrregular > 0 ? formatBagCount(c.displayIrregular) : '&nbsp;';
         } else {
             irregularContent.innerHTML = '&nbsp;';
         }
@@ -480,11 +547,42 @@ function injectTableData(container, data) {
 function injectIngredientsTableData(container, data) {
     const tbody = container.querySelector('#ingredientsTableBody');
     if (!tbody) return;
-    
+
     // commonInfo または最初のitem
     const sourceData = data.commonInfo || (data.items && data.items.length > 0 ? data.items[0] : null);
     const mboms = sourceData?.mboms || [];
     const displayRows = data.ingredient_display_rows;
+
+    // 右上合計欄の計算：下テーブルと同じロジックで施設ごとに集計
+    const allItems = data.items || [];
+    const firstMbomTop = data.commonInfo?.mboms?.[0] ?? allItems[0]?.mboms?.[0];
+    const firstUnitTop = (firstMbomTop?.child_item?.uni?.uninm || '').toLowerCase().trim();
+    const useGKgTop = firstUnitTop === 'g' || firstUnitTop === 'kg';
+    const specQtyTop = resolveSpecQty(data);
+
+    let computedTotalStdBags = 0;
+    let computedIrregularBagCount = 0;
+    allItems.forEach(item => {
+        const qty = Number(item.planned_quantity) || Number(item.adjusted_quantity) || 0;
+        const stdBags = specQtyTop > 0 ? Math.floor(qty / specQtyTop) : (item.standard_bags || 0);
+        const irregular = specQtyTop > 0 ? (qty % specQtyTop) : (item.irregular_quantity || 0);
+        const ratio = (useGKgTop && qty > 0) ? irregular / qty : null;
+        // g/kgモード：調味液列合計が規格数量を超えた分も規格袋数に加算
+        let displayStdBags = stdBags;
+        if (useGKgTop && ratio != null && specQtyTop > 0) {
+            const sa = item.seasoning_amounts || [];
+            const rawIrregularTotal = sa.reduce((sum, s, j) =>
+                (j < 10 && s.calculated_amount != null) ? sum + s.calculated_amount * ratio : sum, 0);
+            displayStdBags = stdBags + Math.floor(rawIrregularTotal / specQtyTop);
+        }
+        computedTotalStdBags += displayStdBags;
+        // 一番左の品目列の値が 0 より大きい施設を1件としてカウント
+        const firstAmt = item.seasoning_amounts?.[0]?.calculated_amount;
+        const firstDisplay = (useGKgTop && ratio != null && firstAmt != null)
+            ? firstAmt * ratio
+            : firstAmt;
+        if (firstDisplay != null && firstDisplay > 0) computedIrregularBagCount += 1;
+    });
 
     // 投入量登録反映：API の ingredient_display_rows で右上を上書き
     if (displayRows && displayRows.length > 0) {
@@ -509,42 +607,36 @@ function injectIngredientsTableData(container, data) {
         if (totalRow) {
             const totalStandardBagsCell = totalRow.querySelector('#totalStandardBagsTop');
             const totalIrregularBagsCell = totalRow.querySelector('#totalIrregularBagsTop');
-            const grandTotal = data.totals?.grand_total || 0;
-            const specQty = resolveSpecQty(data);
             if (totalStandardBagsCell)
-                totalStandardBagsCell.textContent = specQty > 0
-                    ? String(Math.floor(grandTotal / specQty))
-                    : (data.totals?.standard_bags || '0');
+                totalStandardBagsCell.textContent = computedTotalStdBags > 0 ? String(computedTotalStdBags) : '';
             if (totalIrregularBagsCell)
-                totalIrregularBagsCell.textContent = specQty > 0
-                    ? formatBagCount(grandTotal % specQty)
-                    : (data.totals?.irregular_bags || '0');
+                totalIrregularBagsCell.textContent = computedIrregularBagCount > 0 ? String(computedIrregularBagCount) : '';
         }
         return;
     }
 
     // 品目全体の合計数量を使用（totalsから取得）
     const totalOrderQuantity = data.totals?.grand_total || 0;
-    
+
     // 既存の行を取得（最後の行は合計行なので除外）
     const rows = tbody.querySelectorAll('tr');
     const dataRows = Array.from(rows).slice(0, -1);
-    
+
     // 各行にデータを注入
     dataRows.forEach((row, i) => {
         const cells = row.querySelectorAll('td');
         if (cells.length < 6) return;
-        
+
         const mbom = mboms[i];
-        
+
         if (mbom) {
             const childRout = mbom?.child_item?.routs?.[0];
-            
+
             cells[0].textContent = childRout?.workc?.wcnm || '';
             cells[1].textContent = childRout?.ware?.whnm || '';
             cells[2].textContent = mbom.child_item?.itemnm || '';
             cells[3].textContent = '';  // 規格数量は空欄
-            
+
             // 総数量 = (品目全体の合計数量 / otp) × amu
             let totalQuantityForItem = '';
             if (mbom?.otp && mbom.otp > 0) {
@@ -556,25 +648,46 @@ function injectIngredientsTableData(container, data) {
             cells[5].textContent = mbom?.child_item?.uni?.uninm || '';
         }
     });
-    
-    // 最終行の合計を更新（品目全体の合計）
+
+    // 最終行の合計を更新
     const totalRow = tbody.querySelector('tr:last-child');
     if (totalRow) {
         const totalStandardBagsCell = totalRow.querySelector('#totalStandardBagsTop');
         const totalIrregularBagsCell = totalRow.querySelector('#totalIrregularBagsTop');
-        const grandTotal2 = data.totals?.grand_total || 0;
-        const specQty2 = resolveSpecQty(data);
-        if (totalStandardBagsCell) {
-            totalStandardBagsCell.textContent = specQty2 > 0
-                ? String(Math.floor(grandTotal2 / specQty2))
-                : (data.totals?.standard_bags || '0');
-        }
-        if (totalIrregularBagsCell) {
-            totalIrregularBagsCell.textContent = specQty2 > 0
-                ? formatBagCount(grandTotal2 % specQty2)
-                : (data.totals?.irregular_bags || '0');
-        }
+        if (totalStandardBagsCell)
+            totalStandardBagsCell.textContent = computedTotalStdBags > 0 ? String(computedTotalStdBags) : '';
+        if (totalIrregularBagsCell)
+            totalIrregularBagsCell.textContent = computedIrregularBagCount > 0 ? String(computedIrregularBagCount) : '';
     }
+}
+
+/**
+ * テキストが指定幅（px）に収まるよう、フォントサイズを最小値まで下げて返す。
+ * Canvas API で実測し、利用不可の場合は文字幅の近似値（全角=1em, 半角=0.6em）で代替する。
+ * @param {string} text
+ * @param {number} targetWidthPx - 収めたい幅（px）
+ * @param {number} baseFontPx - 基準フォントサイズ（px）
+ * @param {string} fontFamily
+ * @param {number} minFontPx - 最小フォントサイズ（px）
+ * @returns {number} 適用すべきフォントサイズ（px）
+ */
+function shrinkFontSizeToFit(text, targetWidthPx, baseFontPx, fontFamily, minFontPx) {
+    if (!text) return baseFontPx;
+    let fontSize = baseFontPx;
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        while (fontSize > minFontPx) {
+            ctx.font = `${fontSize}px "${fontFamily}", monospace`;
+            if (ctx.measureText(text).width <= targetWidthPx) break;
+            fontSize -= 0.5;
+        }
+    } catch (_) {
+        // canvas 未対応環境: 全角1em・半角0.6em の近似で代替
+        const measure = (fs) => [...text].reduce((w, ch) => w + (ch.charCodeAt(0) > 0xFF ? fs : fs * 0.6), 0);
+        while (fontSize > minFontPx && measure(fontSize) > targetWidthPx) fontSize -= 0.5;
+    }
+    return fontSize;
 }
 
 /**
@@ -589,6 +702,15 @@ function formatNumber(value) {
     return num.toFixed(2);
 }
 
+function resolveStandardBags(item) {
+    const std = parseFloat(item.item?.std);
+    if (!isNaN(std) && std > 0) {
+        const qty = item.planned_quantity ?? 0;
+        return Math.floor(qty / std);
+    }
+    return item.standard_bags || 0;
+}
+
 /**
  * 品目全体の合計値を計算
  * @param {Array} items - 品目内の全アイテム
@@ -599,9 +721,9 @@ function calculateItemTotals(items) {
     let totalIrregularBags = 0;
     let grandTotal = 0;
     const seasoningColumns = new Array(10).fill(0);
-    
+
     items.forEach(item => {
-        totalStandardBags += item.standard_bags || 0;
+        totalStandardBags += resolveStandardBags(item);
         if ((item.irregular_quantity || 0) > 0) {
             totalIrregularBags += 1;
         }
@@ -625,9 +747,9 @@ function calculateItemTotals(items) {
 }
 
 /**
- * 袋詰指示書用のデータを準備（ページング対応版）
+ * 袋詰指示書用のデータを準備
  * APIレスポンスからテンプレート用のデータ構造に変換
- * 品目ごとにグループ化し、20件ごとにページング
+ * 品目ごとにグループ化し、1品目を1印刷ページにまとめる
  * @param {Object} apiResponse - APIレスポンスデータ
  * @returns {Array} ページデータ配列
  */
@@ -670,6 +792,7 @@ export function prepareBaggingInstructionData(apiResponse) {
                 prddt: item.prddt,
                 delvedt: item.delvedt,
                 shptm: item.shptm,
+                eating_time_label: resolveEatingTimeLabel(item),
                 jobordno: item.jobordno,
                 jobordmernm: item.jobordmernm,
                 current_stock: item.current_stock || 0,
@@ -702,78 +825,64 @@ export function prepareBaggingInstructionData(apiResponse) {
         // 品目全体の合計値を計算（全ページで使用）
         const itemTotals = calculateItemTotals(itemList);
         
-        // ステップ3: 20件ごとにページング
-        const pageSize = 20;
-        const totalPages = Math.ceil(itemList.length / pageSize);
-        
-        for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-            const startIdx = pageIndex * pageSize;
-            const endIdx = Math.min(startIdx + pageSize, itemList.length);
-            const pageItems = itemList.slice(startIdx, endIdx);
-            
-            // 表示用にitemデータを整形
-            const processedItems = pageItems.map(item => ({
-                facility_name: item.shpctrnm || '',
-                standard_bags: item.standard_bags || 0,
-                irregular_quantity: item.irregular_quantity || 0,
-                total: item.adjusted_quantity || item.planned_quantity || 0,
-                shpctrnm: item.shpctrnm || '',
-                seasoning_amounts: item.seasoning_amounts || [],
-                item: item.item,
-                shpctr: item.shpctr,
-                routs: item.routs,
-                mboms: item.mboms,
-                cusmcd: item.cusmcd,
-                prddt: item.prddt,
-                delvedt: item.delvedt,
-                shptm: item.shptm,
-                itemcd: item.itemcd,
-                itemnm: item.itemnm,
-                jobordno: item.jobordno,
-                jobordmernm: item.jobordmernm,
-                planned_quantity: item.planned_quantity,
-                adjusted_quantity: item.adjusted_quantity,
-                current_stock: item.current_stock || 0,
-            }));
-            
-            allPages.push({
-                // ページ情報
-                pageNumber: pageIndex + 1,
-                totalPages: totalPages,
-                itemcd: itemcd,
-                
-                // 品目共通情報（全ページで同じ）
-                commonInfo: commonInfo,
-                
-                // このページのデータ
-                items: processedItems,
-                
-                ingredient_display_rows: ingredientDisplayRows,
+        // 表示用にitemデータを整形
+        const processedItems = itemList.map(item => ({
+            facility_name: item.shpctrnm || '',
+            standard_bags: resolveStandardBags(item),
+            irregular_quantity: item.irregular_quantity || 0,
+            total: item.adjusted_quantity || item.planned_quantity || 0,
+            shpctrnm: item.shpctrnm || '',
+            seasoning_amounts: item.seasoning_amounts || [],
+            item: item.item,
+            shpctr: item.shpctr,
+            routs: item.routs,
+            mboms: item.mboms,
+            cusmcd: item.cusmcd,
+            prddt: item.prddt,
+            delvedt: item.delvedt,
+            shptm: item.shptm,
+            itemcd: item.itemcd,
+            itemnm: item.itemnm,
+            jobordno: item.jobordno,
+            jobordmernm: item.jobordmernm,
+            planned_quantity: item.planned_quantity,
+            adjusted_quantity: item.adjusted_quantity,
+            current_stock: item.current_stock || 0,
+        }));
 
-                // 合計値（品目全体の合計）
-                totals: {
-                    standard_bags: itemTotals.standard_bags,
-                    irregular_bags: itemTotals.irregular_bags,
-                    grand_total: itemTotals.grand_total,
-                    facility_count: itemList.length,
-                    seasoning_columns: itemTotals.seasoning_columns
-                }
-            });
-        }
+        allPages.push({
+            // ページ情報
+            pageNumber: 1,
+            totalPages: 1,
+            itemcd: itemcd,
+            
+            // 品目共通情報
+            commonInfo: commonInfo,
+            
+            // この品目の全施設データ
+            items: processedItems,
+            
+            ingredient_display_rows: ingredientDisplayRows,
+
+            // 合計値（品目全体の合計）
+            totals: {
+                standard_bags: itemTotals.standard_bags,
+                irregular_bags: itemTotals.irregular_bags,
+                grand_total: itemTotals.grand_total,
+                facility_count: itemList.length,
+                seasoning_columns: itemTotals.seasoning_columns
+            }
+        });
     });
     
     return allPages;
 }
 
 /**
- * ラベル用のデータを準備
- * APIレスポンスからラベル用のデータ構造に変換
- * @param {Object} apiResponse - APIレスポンスデータ
- * @returns {Object} ラベル用データ
- */
-/**
- * API POST /api/bagging/calculate print_type=label → LabelResponseDto（label_type, count, …）。
- * 従来の袋詰指示書形 items（standard_bags）も互換で受ける。
+ * ラベル用のデータを準備。
+ * API POST /api/bagging/calculate（print_type=label）の LabelResponseDto、または従来の袋詰指示書形 items を受ける。
+ * @param {Object} apiResponse
+ * @returns {Object}
  */
 export function prepareLabelData(apiResponse) {
     const items = apiResponse.items || [];

@@ -85,6 +85,9 @@ public class BaggingSearchGroupDto
 
     [JsonPropertyName("line_prkeys")]
     public List<long> LinePrkeys { get; set; } = new();
+
+    [JsonPropertyName("is_printed")]
+    public bool IsPrinted { get; set; } = false;
 }
 
 public class BaggingSearchResponseDto
@@ -342,9 +345,17 @@ public class ItemDetailDto
     [JsonPropertyName("shelflife_days")]
     public int? ShelflifeDays { get; set; }
 
+    /// <summary>規格（itemadditionalinformation.std）。</summary>
+    [JsonPropertyName("std")]
+    public string? Std { get; set; }
+
     /// <summary>分類1コード（品目付加情報・classification1 code）。</summary>
     [JsonPropertyName("classification1_code")]
     public string? Classification1Code { get; set; }
+
+    /// <summary>分類1名称（classification1.classification1name）。</summary>
+    [JsonPropertyName("classification1_name")]
+    public string? Classification1Name { get; set; }
 
     /// <summary>分類2コード（品目付加情報・classification2 code）。</summary>
     [JsonPropertyName("classification2_code")]

@@ -58,4 +58,56 @@ public class BaggingOrderBasedRoundingTests
         Assert.Equal(10m, irr);
         Assert.Single(list);
     }
+
+    [Fact]
+    public void CountUnit_no_seasoningBoms_splits_by_divisor()
+    {
+        // 久米病院: qty=130, spec=80 → stdBags=1, irregular=50
+        var parent = new ItemDetailDto { Itemcd = "100", Uni = new UniDetailDto { Uninm = "ヶ" } };
+
+        var (_, stdBags, irr, _) = BaggingOrderBasedRounding.ApplyRoundingAndOptionalFloorAllocation(
+            130m, 80m, 80m, parent, new List<SeasoningBomRow>());
+
+        Assert.Equal(1, stdBags);
+        Assert.Equal(50m, irr);
+    }
+
+    [Fact]
+    public void CountUnit_no_seasoningBoms_exact_multiple_no_irregular()
+    {
+        // くろだ病院: qty=80, spec=80 → stdBags=1, irregular=0
+        var parent = new ItemDetailDto { Itemcd = "100", Uni = new UniDetailDto { Uninm = "ヶ" } };
+
+        var (_, stdBags, irr, _) = BaggingOrderBasedRounding.ApplyRoundingAndOptionalFloorAllocation(
+            80m, 80m, 80m, parent, new List<SeasoningBomRow>());
+
+        Assert.Equal(1, stdBags);
+        Assert.Equal(0m, irr);
+    }
+
+    [Fact]
+    public void HonUnit_no_seasoningBoms_splits_by_divisor()
+    {
+        // 単位"本": qty=130, spec=80 → stdBags=1, irregular=50
+        var parent = new ItemDetailDto { Itemcd = "100", Uni = new UniDetailDto { Uninm = "本" } };
+
+        var (_, stdBags, irr, _) = BaggingOrderBasedRounding.ApplyRoundingAndOptionalFloorAllocation(
+            130m, 80m, 80m, parent, new List<SeasoningBomRow>());
+
+        Assert.Equal(1, stdBags);
+        Assert.Equal(50m, irr);
+    }
+
+    [Fact]
+    public void KiriUnit_no_seasoningBoms_splits_by_divisor()
+    {
+        // 単位"切": qty=130, spec=80 → stdBags=1, irregular=50
+        var parent = new ItemDetailDto { Itemcd = "100", Uni = new UniDetailDto { Uninm = "切" } };
+
+        var (_, stdBags, irr, _) = BaggingOrderBasedRounding.ApplyRoundingAndOptionalFloorAllocation(
+            130m, 80m, 80m, parent, new List<SeasoningBomRow>());
+
+        Assert.Equal(1, stdBags);
+        Assert.Equal(50m, irr);
+    }
 }

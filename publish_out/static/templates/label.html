@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ラベル</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'MS Gothic', 'Osaka-Mono', monospace;
+            font-size: 12px;
+            background: white;
+            padding: 10mm;
+        }
+
+        .labels-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10mm;
+        }
+
+        .label {
+            width: 90mm;
+            height: 60mm;
+            border: 2px solid #000;
+            padding: 5mm;
+            page-break-inside: avoid;
+            background: white;
+        }
+
+        .label-header {
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 5mm;
+            padding-bottom: 2mm;
+            border-bottom: 2px solid #000;
+        }
+
+        .label-row {
+            display: flex;
+            margin-bottom: 3mm;
+            line-height: 1.4;
+        }
+
+        .label-title {
+            font-weight: bold;
+            min-width: 25mm;
+            flex-shrink: 0;
+        }
+
+        .label-value {
+            flex: 1;
+            word-wrap: break-word;
+        }
+
+        .label-type-standard {
+            border-color: #0066cc;
+        }
+
+        .label-type-irregular {
+            border-color: #cc6600;
+        }
+
+        /* 印刷時の設定 */
+        @media print {
+            body {
+                padding: 0;
+            }
+
+            .labels-container {
+                gap: 5mm;
+            }
+
+            @page {
+                size: A4;
+                margin: 10mm;
+            }
+        }
+    </style>
+    <!-- 印刷プレビュー用の追加スタイル -->
+    <style>
+        /* 印刷時はラベルのみ表示 */
+        @media print {
+            body > *:not(#print-preview-container) {
+                display: none !important;
+            }
+            
+            #print-preview-container {
+                display: block !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="labels-container" id="labelsContainer">
+        <!-- ラベルがJavaScriptで動的に生成される -->
+    </div>
+
+    <script>
+        // このスクリプトはテンプレートの構造を示すためのもの
+        // 実際のデータ注入はtemplate_loader.jsで行われる
+    </script>
+</body>
+</html>
+

@@ -75,6 +75,16 @@ public class BaggingController : ControllerBase
         return Ok(r);
     }
 
+    /// <summary>印刷済みとしてマーク（製造日・品目コードで UPSERT）。</summary>
+    [HttpPost("mark-printed")]
+    public async Task<IActionResult> MarkPrinted([FromBody] MarkPrintedRequestDto body, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Prddt) || string.IsNullOrWhiteSpace(body.Itemcd))
+            return BadRequest(new { detail = "prddt と itemcd を指定してください。" });
+        await _baggingInputService.MarkPrintedAsync(body.Prddt.Trim(), body.Itemcd.Trim(), ct);
+        return Ok(new { ok = true });
+    }
+
     /// <summary>袋詰指示書またはラベルデータを計算。ラベルは殺菌温度（strtemp）を含む。</summary>
     [HttpPost("calculate")]
     public async Task<IActionResult> Calculate(
@@ -107,10 +117,15 @@ public class BaggingController : ControllerBase
                 var baseQty = item.PlannedQuantity;
                 var labelStdBags = fillQty > 0 ? (int)(baseQty / fillQty) : item.StandardBags;
                 var labelIrregular = fillQty > 0 ? (baseQty % fillQty) : item.IrregularQuantity;
+                var pageNo = labelStdBags + (labelIrregular > 0 ? 1 : 0);
+                var shptmName = item.ShptmName;
+                var classification1Name = item.Item?.Classification1Name;
                 labelItems.AddRange(LabelGeneratorService.GenerateStandardLabelsFromDto(
-                    item.Itemcd, item.Itemnm, st, item.Item?.Kikunip, item.Delvedt, item.Shptm, labelStdBags, fillQty, effectiveExpiry, unitName));
+                    item.Itemcd, item.Itemnm, st, item.Item?.Kikunip, item.Delvedt, item.Shptm, labelStdBags, fillQty, effectiveExpiry, unitName,
+                    shptmName: shptmName, shpctrnm: item.Shpctrnm, classification1Name: classification1Name, pageNo: pageNo, startPageNo: 1));
                 labelItems.AddRange(LabelGeneratorService.GenerateIrregularLabelsFromDto(
-                    item.Itemcd, item.Itemnm, st, item.Delvedt, item.Shptm, item.Shpctrnm, labelIrregular, effectiveExpiry, unitName));
+                    item.Itemcd, item.Itemnm, st, item.Delvedt, item.Shptm, item.Shpctrnm, labelIrregular, effectiveExpiry, unitName,
+                    shptmName: shptmName, classification1Name: classification1Name, pageNo: pageNo, startPageNo: labelStdBags + 1));
             }
             return Ok(new LabelResponseDto { Items = labelItems });
         }

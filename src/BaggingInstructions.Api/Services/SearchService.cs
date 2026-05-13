@@ -13,10 +13,12 @@ namespace BaggingInstructions.Api.Services;
 public class SearchService
 {
     private readonly AppDbContext _db;
+    private readonly CstmeatDbContext _otherDb;
 
-    public SearchService(AppDbContext db)
+    public SearchService(AppDbContext db, CstmeatDbContext otherDb)
     {
         _db = db;
+        _otherDb = otherDb;
     }
 
     /// <summary>受注明細を検索（基本情報のみ）。productdate で検索、itemcd は部分一致。</summary>
@@ -55,8 +57,8 @@ public class SearchService
         }).ToList();
     }
 
-    /// <summary>袋詰用：製造日・品目コードで受注明細を検索し、製造日×品目で合算したグループを返す。</summary>
-    public async Task<List<BaggingSearchGroupDto>> SearchBaggingGroupedAsync(string prddt, string? itemcd, CancellationToken ct = default)
+    /// <summary>袋詰用：品目コードが 40 で始まる受注明細を製造日・品目コードで検索し、製造日×品目で合算したグループを返す。</summary>
+    public async Task<List<BaggingSearchGroupDto>> SearchBaggingGroupedAsync(string prddt, string? itemcd, bool? isComplete = null, CancellationToken ct = default)
     {
         var prddtDate = ParseProductDate(prddt);
         if (!prddtDate.HasValue)
@@ -65,7 +67,9 @@ public class SearchService
         var query = _db.SalesOrderLines.AsNoTracking()
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.Unit0)
-            .Where(l => l.ProductDate == prddtDate);
+            .Include(l => l.SalesOrder)
+            .Where(l => l.ProductDate == prddtDate)
+            .Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.StartsWith("40"));
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
@@ -74,13 +78,33 @@ public class SearchService
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
 
-        return lines
+        // 品目ごとに confirmed が1件でもあれば confirmed のみ、なければ全件を対象とする
+        var filteredLines = lines
             .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
+            .GroupBy(l => l.Item!.ItemCd!)
+            .SelectMany(g =>
+            {
+                var hasConfirmed = g.Any(l => l.SalesOrder?.Status == "confirmed");
+                return hasConfirmed
+                    ? g.Where(l => l.SalesOrder?.Status == "confirmed")
+                    : g.AsEnumerable();
+            })
+            .ToList();
+
+        var printedRows = await _otherDb.BaggedQuantities.AsNoTracking()
+            .Where(r => r.ProductDate == prddtDate.Value && r.IsPrinted)
+            .Select(r => r.ParentItemCode)
+            .Distinct()
+            .ToListAsync(ct);
+        var printedItemCodes = printedRows.ToHashSet(StringComparer.Ordinal);
+
+        var groups = filteredLines
             .GroupBy(l => l.Item!.ItemCd!)
             .Select(g =>
             {
                 var first = g.First();
                 var item = first.Item!;
+                var printed = printedItemCodes.Contains(g.Key);
                 return new BaggingSearchGroupDto
                 {
                     Prddt = prddtDate.Value.ToString("yyyyMMdd"),
@@ -89,11 +113,17 @@ public class SearchService
                     TotalJobordqun = g.Sum(x => x.Quantity),
                     UnitCode = item.Unit0?.UnitCode,
                     UnitName = item.Unit0?.UnitName,
-                    LinePrkeys = g.Select(x => x.SalesOrderLineId).OrderBy(id => id).ToList()
+                    LinePrkeys = g.Select(x => x.SalesOrderLineId).OrderBy(id => id).ToList(),
+                    IsPrinted = printed
                 };
             })
             .OrderBy(x => x.Itemcd, StringComparer.Ordinal)
             .ToList();
+
+        if (isComplete.HasValue)
+            groups = groups.Where(g => g.IsPrinted == isComplete.Value).ToList();
+
+        return groups;
     }
 
     /// <summary>汁仕分表用：喫食日・品目コードで検索。delvedt は YYYYMMDD、itemcd は部分一致。item.middleclassficationcode が 50 または 51 の品目のみ。</summary>
@@ -267,6 +297,8 @@ public class SearchService
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.WorkCenterMappings!)
                 .ThenInclude(m => m.Workcenter)
+            .Include(l => l.Item!)
+                .ThenInclude(i => i!.Classification1)
             .Include(l => l.CustomerItem!)
                 .ThenInclude(ci => ci!.Customer)
             .OrderBy(l => l.SalesOrderLineId)
@@ -281,6 +313,8 @@ public class SearchService
         {
             var boms = await _db.Boms.AsNoTracking()
                 .Where(b => b.ParentItemCd == itemCd)
+                .OrderBy(b => b.ProductionOrder ?? decimal.MaxValue)
+                .ThenBy(b => b.ChildItemCd)
                 .Include(b => b.ChildItem)
                     .ThenInclude(c => c!.Unit0)
                 .Include(b => b.ChildItem)
@@ -299,7 +333,8 @@ public class SearchService
             var cust = so?.Customer;
             var loc = so?.CustomerDeliveryLocation;
             var divisor = BaggingDivisorResolver.ResolveFromAddInfo(addInfo);
-            var car0 = addInfo?.Car0 ?? 1m;
+            var car0 = addInfo?.Car0 ?? BaggingDivisorResolver.ParseStdToDecimal(addInfo?.Std) ?? 1m;
+            var defaultSpecQty = BaggingDivisorResolver.ParseStdToDecimal(addInfo?.Std);
 
             var seasoningBoms = new List<SeasoningBomRow>();
             var bomListResolved = new List<(Bom b, Item? child, Unit? unit)>();
@@ -328,7 +363,8 @@ public class SearchService
                 Prddt = l.ProductDate?.ToString("yyyyMMdd"),
                 Delvedt = l.PlannedDeliveryDate?.ToString("yyyyMMdd"),
                 Shptm = l.Addinfo?.Addinfo04,
-                ShptmName = l.Addinfo?.Addinfo04Name,
+                ShptmName = l.Addinfo?.Addinfo05Name,
+                Addinfo05 = l.Addinfo?.Addinfo05,
                 Cuscd = cust?.CustomerCode,
                 Shpctrcd = loc?.LocationCode,
                 Itemcd = item?.ItemCd,
@@ -339,6 +375,7 @@ public class SearchService
                 Shpctrnm = loc?.LocationName ?? loc?.LocationCode ?? "未指定",
                 Divisor = divisor,
                 Car0 = car0,
+                DefaultSpecQty = defaultSpecQty,
                 SeasoningBoms = seasoningBoms,
                 Item = EntityToDtoMapper.ToItemDetailDto(item, addInfo, item?.Unit0, routs),
                 Shpctr = EntityToDtoMapper.ToShpctrDetailDto(loc, cust),

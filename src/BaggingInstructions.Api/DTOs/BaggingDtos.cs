@@ -66,6 +66,18 @@ public class BaggingInstructionItemDto
     [JsonPropertyName("shptm")]
     public string? Shptm { get; set; }
 
+    /// <summary>配送便名称（salesorderlineaddinfo.addinfo05name）。ラベルの TIME01 に使用。</summary>
+    [JsonPropertyName("shptm_name")]
+    public string? ShptmName { get; set; }
+
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1/2/3 → 朝/昼/夜（サーバー側マッピング）。</summary>
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
+    /// <summary>喫食時間表示（addinfo05 に応じた 朝・昼・夜）。未対応値は空。</summary>
+    [JsonPropertyName("eating_time_label")]
+    public string EatingTimeLabel { get; set; } = "";
+
     [JsonPropertyName("planned_quantity")]
     public decimal PlannedQuantity { get; set; }
 
@@ -163,6 +175,10 @@ public class BaggingInputLineDto
 
     [JsonPropertyName("total_qty")]
     public decimal? TotalQty { get; set; }
+
+    /// <summary>出来高由来の比較用参考値（小数切り上げ済み）。保存対象ではなく表示用。</summary>
+    [JsonPropertyName("reference_qty")]
+    public decimal? ReferenceQty { get; set; }
 }
 
 public class BaggingInputSaveRequestDto
@@ -217,4 +233,13 @@ public class BaggingCalculateResult
     public List<BaggingIngredientRowDto>? IngredientDisplayRows { get; set; }
     /// <summary>有効な規格充填量（ユーザー登録 spec_qty 優先、未登録時は addInfo.Car0）。</summary>
     public decimal? EffectiveSpecFillQty { get; set; }
+}
+
+public class MarkPrintedRequestDto
+{
+    [JsonPropertyName("prddt")]
+    public string Prddt { get; set; } = "";
+
+    [JsonPropertyName("itemcd")]
+    public string Itemcd { get; set; } = "";
 }

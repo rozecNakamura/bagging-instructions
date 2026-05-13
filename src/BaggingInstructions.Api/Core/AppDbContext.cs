@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
     public DbSet<MajorClassification> MajorClassifications => Set<MajorClassification>();
     public DbSet<MiddleClassification> MiddleClassifications => Set<MiddleClassification>();
+    public DbSet<Classification1> Classification1s => Set<Classification1>();
     public DbSet<BaggingInputRegistration> BaggingInputRegistrations => Set<BaggingInputRegistration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -220,6 +221,19 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<MiddleClassification>()
             .HasKey(m => m.MiddleClassificationId);
+
+        modelBuilder.Entity<Classification1>()
+            .HasKey(c => c.Classification1Id);
+        modelBuilder.Entity<Classification1>()
+            .HasIndex(c => c.Classification1Code)
+            .IsUnique();
+        // item.classfication1code（DBカラム名はタイポ）→ classification1.classification1code
+        modelBuilder.Entity<Item>()
+            .HasOne(i => i.Classification1)
+            .WithMany()
+            .HasForeignKey(i => i.Classification1Code)
+            .HasPrincipalKey(c => c.Classification1Code)
+            .IsRequired(false);
 
         modelBuilder.Entity<Supplier>()
             .HasKey(s => s.SupplierCode);

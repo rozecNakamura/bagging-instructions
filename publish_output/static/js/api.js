@@ -61,15 +61,32 @@ export async function searchOrders(productionDate, productCode) {
 
 /**
  * 袋詰用：製造日・品目で合算した検索グループ
+ * @param {string} productionDate
+ * @param {string} productCode
+ * @param {string} [isComplete] - "" | "true" | "false"
  */
-export async function searchBaggingGroups(productionDate, productCode) {
+export async function searchBaggingGroups(productionDate, productCode, isComplete) {
     const prddt = normalizePrddt(productionDate);
     const params = new URLSearchParams({ prddt, itemcd: productCode || '' });
+    if (isComplete === 'true' || isComplete === 'false') params.set('is_complete', isComplete);
     const response = await fetch(`${API_BASE_URL}/search/bagging?${params}`);
     if (!response.ok) {
         const detail = await jsonErrorDetailSuffix(response);
         throw new Error(`検索エラー: ${response.status}${detail}`);
     }
+    return await response.json();
+}
+
+/**
+ * 袋詰印刷済みとしてマーク
+ */
+export async function markBaggingPrinted(prddt, itemcd) {
+    const response = await fetch(`${API_BASE_URL}/bagging/mark-printed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prddt, itemcd })
+    });
+    await throwIfBaggingJsonNotOk(response, '印刷済み登録エラー');
     return await response.json();
 }
 

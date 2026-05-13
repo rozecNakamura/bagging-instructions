@@ -189,6 +189,10 @@
             width: 100%;
             margin-top: 5px;
             table-layout: fixed; /* テーブルの幅を固定 */
+            --bagging-main-row-height: 22px;
+            --bagging-main-cell-font-size: 11px;
+            --bagging-irregular-font-size: 9px;
+            --bagging-main-line-height: 14px;
         }
         
         .main-table th {
@@ -213,18 +217,18 @@
         
         /* メインテーブルのデータ行を2行分の高さで固定 */
         .main-table tbody tr {
-            height: 22px !important; /* 2行分の高さ */
-            min-height: 22px !important;
-            max-height: 22px !important;
+            height: var(--bagging-main-row-height) !important; /* 2行分の高さ */
+            min-height: var(--bagging-main-row-height) !important;
+            max-height: var(--bagging-main-row-height) !important;
         }
         
         .main-table td {
             text-align: right; /* 数値は右寄せ */
             padding: 0 !important; /* paddingを0に */
-            font-size: 11px;
-            height: 22px !important; /* 2行分の高さ */
-            min-height: 22px !important;
-            max-height: 22px !important;
+            font-size: var(--bagging-main-cell-font-size);
+            height: var(--bagging-main-row-height) !important; /* 2行分の高さ */
+            min-height: var(--bagging-main-row-height) !important;
+            max-height: var(--bagging-main-row-height) !important;
             overflow: hidden;
             vertical-align: top;
             box-sizing: border-box;
@@ -232,16 +236,16 @@
         
         /* セル内のコンテンツラッパー */
         .main-table td .cell-content {
-            height: 22px;
-            min-height: 22px;
-            max-height: 22px;
+            height: var(--bagging-main-row-height);
+            min-height: var(--bagging-main-row-height);
+            max-height: var(--bagging-main-row-height);
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: flex-end; /* 右寄せ */
             padding: 1px 3px;
-            font-size: 11px;
-            line-height: 14px;
+            font-size: var(--bagging-main-cell-font-size);
+            line-height: var(--bagging-main-line-height);
             word-wrap: break-word;
             white-space: normal;
             box-sizing: border-box;
@@ -256,7 +260,7 @@
         
         /* 規格外袋（端数）の11列（3-13列目）のフォントサイズを9pxに */
         .main-table tbody td:nth-child(n+3):nth-child(-n+13) .cell-content {
-            font-size: 9px;
+            font-size: var(--bagging-irregular-font-size);
         }
         
         /* 合計行の規格外袋（端数）の11列（3-13列目）も9pxに */
@@ -266,39 +270,39 @@
         
         /* 合計行 */
         .main-table tfoot tr {
-            height: 22px !important;
-            min-height: 22px !important;
-            max-height: 22px !important;
+            height: var(--bagging-main-row-height) !important;
+            min-height: var(--bagging-main-row-height) !important;
+            max-height: var(--bagging-main-row-height) !important;
         }
         
         /* 合計行のセルも固定高さに */
         .main-table tfoot td {
-            height: 22px !important;
-            min-height: 22px !important;
-            max-height: 22px !important;
+            height: var(--bagging-main-row-height) !important;
+            min-height: var(--bagging-main-row-height) !important;
+            max-height: var(--bagging-main-row-height) !important;
             overflow: hidden !important;
             padding: 0 !important;
         }
         
         .main-table tfoot td .cell-content {
-            height: 22px;
-            min-height: 22px;
-            max-height: 22px;
+            height: var(--bagging-main-row-height);
+            min-height: var(--bagging-main-row-height);
+            max-height: var(--bagging-main-row-height);
         }
         
         .total-row {
             font-weight: bold;
             background-color: #f0f0f0;
-            height: 22px !important;
-            min-height: 22px !important;
-            max-height: 22px !important;
+            height: var(--bagging-main-row-height) !important;
+            min-height: var(--bagging-main-row-height) !important;
+            max-height: var(--bagging-main-row-height) !important;
         }
         
         /* 合計行のセル */
         .total-row td {
-            height: 22px !important;
-            min-height: 22px !important;
-            max-height: 22px !important;
+            height: var(--bagging-main-row-height) !important;
+            min-height: var(--bagging-main-row-height) !important;
+            max-height: var(--bagging-main-row-height) !important;
             padding: 0 !important;
         }
         
@@ -336,38 +340,52 @@
         @media print {
             .main-table tbody tr {
                 page-break-inside: avoid;
-                height: 26px !important;
-                min-height: 26px !important;
-                max-height: 26px !important;
+                height: var(--bagging-main-row-height) !important;
+                min-height: var(--bagging-main-row-height) !important;
+                max-height: var(--bagging-main-row-height) !important;
             }
 
             .main-table td {
-                height: 26px !important;
-                min-height: 26px !important;
-                max-height: 26px !important;
+                height: var(--bagging-main-row-height) !important;
+                min-height: var(--bagging-main-row-height) !important;
+                max-height: var(--bagging-main-row-height) !important;
             }
-            
+
             .main-table td .cell-content {
-                height: 26px !important;
-                min-height: 26px !important;
-                max-height: 26px !important;
+                height: var(--bagging-main-row-height) !important;
+                min-height: var(--bagging-main-row-height) !important;
+                max-height: var(--bagging-main-row-height) !important;
             }
-            
+
             .total-row {
-                height: 26px !important;
-                min-height: 26px !important;
-                max-height: 26px !important;
+                height: var(--bagging-main-row-height) !important;
+                min-height: var(--bagging-main-row-height) !important;
+                max-height: var(--bagging-main-row-height) !important;
             }
-                
+
             .total-row td {
-                height: 25px !important;
-                min-height: 25px !important;
-                max-height: 25px !important;
+                height: var(--bagging-main-row-height) !important;
+                min-height: var(--bagging-main-row-height) !important;
+                max-height: var(--bagging-main-row-height) !important;
             }
-            
+
             /* ページに収まるよう全体を微調整 */
             .container {
                 font-size: 10px;
+            }
+
+            /* 1ページに収める: コンテナのオーバーフローを隠す */
+            .container {
+                overflow: hidden;
+                max-height: 276mm;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                page-break-after: avoid;
+            }
+
+            /* theadをページまたぎで繰り返さない */
+            .main-table thead {
+                display: table-row-group;
             }
         }
     </style>

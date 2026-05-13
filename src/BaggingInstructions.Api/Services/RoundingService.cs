@@ -4,7 +4,7 @@ namespace BaggingInstructions.Api.Services;
 
 public static class RoundingService
 {
-    private static readonly HashSet<string> CountUnitNames = new(StringComparer.Ordinal) { "個", "ケ", "ヶ", "箇", "コ" };
+    private static readonly HashSet<string> CountUnitNames = new(StringComparer.Ordinal) { "個", "ケ", "ヶ", "箇", "コ", "本", "切", "尾", "枚" };
 
     /// <summary>単位0が個数系なら端数を切り上げ。未設定は従来互換で個数扱い。</summary>
     public static bool FinishedGoodUsesCountRounding(ItemDetailDto? parentItem)

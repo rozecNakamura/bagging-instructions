@@ -67,7 +67,12 @@ public static class LabelGeneratorService
         int standardBags,
         decimal? standardFillQty = null,
         string? expiryDateOverride = null,
-        string? unitName = null)
+        string? unitName = null,
+        string? shptmName = null,
+        string? shpctrnm = null,
+        string? classification1Name = null,
+        int pageNo = 0,
+        int startPageNo = 1)
     {
         if (standardBags <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
@@ -77,6 +82,7 @@ public static class LabelGeneratorService
                 LabelType = "standard",
                 Delvedt = delvedt,
                 Shptm = shptm,
+                ShptmName = shptmName,
                 Itemcd = itemcd,
                 Itemnm = itemnm,
                 ExpiryDate = !string.IsNullOrEmpty(expiryDateOverride) ? expiryDateOverride : CalculateExpiryDate(delvedt),
@@ -84,7 +90,11 @@ public static class LabelGeneratorService
                 Kikunip = kikunip,
                 StandardFillQty = standardFillQty,
                 Count = standardBags,
-                UnitName = unitName
+                UnitName = unitName,
+                Shpctrnm = shpctrnm,
+                Classification1Name = classification1Name,
+                PageNo = pageNo,
+                StartPageNo = startPageNo
             }
         };
     }
@@ -99,7 +109,11 @@ public static class LabelGeneratorService
         string shpctrnm,
         decimal irregularQuantity,
         string? expiryDateOverride = null,
-        string? unitName = null)
+        string? unitName = null,
+        string? shptmName = null,
+        string? classification1Name = null,
+        int pageNo = 0,
+        int startPageNo = 1)
     {
         if (irregularQuantity <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
@@ -109,6 +123,7 @@ public static class LabelGeneratorService
                 LabelType = "irregular",
                 Delvedt = delvedt,
                 Shptm = shptm,
+                ShptmName = shptmName,
                 Itemcd = itemcd,
                 Itemnm = itemnm,
                 ExpiryDate = !string.IsNullOrEmpty(expiryDateOverride) ? expiryDateOverride : CalculateExpiryDate(delvedt),
@@ -116,7 +131,10 @@ public static class LabelGeneratorService
                 Shpctrnm = shpctrnm,
                 IrregularQuantity = irregularQuantity,
                 Count = 1,
-                UnitName = unitName
+                UnitName = unitName,
+                Classification1Name = classification1Name,
+                PageNo = pageNo,
+                StartPageNo = startPageNo
             }
         };
     }

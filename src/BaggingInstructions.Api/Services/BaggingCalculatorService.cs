@@ -46,14 +46,16 @@ public class BaggingCalculatorService
 
         var q = items.Sum(x => x.PlannedQuantity);
         var globalTotals = BaggingSavedInputApplier.ResolveGlobalTotals(q, mboms, payload);
+        var effectiveSpecFillQty = payload?.Lines?.FirstOrDefault(l => l.SpecQty.HasValue && l.SpecQty > 0)?.SpecQty
+                                  ?? first.DefaultSpecQty;
 
         if (payload?.Lines is { Count: > 0 })
         {
             BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
-                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals);
+                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals, effectiveSpecFillQty);
         }
 
-        // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は Car0 のデフォルトで補完）
+        // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は品目マスタ STD のデフォルトで補完）
         var effectivePayload = payload?.Lines is { Count: > 0 }
             ? payload
             : new BaggingInputPayloadDto
@@ -62,13 +64,12 @@ public class BaggingCalculatorService
                 {
                     Citemcd = m.Citemcd ?? "",
                     InputOrder = j + 1,
-                    SpecQty = first.Car0 > 0 ? first.Car0 : null,
+                    SpecQty = first.DefaultSpecQty,
                     TotalQty = j < globalTotals.Count ? globalTotals[j] : null
                 }).ToList()
             };
 
         var displayRows = BaggingSavedInputApplier.BuildIngredientDisplayRows(mboms, globalTotals, effectivePayload);
-        var effectiveSpecFillQty = effectivePayload.Lines?.FirstOrDefault(l => l.SpecQty.HasValue && l.SpecQty > 0)?.SpecQty;
         return new BaggingCalculateResult { Items = items, IngredientDisplayRows = displayRows, EffectiveSpecFillQty = effectiveSpecFillQty };
     }
 
@@ -119,7 +120,7 @@ public class BaggingCalculatorService
 
             var itemnm = first.Jobordmernm ?? first.Itemcd ?? "";
 
-            results.Add(new BaggingInstructionItemDto
+            var result = new BaggingInstructionItemDto
             {
                 Shpctrcd = shpctrcd,
                 Shpctrnm = shpctrnm,
@@ -127,6 +128,9 @@ public class BaggingCalculatorService
                 Itemnm = itemnm,
                 Delvedt = first.Delvedt ?? "",
                 Shptm = first.Shptm,
+                ShptmName = first.ShptmName,
+                Addinfo05 = first.Addinfo05,
+                EatingTimeLabel = BaggingEatingTimeLabel.MapFromAddinfo05(first.Addinfo05),
                 PlannedQuantity = totalOrder,
                 AdjustedQuantity = adjustedQuantity,
                 QuantityForInventory = totalOrder,
@@ -142,34 +146,17 @@ public class BaggingCalculatorService
                 Cusmcd = first.Cusmcd,
                 Jobordno = first.Jobordno,
                 Jobordmernm = first.Jobordmernm
-            });
+            };
+
+            if (first.DefaultSpecQty is decimal specQty && specQty > 0)
+                BaggingSavedInputApplier.ApplySpecBagCounts(
+                    new List<BaggingInstructionItemDto> { result }, specQty, first.Mboms, null);
+
+            results.Add(result);
         }
 
-        var aggregated = new Dictionary<string, BaggingInstructionItemDto>();
-        foreach (var result in results)
-        {
-            var cuscd = result.Shpctr?.Cuscd ?? "";
-            var aggKey =
-                $"{cuscd}_{result.Shpctrcd ?? ""}_{result.Itemcd}_{result.Delvedt}_{result.Shptm ?? ""}";
-            if (!aggregated.TryGetValue(aggKey, out var existing))
-            {
-                aggregated[aggKey] = result;
-                continue;
-            }
-
-            existing.PlannedQuantity += result.PlannedQuantity;
-            existing.AdjustedQuantity += result.AdjustedQuantity;
-            existing.QuantityForInventory += result.QuantityForInventory;
-            existing.QuantityForInstruction += result.QuantityForInstruction;
-            existing.StandardBags += result.StandardBags;
-            existing.IrregularQuantity += result.IrregularQuantity;
-            for (var i = 0; i < result.SeasoningAmounts.Count && i < existing.SeasoningAmounts.Count; i++)
-                existing.SeasoningAmounts[i].CalculatedAmount += result.SeasoningAmounts[i].CalculatedAmount;
-            if (result.SeasoningAmounts.Count > 0 && existing.SeasoningAmounts.Count == 0)
-                existing.SeasoningAmounts = result.SeasoningAmounts;
-        }
-
-        return aggregated.Values.ToList();
+        // 同一（納入場所・品目・喫食日・便・addinfo05）は合算。得意先コードはキーに含めない（同一施設の二重行防止）。
+        return BaggingInstructionItemAggregator.Merge(results);
     }
 
     public async Task<BaggingRequiredQuantitiesResponseDto> GetRequiredQuantitiesAsync(IReadOnlyList<long> jobordPrkeys, CancellationToken ct = default)
@@ -180,18 +167,20 @@ public class BaggingCalculatorService
 
         var total = rows.Sum(r => r.Jobordqun);
         var mboms = rows[0].Mboms;
-        var car0 = rows[0].Car0;
+        var defaultSpecQty = rows[0].DefaultSpecQty;
         var globals = BaggingSavedInputApplier.ComputeDefaultGlobalTotals(total, mboms);
         var lines = new List<BaggingInputLineDto>();
         for (var j = 0; j < mboms.Count; j++)
         {
+            var referenceQty = j < globals.Count ? Math.Ceiling(globals[j]) : (decimal?)null;
             lines.Add(new BaggingInputLineDto
             {
                 Citemcd = mboms[j].Citemcd ?? "",
-                ChildItemName = mboms[j].ChildItem?.Itemnm ?? "",
+                ChildItemName = mboms[j].ChildItem?.Itemnm,
                 InputOrder = j + 1,
-                SpecQty = car0 > 0 ? car0 : null,
-                TotalQty = j < globals.Count ? globals[j] : null
+                SpecQty = defaultSpecQty,
+                TotalQty = referenceQty,
+                ReferenceQty = referenceQty
             });
         }
 
