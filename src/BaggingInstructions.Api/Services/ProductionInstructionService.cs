@@ -249,7 +249,7 @@ ORDER BY slotcode
                 h.ProcurementUnitName,
                 h.ParentUnitName,
                 h.ConversionValue1);
-            var parentQtyDisplay = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
+            var parentQtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(dispQty);
             var parentUnitName = dispUnit;
 
             var printAddinfo = MapParentItemPrintAddinfo(h);
@@ -280,7 +280,7 @@ ORDER BY slotcode
             foreach (var b in boms)
             {
                 var qty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
-                var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
+                var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(qty);
                 var yieldDisplay = b.YieldPercent.ToString("0.###", CultureInfo.InvariantCulture);
 
                 lines.Add(new ProductionInstructionPdfLineModel
