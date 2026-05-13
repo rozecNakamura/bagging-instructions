@@ -11,7 +11,7 @@ public sealed class BaggingLabelPdfService
         {
             ["DATE01"]                    = 1,
             ["TIME01"]                    = 1,
-            ["PAGENO"]                    = 2,
+            ["PAGENO"]                    = 3,
             ["CUSTOMERDELIVERYLOCATION01"] = 1,
             ["ITEMNO01"]                  = 1,
             ["ITEMNM01"]                  = 1,
@@ -24,16 +24,17 @@ public sealed class BaggingLabelPdfService
             ["BBDT01"]                    = 1,
         };
 
-    // テンプレートのフォントサイズが固定のため、長い値でも枠内に収まるよう ShrinkToFit を強制するフィールド
+    /// <summary>長文で枠からはみ出すフィールドのみ ShrinkToFit。日付・便名は短いため縮小しない。</summary>
     private static readonly IReadOnlySet<string> ShrinkToFitOverrides =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "DATE01",
-            "TIME01",
             "CUSTOMERDELIVERYLOCATION01",
             "ITEMNM01",
             "CLASSIFICATION1NAME01",
         };
+
+    /// <summary>ShrinkToFit 時の最小フォント（pt）。SATO 60mm ラベルで極小文字を避ける。</summary>
+    private const double ShrinkToFitGlobalMinFontPts = 6.0;
 
     private readonly JuicePdfService _juicePdf;
 
@@ -52,7 +53,13 @@ public sealed class BaggingLabelPdfService
                 pages.Add(BuildPageTags(item, i));
         }
         if (pages.Count == 0) return Array.Empty<byte>();
-        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "袋詰現品票", AlignmentOverrides, ShrinkToFitOverrides);
+        return _juicePdf.GeneratePdfMultiPage(
+            rxzTemplatePath,
+            pages,
+            "袋詰現品票",
+            AlignmentOverrides,
+            ShrinkToFitOverrides,
+            ShrinkToFitGlobalMinFontPts);
     }
 
     private static Dictionary<string, string> BuildPageTags(LabelItemDto item, int pageIndex)

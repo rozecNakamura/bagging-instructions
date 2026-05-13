@@ -696,12 +696,14 @@ public class JuicePdfService
     /// </summary>
     /// <param name="alignmentOverrides">フィールド名ごとのアライメント上書き（1=左 2=右 3=中央）。テンプレート定義より優先。</param>
     /// <param name="shrinkToFitOverrides">ShrinkToFit を強制するフィールド名のセット。テンプレートの ShrinkToFit=false を上書きして縮小表示する。</param>
+    /// <param name="shrinkToFitGlobalMinFontSizePts">ShrinkToFit 対象フィールドの最小フォント（pt）。null のとき既定の <see cref="DefaultShrinkToFitMinFontSizePts"/> のみ。</param>
     public byte[] GeneratePdfMultiPage(
         string rxzTemplatePath,
         IReadOnlyList<Dictionary<string, string>> pagesTagValues,
         string? documentTitle = null,
         IReadOnlyDictionary<string, int>? alignmentOverrides = null,
-        IReadOnlySet<string>? shrinkToFitOverrides = null)
+        IReadOnlySet<string>? shrinkToFitOverrides = null,
+        double? shrinkToFitGlobalMinFontSizePts = null)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
@@ -721,6 +723,17 @@ public class JuicePdfService
             {
                 if (shrinkToFitOverrides.Contains(item.Name))
                     item.ShrinkToFit = true;
+            }
+        }
+
+        if (shrinkToFitGlobalMinFontSizePts is { } globalMinShrinkPts)
+        {
+            foreach (var item in items)
+            {
+                if (!item.ShrinkToFit) continue;
+                item.ShrinkToFitMinFontSizePts = item.ShrinkToFitMinFontSizePts is { } existingMin
+                    ? Math.Max(existingMin, globalMinShrinkPts)
+                    : globalMinShrinkPts;
             }
         }
 

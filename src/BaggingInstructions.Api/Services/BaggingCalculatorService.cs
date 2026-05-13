@@ -129,6 +129,8 @@ public class BaggingCalculatorService
                 Delvedt = first.Delvedt ?? "",
                 Shptm = first.Shptm,
                 ShptmName = first.ShptmName,
+                Addinfo05 = first.Addinfo05,
+                EatingTimeLabel = BaggingEatingTimeLabel.MapFromAddinfo05(first.Addinfo05),
                 PlannedQuantity = totalOrder,
                 AdjustedQuantity = adjustedQuantity,
                 QuantityForInventory = totalOrder,
@@ -153,31 +155,8 @@ public class BaggingCalculatorService
             results.Add(result);
         }
 
-        var aggregated = new Dictionary<string, BaggingInstructionItemDto>();
-        foreach (var result in results)
-        {
-            var cuscd = result.Shpctr?.Cuscd ?? "";
-            var aggKey =
-                $"{cuscd}_{result.Shpctrcd ?? ""}_{result.Itemcd}_{result.Delvedt}_{result.Shptm ?? ""}";
-            if (!aggregated.TryGetValue(aggKey, out var existing))
-            {
-                aggregated[aggKey] = result;
-                continue;
-            }
-
-            existing.PlannedQuantity += result.PlannedQuantity;
-            existing.AdjustedQuantity += result.AdjustedQuantity;
-            existing.QuantityForInventory += result.QuantityForInventory;
-            existing.QuantityForInstruction += result.QuantityForInstruction;
-            existing.StandardBags += result.StandardBags;
-            existing.IrregularQuantity += result.IrregularQuantity;
-            for (var i = 0; i < result.SeasoningAmounts.Count && i < existing.SeasoningAmounts.Count; i++)
-                existing.SeasoningAmounts[i].CalculatedAmount += result.SeasoningAmounts[i].CalculatedAmount;
-            if (result.SeasoningAmounts.Count > 0 && existing.SeasoningAmounts.Count == 0)
-                existing.SeasoningAmounts = result.SeasoningAmounts;
-        }
-
-        return aggregated.Values.ToList();
+        // 同一（納入場所・品目・喫食日・便・addinfo05）は合算。得意先コードはキーに含めない（同一施設の二重行防止）。
+        return BaggingInstructionItemAggregator.Merge(results);
     }
 
     public async Task<BaggingRequiredQuantitiesResponseDto> GetRequiredQuantitiesAsync(IReadOnlyList<long> jobordPrkeys, CancellationToken ct = default)

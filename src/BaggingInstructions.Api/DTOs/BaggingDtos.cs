@@ -70,6 +70,14 @@ public class BaggingInstructionItemDto
     [JsonPropertyName("shptm_name")]
     public string? ShptmName { get; set; }
 
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1/2/3 → 朝/昼/夜（サーバー側マッピング）。</summary>
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
+    /// <summary>喫食時間表示（addinfo05 に応じた 朝・昼・夜）。未対応値は空。</summary>
+    [JsonPropertyName("eating_time_label")]
+    public string EatingTimeLabel { get; set; } = "";
+
     [JsonPropertyName("planned_quantity")]
     public decimal PlannedQuantity { get; set; }
 
