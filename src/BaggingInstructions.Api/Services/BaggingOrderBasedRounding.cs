@@ -32,6 +32,14 @@ public static class BaggingOrderBasedRounding
                 irregularQuantity = AllocationService.CalculateIrregularQuantity(adjustedQuantity, kikunip);
             }
         }
+        else if (seasoningBoms.Count == 0 && divisor > 1 && RoundingService.FinishedGoodUsesCountRounding(parentItem))
+        {
+            // 個数もの（単位"ヶ"等）で調味BOMがない場合、RoundUpQuantityWithSeasoning は
+            // 早期リターンで (totalOrder, 0, []) を返すため standardBags = totalOrder になってしまう。
+            // 除数で直接袋数を計算して上書きする。
+            standardBags = AllocationService.CalculateStandardBags(totalOrder, divisor);
+            irregularQuantity = AllocationService.CalculateIrregularQuantity(totalOrder, divisor);
+        }
 
         return (adjustedQuantity, standardBags, irregularQuantity, seasoningAmounts);
     }
