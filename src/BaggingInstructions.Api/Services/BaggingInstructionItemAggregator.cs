@@ -16,7 +16,7 @@ public static class BaggingInstructionItemAggregator
         var locSegment = !string.IsNullOrWhiteSpace(result.Shpctrnm)
             ? result.Shpctrnm.Trim()
             : (result.Shpctrcd ?? "").Trim();
-        return $"{locSegment}_{result.Itemcd}_{result.Delvedt}_{result.Shptm ?? ""}_{norm}";
+        return $"{locSegment}_{result.Itemcd}_{result.Delvedt}_{norm}";
     }
 
     public static List<BaggingInstructionItemDto> Merge(IReadOnlyList<BaggingInstructionItemDto> results)

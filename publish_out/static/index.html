@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <!-- IIS 子アプリ等: /BaggingInstructions.Api/static/... のときルート直下 /static へ行かないよう base と API 用変数を設定 -->
+    <script>
+(function () {
+    var path = location.pathname || '';
+    var marker = '/static/';
+    var i = path.indexOf(marker);
+    var staticBase = '/static/';
+    var appRoot = '';
+    if (i >= 0) {
+        staticBase = path.slice(0, i + marker.length);
+        appRoot = path.slice(0, i);
+    }
+    appRoot = appRoot.replace(/\/+$/, '');
+    if (staticBase.slice(-1) !== '/') staticBase += '/';
+    window.__APP_ROOT__ = appRoot;
+    window.__STATIC_BASE__ = staticBase;
+    window.__API_BASE__ = appRoot === '' ? '/api' : appRoot + '/api';
+    var b = document.createElement('base');
+    b.href = staticBase;
+    if (document.currentScript && document.currentScript.parentNode === document.head)
+        document.head.insertBefore(b, document.currentScript);
+    else
+        document.head.insertBefore(b, document.head.firstChild);
+})();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>袋詰指示書・ラベル管理システム</title>
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/main.css">
+    <!-- 印刷用スタイル -->
+    <style>
+        @media print {
+            /* 袋詰PDF等：印刷プレビューコンテナ優先 */
+            body:not(.product-label-printing) > *:not(#print-preview-container) {
+                display: none !important;
+            }
+            #print-preview-container {
+                display: block !important;
+            }
+            body.product-label-printing #print-preview-container {
+                display: none !important;
+            }
+
+            /* 現品票：ブラウザ印刷（サイドバー・検索フォームを除く） */
+            body.product-label-printing > *:not(.app-layout) {
+                display: none !important;
+            }
+            body.product-label-printing .app-layout .sidebar,
+            body.product-label-printing .search-section,
+            body.product-label-printing .print-section,
+            body.product-label-printing .results-section > h2,
+            body.product-label-printing .results-header {
+                display: none !important;
+            }
+            body.product-label-printing .main-content {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            body.product-label-printing #screen-product-label .container {
+                max-width: none !important;
+            }
+            body.product-label-printing #screen-product-label {
+                display: block !important;
+            }
+            body.product-label-printing .screen:not(#screen-product-label) {
+                display: none !important;
+            }
+        }
+
+        /* 必須項目のラベル用（検索フォームなど） */
+        .field-required-mark {
+            color: #c62828;
+            font-weight: bold;
+            margin-left: 0.15em;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 左メニュー -->
+        <nav class="sidebar">
+            <h2 class="sidebar-title">メニュー</h2>
+            <ul class="sidebar-menu">
+                <li><button type="button" class="menu-btn active" data-screen="bagging">袋詰指示書・ラベル管理</button></li>
+                <li><button type="button" class="menu-btn" data-screen="juice">汁仕分表</button></li>
+                <li><button type="button" class="menu-btn" data-screen="bento">弁当箱盛り付け指示書（ご飯）</button></li>
+                <li><button type="button" class="menu-btn" data-screen="delivery-note">納品書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="personal-delivery">個人配送指示書・個人配送指示書（集計）</button></li>
+                <li><button type="button" class="menu-btn" data-screen="product-label">現品票印刷</button></li>
+                <li><button type="button" class="menu-btn" data-screen="aggregate-summary">集計表</button></li>
+                <li><button type="button" class="menu-btn" data-screen="cut-preparation">カット前準備書・現品ラベル</button></li>
+                <li><button type="button" class="menu-btn" data-screen="preparation-work">作業前準備書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="cooking-instruction">調理指示書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="production-instruction">調味液配合表仕様</button></li>
+                <li><button type="button" class="menu-btn" data-screen="production-instruction-hoikolo">生産指示書_ホイコーロー</button></li>
+                <li><button type="button" class="menu-btn" data-screen="production-instruction-ganmono">生産指示書_がんもの炊き合わせ</button></li>
+                <li><button type="button" class="menu-btn" data-screen="production-instruction-cab-winna-soti">生産指示書_キャベツとウィンナーのソティ</button></li>
+                <li><button type="button" class="menu-btn" data-screen="inspection-record">検品記録簿</button></li>
+                <li><button type="button" class="menu-btn" data-screen="yotei-shokusu">予定食数</button></li>
+                <li><button type="button" class="menu-btn" data-screen="sorting-inquiry">仕分け照会</button></li>
+                <li><button type="button" class="menu-btn" data-screen="scales-link">計量器連携</button></li>
+                <li><button type="button" class="menu-btn" data-screen="acceptance-record">検収の記録簿</button></li>
+            </ul>
+        </nav>
+
+        <div class="main-content">
+            <!-- 袋詰指示書・ラベル管理システム画面 -->
+            <div id="screen-bagging" class="screen active">
+                <div class="container">
+                    <header>
+                        <h1>袋詰指示書・ラベル管理システム</h1>
+                    </header>
+
+                    <!-- 検索エリア -->
+                    <section class="search-section">
+            <h2>受注明細検索</h2>
+            <div class="search-form">
+                <div class="form-group">
+                    <label for="productionDate">製造日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                    <input type="date" id="productionDate" required aria-required="true">
+                </div>
+                <div class="form-group">
+                    <label for="productCode">品目コード:</label>
+                    <input type="text" id="productCode" placeholder="品目コードを入力">
+                </div>
+                <div class="form-group">
+                    <label for="completionFilter">完了状態:</label>
+                    <select id="completionFilter">
+                        <option value="">全件</option>
+                        <option value="false">未完了</option>
+                        <option value="true">完了</option>
+                    </select>
+                </div>
+                <button id="searchBtn" class="btn btn-primary">検索</button>
+            </div>
+        </section>
+
+        <!-- 検索結果エリア（製造日・品目ごと合算） -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <h2>検索結果</h2>
+            <div class="results-header">
+                <span id="resultCount">0件</span>
+                <span class="bagging-results-hint">行をクリックして袋詰投入量登録を開きます</span>
+            </div>
+            <div class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>製造日</th>
+                            <th>品目コード</th>
+                            <th>品目名</th>
+                            <th>受注数量</th>
+                            <th>単位</th>
+                            <th>状態</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+                </div>
+
+                <!-- 袋詰投入量登録（ポップアップ） -->
+                <div id="baggingRegModal" class="bagging-reg-modal" hidden aria-hidden="true">
+                    <div class="bagging-reg-modal__backdrop" id="baggingRegModalBackdrop" aria-hidden="true"></div>
+                    <div class="bagging-reg-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="baggingRegModalTitle">
+                        <section class="bagging-reg-modal__panel results-section" id="baggingRegistrationSection">
+                            <h2 id="baggingRegModalTitle">袋詰投入量登録</h2>
+                            <p id="baggingRegContext" class="bagging-reg-context"></p>
+                            <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+                                <label for="baggingRegSpecQty">規格数量:</label>
+                                <input type="number" id="baggingRegSpecQty" step="any" style="width:80px; padding:2px 6px;">
+                            </div>
+                            <div class="table-container bagging-reg-modal__table-wrap">
+                                <table class="bagging-reg-table">
+                                    <thead>
+                                        <tr>
+                                            <th>投入順</th>
+                                            <th>子品目コード</th>
+                                            <th>子品目名称</th>
+                                            <th>参考値</th>
+                                            <th>総数量</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="baggingRegLinesBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="print-mode" style="margin-top:12px;">
+                                <span>印刷タイプ:</span>
+                                <label><input type="radio" name="baggingRegPrintType" value="instruction" checked> 袋詰指示書</label>
+                                <label><input type="radio" name="baggingRegPrintType" value="label"> ラベル</label>
+                            </div>
+                            <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+                                <label for="baggingRegExpiryOverride">賞味期限変更:</label>
+                                <input type="date" id="baggingRegExpiryOverride" style="padding:2px 6px;">
+                                <span style="font-size:0.85em; color:#666;">（空白時は製造日+賞味期限加算日数）</span>
+                            </div>
+                            <div class="results-header" style="margin-top:12px;">
+                                <button type="button" id="baggingRegRequiredBtn" class="btn btn-secondary">必要量セット</button>
+                                <button type="button" id="baggingRegSaveBtn" class="btn btn-primary">登録</button>
+                                <button type="button" id="baggingRegPrintBtn" class="btn btn-success">印刷</button>
+                                <button type="button" id="baggingRegCloseBtn" class="btn btn-secondary">閉じる</button>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 汁仕分表画面 -->
+            <div id="screen-juice" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>汁仕分表</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="juiceEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="juiceEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="juiceItemCode">品目コード:</label>
+                                <input type="text" id="juiceItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <button id="juiceSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="juicePrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="juicePrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="juiceResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="juiceResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="juiceSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="juiceDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="juiceResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="juiceHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>配送便</th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>施設数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="juiceResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 弁当箱盛り付け指示書（ご飯）画面 -->
+            <div id="screen-bento" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>弁当箱盛り付け指示書（ご飯）</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="bentoEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="bentoEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="bentoItemCode">品目コード:</label>
+                                <input type="text" id="bentoItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <button type="button" id="bentoSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="bentoPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="bentoPrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="bentoResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="bentoResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="bentoSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="bentoDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="bentoResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="bentoHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>配送便</th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>施設数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bentoResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 納品書画面 -->
+            <div id="screen-delivery-note" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>納品書</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="deliveryNoteEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="deliveryNoteEatingDate" required aria-required="true">
+                            </div>
+                            <button type="button" id="deliveryNoteSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="deliveryNotePrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="deliveryNotePrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="deliveryNoteResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="deliveryNoteResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="deliveryNoteSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="deliveryNoteDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="deliveryNoteResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="deliveryNoteHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>納入場所名</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deliveryNoteResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 検品記録簿画面 -->
+            <div id="screen-inspection-record" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>検品記録簿</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="inspectionNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="inspectionNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>仕入先（任意）:</label>
+                                <div class="multi-select-dropdown" id="inspectionSupplierDropdown">
+                                    <div class="multi-select-display" id="inspectionSupplierDisplay">
+                                        <span id="inspectionSupplierSelectedLabel" class="multi-select-summary">すべて</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="inspectionSupplierOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="inspectionSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="inspectionPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="inspectionPrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="inspectionResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="inspectionResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="inspectionSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="inspectionDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="inspectionResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="inspectionHeaderCheckbox"></th>
+                                        <th>注番</th>
+                                        <th>仕入先</th>
+                                        <th>納期</th>
+                                        <th>品目コード</th>
+                                        <th>品目名称</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inspectionResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 検収の記録簿画面 -->
+            <div id="screen-acceptance-record" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>検収の記録簿</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="acceptanceDelvDate">納品日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="acceptanceDelvDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="acceptanceShipDate">出荷日:</label>
+                                <input type="date" id="acceptanceShipDate">
+                            </div>
+                            <div class="form-group">
+                                <label>店舗（納入場所）:</label>
+                                <div class="multi-select-dropdown" id="acceptanceStoreDropdown">
+                                    <div class="multi-select-display" id="acceptanceStoreDisplay">
+                                        <span id="acceptanceStoreSelectedLabel" class="multi-select-summary">すべて</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="acceptanceStoreOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="acceptanceSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="acceptancePrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="acceptancePrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="acceptanceResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="acceptanceResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="acceptanceSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="acceptanceDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="acceptanceResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="acceptanceHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
+                                        <th>子品目</th>
+                                        <th>食数</th>
+                                        <th>総量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="acceptanceResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 個人配送指示書・個人配送指示書（集計）画面 -->
+            <div id="screen-personal-delivery" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>個人配送指示書・個人配送指示書（集計）</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="personalDeliveryDate">配送日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="personalDeliveryDate" required aria-required="true">
+                            </div>
+                            <button type="button" id="personalDeliverySearchBtn" class="btn btn-primary">検索</button>
+                            <div id="personalDeliveryPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="personalDeliveryDetailPrintBtn" class="btn btn-success">個人配送指示書出力</button>
+                                <button type="button" id="personalDeliverySummaryPrintBtn" class="btn btn-success">個人配送指示書（集計）出力</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="personalDeliveryResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="personalDeliveryResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="personalDeliverySelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="personalDeliveryDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="personalDeliveryResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="personalDeliveryHeaderCheckbox"></th>
+                                        <th>配送日</th>
+                                        <th>配送便名称</th>
+                                        <th>配送エリア</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="personalDeliveryResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 現品票印刷画面 -->
+            <div id="screen-product-label" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>現品票印刷</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="productLabelNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="productLabelNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="productLabelMajorClass">大分類（任意）:</label>
+                                <select id="productLabelMajorClass">
+                                    <option value="">読み込み中…</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="productLabelItemCode">品目コード（任意）:</label>
+                                <input type="text" id="productLabelItemCode" placeholder="部分一致">
+                            </div>
+                            <div class="form-group">
+                                <label for="productLabelWorkcenter">作業区（任意）:</label>
+                                <select id="productLabelWorkcenter">
+                                    <option value="">読み込み中…</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="productLabelWarehouse">倉庫（任意）:</label>
+                                <select id="productLabelWarehouse">
+                                    <option value="">読み込み中…</option>
+                                </select>
+                            </div>
+                            <button type="button" id="productLabelSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="productLabelPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <div class="form-group" style="flex-direction: row; align-items: center; gap: 6px;">
+                                    <label for="productLabelInstructionType">指示書種別<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                    <select id="productLabelInstructionType" required>
+                                        <option value="">選択してください</option>
+                                        <option value="cut">カット指示書（50・51）</option>
+                                        <option value="seasoning">調味液配合表（55）</option>
+                                        <option value="cooking">調理指示書（50以外）</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex-direction: row; align-items: center; gap: 6px;">
+                                    <label for="productLabelLabelCount">枚数:</label>
+                                    <input type="number" id="productLabelLabelCount" value="1" min="1" max="99" style="width: 60px;">
+                                </div>
+                                <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
+                                    <label><input type="radio" name="productLabelCutMode" value="no_cut" checked> 連続出力</label>
+                                    <label><input type="radio" name="productLabelCutMode" value="cut_on_item_change"> 品目切替でカット</label>
+                                </div>
+                                <button type="button" id="productLabelPrintBtn" class="btn btn-success">印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="productLabelResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="productLabelResultCount">0件</span>
+                        </div>
+                        <div id="productLabelPrintArea" class="table-container">
+                            <table id="productLabelResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><label title="すべて選択"><input type="checkbox" id="productLabelSelectAll" checked aria-label="すべて選択"></label></th>
+                                        <th>オーダID</th>
+                                        <th>製造日</th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>子品目数</th>
+                                        <th>数量</th>
+                                        <th>作業区</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productLabelResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 集計表画面 -->
+            <div id="screen-aggregate-summary" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>集計表</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="aggShipDate">出庫日:</label>
+                                <input type="date" id="aggShipDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="aggItemCode">品目コード:</label>
+                                <input type="text" id="aggItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label>大分類:</label>
+                                <div class="multi-select-dropdown" id="aggMajorDropdown">
+                                    <div class="multi-select-display" id="aggMajorDisplay">
+                                        <span id="aggMajorSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="aggMajorOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>中分類:</label>
+                                <div class="multi-select-dropdown" id="aggMiddleDropdown">
+                                    <div class="multi-select-display" id="aggMiddleDisplay">
+                                        <span id="aggMiddleSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="aggMiddleOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="aggSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="aggPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="aggPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="aggResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="aggResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="aggSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="aggDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="aggResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="aggHeaderCheckbox"></th>
+                                        <th>日付</th>
+                                        <th>大分類</th>
+                                        <th>中分類</th>
+                                        <th>子品目の件数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aggResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 調理指示書画面 -->
+            <div id="screen-cooking-instruction" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>調理指示書</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="cookNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="cookNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="cookWorkcenterDropdown">
+                                    <div class="multi-select-display" id="cookWorkcenterDisplay">
+                                        <span id="cookWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cookWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>製造便:</label>
+                                <div class="multi-select-dropdown" id="cookManufacturingRouteDropdown">
+                                    <div class="multi-select-display" id="cookManufacturingRouteDisplay">
+                                        <span id="cookManufacturingRouteSelectedLabel" class="multi-select-summary">納期を選択してください</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cookManufacturingRouteOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>便:</label>
+                                <div class="multi-select-dropdown" id="cookSlotDropdown">
+                                    <div class="multi-select-display" id="cookSlotDisplay">
+                                        <span id="cookSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cookSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="cookSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="cookPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="cookPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="cookResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="cookResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="cookSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="cookDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="cookResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="cookHeaderCheckbox"></th>
+                                        <th>品目名</th>
+                                        <th>納期</th>
+                                        <th>便</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cookResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 調味液配合表仕様画面 -->
+            <div id="screen-production-instruction" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>調味液配合表仕様</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="prodNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="prodNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="prodWorkcenterDropdown">
+                                    <div class="multi-select-display" id="prodWorkcenterDisplay">
+                                        <span id="prodWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prodWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>便:</label>
+                                <div class="multi-select-dropdown" id="prodSlotDropdown">
+                                    <div class="multi-select-display" id="prodSlotDisplay">
+                                        <span id="prodSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prodSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="prodSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="prodPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="prodPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="prodResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="prodResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="prodSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="prodDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="prodResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="prodHeaderCheckbox"></th>
+                                        <th>品目名</th>
+                                        <th>日付</th>
+                                        <th>便</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prodResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 生産指示書_ホイコーロー（MO ordertable 検索：納期・品目） -->
+            <div id="screen-production-instruction-hoikolo" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>生産指示書_ホイコーロー</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="hclNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="hclNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="hclItemSearch">品目検索:</label>
+                                <input type="text" id="hclItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
+                            </div>
+                            <button type="button" id="hclSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="hclPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="hclPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="hclResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="hclResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="hclSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="hclDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="hclResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="hclHeaderCheckbox"></th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hclResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 生産指示書_がんもの炊き合わせ（MO ordertable 検索：納期・品目） -->
+            <div id="screen-production-instruction-ganmono" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>生産指示書_がんもの炊き合わせ</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="gmtNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="gmtNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="gmtItemSearch">品目検索:</label>
+                                <input type="text" id="gmtItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
+                            </div>
+                            <button type="button" id="gmtSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="gmtPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="gmtPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="gmtResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="gmtResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="gmtSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="gmtDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="gmtResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="gmtHeaderCheckbox"></th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gmtResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 生産指示書_キャベツとウィンナーのソティ（MO ordertable 検索：納期・品目） -->
+            <div id="screen-production-instruction-cab-winna-soti" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>生産指示書_キャベツとウィンナーのソティ</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="cwsNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="cwsNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="cwsItemSearch">品目検索:</label>
+                                <input type="text" id="cwsItemSearch" placeholder="品目コード・品目名（部分一致）" autocomplete="off">
+                            </div>
+                            <button type="button" id="cwsSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="cwsPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="cwsPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="cwsResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="cwsResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="cwsSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="cwsDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="cwsResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="cwsHeaderCheckbox"></th>
+                                        <th>品目コード</th>
+                                        <th>品目名</th>
+                                        <th>数量</th>
+                                        <th>単位</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cwsResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 予定食数 -->
+            <div id="screen-yotei-shokusu" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>予定食数</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="ysEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="ysEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="ysSlotDropdown">便:</label>
+                                <div class="multi-select-dropdown" id="ysSlotDropdown">
+                                    <div class="multi-select-display" id="ysSlotDisplay">
+                                        <span id="ysSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="ysSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="ysSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="ysExportSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="ysExcelBtn" class="btn btn-success">Excel 出力</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="ysResultsSection" style="display: none;">
+                        <div id="ysGroup1Section" style="display:none;">
+                            <h2>グループ1（得意先200・210）</h2>
+                            <div class="table-container">
+                                <table id="ysGroup1Table" class="results-table">
+                                    <thead></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="ysGroup2Section" style="display:none; margin-top:24px;">
+                            <h2>グループ2（得意先240・300・310）</h2>
+                            <div class="table-container">
+                                <table id="ysGroup2Table" class="results-table">
+                                    <thead></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 仕分け照会 -->
+            <div id="screen-sorting-inquiry" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>仕分け照会</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="siEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="siEatingDate" required aria-required="true" title="納期（planneddeliverydate）に対応">
+                            </div>
+                            <div class="form-group">
+                                <label for="siSlotDropdown">便:</label>
+                                <div class="multi-select-dropdown" id="siSlotDropdown">
+                                    <div class="multi-select-display" id="siSlotDisplay">
+                                        <span id="siSlotSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="siSlotOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="siSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="siExportSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="siExportShiwakeBtn" class="btn btn-primary">Excel 出力（仕分け照会）</button>
+                                <button type="button" id="siExportJournalBtn" class="btn btn-primary">Excel 出力（仕訳表自動調整）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="siResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="siResultCount">0件</span>
+                        </div>
+                        <div class="table-container">
+                            <table id="siResultsTable">
+                                <thead id="siResultsThead"></thead>
+                                <tbody id="siResultsBody"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 計量器連携（マスタ／オーダー CSV） -->
+            <div id="screen-scales-link" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>計量器連携</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>マスタ出力</h2>
+                        <div class="search-form">
+                            <button type="button" id="slItemMasterBtn" class="btn btn-secondary">ITEMマスタ出力</button>
+                            <button type="button" id="slMbomMasterBtn" class="btn btn-secondary">MBOMマスタ出力</button>
+                        </div>
+                    </section>
+                    <section class="search-section">
+                        <h2>オーダー出力</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="slReleaseDateFrom">着手日（開始）:</label>
+                                <input type="date" id="slReleaseDateFrom">
+                            </div>
+                            <div class="form-group">
+                                <label for="slReleaseDateTo">着手日（終了）:</label>
+                                <input type="date" id="slReleaseDateTo">
+                            </div>
+                            <button type="button" id="slSearchBtn" class="btn btn-primary">検索</button>
+                        </div>
+                    </section>
+                    <section class="results-section" id="slResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="slResultCount">0件</span>
+                        </div>
+                        <div id="slTableWrap" class="table-container scales-link-table-wrap">
+                            <table id="slResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th>オーダーID</th>
+                                        <th>品目コード</th>
+                                        <th>計量器品目コード</th>
+                                        <th>着手日</th>
+                                        <th>作業区</th>
+                                        <th>数量</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="slResultsBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="search-form" style="margin-top: 12px;">
+                            <button type="button" id="slExportOrderBtn" class="btn btn-primary" disabled>オーダーCSV出力</button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- カット前準備書・現品ラベル画面 -->
+            <div id="screen-cut-preparation" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>カット前準備書・現品ラベル</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="cutNeedDate">製造日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="cutNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>製造便:</label>
+                                <div class="multi-select-dropdown" id="cutManufacturingRouteDropdown">
+                                    <div class="multi-select-display" id="cutManufacturingRouteDisplay">
+                                        <span id="cutManufacturingRouteSelectedLabel" class="multi-select-summary">製造日を選択してください</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cutManufacturingRouteOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="cutItemCode">品目コード:</label>
+                                <input type="text" id="cutItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="cutWorkcenterDropdown">
+                                    <div class="multi-select-display" id="cutWorkcenterDisplay">
+                                        <span id="cutWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cutWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="cutSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="cutOutputSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="cutExcelBtn" class="btn btn-success">カット前準備書（Excel）</button>
+                                <button type="button" id="cutProductLabelBtn" class="btn btn-success">現品ラベル（PDF）</button>
+                                <label for="cutLabelCount" style="margin-left:8px;">枚数:</label>
+                                <input type="number" id="cutLabelCount" value="1" min="1" max="10" style="width:60px;">
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="cutResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="cutResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="cutSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="cutDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="cutResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="cutHeaderCheckbox"></th>
+                                        <th>製造日</th>
+                                        <th>製造便</th>
+                                        <th>件数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cutResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 作業前準備書画面（static版） -->
+            <div id="screen-preparation-work" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>作業前準備書</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="prepNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="prepNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="prepWorkcenterDropdown">
+                                    <div class="multi-select-display" id="prepWorkcenterDisplay">
+                                        <span id="prepWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>倉庫:</label>
+                                <div class="multi-select-dropdown" id="prepWarehouseDropdown">
+                                    <div class="multi-select-display" id="prepWarehouseDisplay">
+                                        <span id="prepWarehouseSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepWarehouseOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>製造便:</label>
+                                <div class="multi-select-dropdown" id="prepManufacturingRouteDropdown">
+                                    <div class="multi-select-display" id="prepManufacturingRouteDisplay">
+                                        <span id="prepManufacturingRouteSelectedLabel" class="multi-select-summary">納期を選択してください</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepManufacturingRouteOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="prepItemCode">品目コード:</label>
+                                <input type="text" id="prepItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label>大分類:</label>
+                                <div class="multi-select-dropdown" id="prepMajorDropdown">
+                                    <div class="multi-select-display" id="prepMajorDisplay">
+                                        <span id="prepMajorSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepMajorOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>中分類:</label>
+                                <div class="multi-select-dropdown" id="prepMiddleDropdown">
+                                    <div class="multi-select-display" id="prepMiddleDisplay">
+                                        <span id="prepMiddleSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="prepMiddleOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="prepSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="prepOutputSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="prepCsvBtn" class="btn btn-primary">データ出力（CSV）</button>
+                                <button type="button" id="prepPdfBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="prepResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="prepResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="prepSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="prepDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="prepResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="prepHeaderCheckbox"></th>
+                                        <th>日付</th>
+                                        <th>大分類</th>
+                                        <th>中分類</th>
+                                        <th>件数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prepResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- アプリケーションスクリプト -->
+    <script type="module" src="js/navigation.js"></script>
+    <script type="module" src="js/api.js"></script>
+    <script type="module" src="js/search.js"></script>
+    <script type="module" src="js/bagging_registration.js"></script>
+    <script type="module" src="js/juice_search.js"></script>
+    <script type="module" src="js/juice_print.js"></script>
+    <script type="module" src="js/bento_search.js"></script>
+    <script type="module" src="js/bento_print.js"></script>
+    <script type="module" src="js/delivery_note_search.js"></script>
+    <script type="module" src="js/delivery_note_print.js"></script>
+    <script type="module" src="js/personal_delivery_search.js"></script>
+    <script type="module" src="js/personal_delivery_print.js"></script>
+    <script type="module" src="js/product_label_search.js"></script>
+    <script type="module" src="js/product_label_print.js"></script>
+    <script type="module" src="js/aggregate_summary.js"></script>
+    <script type="module" src="js/cut_preparation_search.js"></script>
+    <script type="module" src="js/preparation_work_search.js"></script>
+    <script type="module" src="js/preparation_work_print.js"></script>
+    <script type="module" src="js/cooking_instruction_search.js"></script>
+    <script type="module" src="js/cooking_instruction_print.js"></script>
+        <script type="module" src="js/production_instruction_search.js"></script>
+        <script type="module" src="js/production_instruction_print.js"></script>
+        <script type="module" src="js/hoikolo_production_instruction_search.js"></script>
+        <script type="module" src="js/hoikolo_production_instruction_print.js"></script>
+        <script type="module" src="js/ganmono_production_instruction_search.js"></script>
+        <script type="module" src="js/ganmono_production_instruction_print.js"></script>
+        <script type="module" src="js/cab_winna_soti_production_instruction_search.js"></script>
+        <script type="module" src="js/cab_winna_soti_production_instruction_print.js"></script>
+    <script type="module" src="js/inspection_record_search.js"></script>
+    <script type="module" src="js/inspection_record_print.js"></script>
+    <script type="module" src="js/yotei_shokusu_search.js"></script>
+    <script type="module" src="js/sorting_inquiry_search.js"></script>
+    <script type="module" src="js/sorting_inquiry_export.js"></script>
+    <script type="module" src="js/scales_link.js"></script>
+    <script type="module" src="js/acceptance_record_search.js"></script>
+    <script type="module" src="js/acceptance_record_print.js"></script>
+    <script type="module" src="js/print.js"></script>
+    <script type="module" src="js/pdf_generator.js"></script>
+</body>
+</html>
+

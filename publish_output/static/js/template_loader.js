@@ -464,8 +464,14 @@ function injectTableData(container, data) {
         if (i === totalRowIndex) {
             facilityContent.textContent = '合計';
         } else {
-            facilityContent.textContent = item ? (item.facility_name || item.shpctrnm || '') : '';
-            if (!item) facilityContent.innerHTML = '&nbsp;';
+            const facilityText = item ? (item.facility_name || item.shpctrnm || '') : '';
+            facilityContent.textContent = facilityText || ' ';
+            // 施設名列幅: 9% of 180mm ≈ 61px、セル内パディング 6px 分を引いた 55px に収まるよう縮小
+            if (facilityText) {
+                const baseFontSize = parseFloat(mainTable?.style.getPropertyValue('--bagging-main-cell-font-size')) || 11;
+                const shrunkSize = shrinkFontSizeToFit(facilityText, 55, baseFontSize, 'MS Gothic', 6);
+                if (shrunkSize < baseFontSize) facilityContent.style.fontSize = `${shrunkSize}px`;
+            }
         }
         facilityCell.appendChild(facilityContent);
         row.appendChild(facilityCell);
@@ -653,6 +659,35 @@ function injectIngredientsTableData(container, data) {
         if (totalIrregularBagsCell)
             totalIrregularBagsCell.textContent = computedIrregularBagCount > 0 ? String(computedIrregularBagCount) : '';
     }
+}
+
+/**
+ * テキストが指定幅（px）に収まるよう、フォントサイズを最小値まで下げて返す。
+ * Canvas API で実測し、利用不可の場合は文字幅の近似値（全角=1em, 半角=0.6em）で代替する。
+ * @param {string} text
+ * @param {number} targetWidthPx - 収めたい幅（px）
+ * @param {number} baseFontPx - 基準フォントサイズ（px）
+ * @param {string} fontFamily
+ * @param {number} minFontPx - 最小フォントサイズ（px）
+ * @returns {number} 適用すべきフォントサイズ（px）
+ */
+function shrinkFontSizeToFit(text, targetWidthPx, baseFontPx, fontFamily, minFontPx) {
+    if (!text) return baseFontPx;
+    let fontSize = baseFontPx;
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        while (fontSize > minFontPx) {
+            ctx.font = `${fontSize}px "${fontFamily}", monospace`;
+            if (ctx.measureText(text).width <= targetWidthPx) break;
+            fontSize -= 0.5;
+        }
+    } catch (_) {
+        // canvas 未対応環境: 全角1em・半角0.6em の近似で代替
+        const measure = (fs) => [...text].reduce((w, ch) => w + (ch.charCodeAt(0) > 0xFF ? fs : fs * 0.6), 0);
+        while (fontSize > minFontPx && measure(fontSize) > targetWidthPx) fontSize -= 0.5;
+    }
+    return fontSize;
 }
 
 /**

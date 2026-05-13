@@ -67,6 +67,7 @@ public class SearchService
         var query = _db.SalesOrderLines.AsNoTracking()
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.Unit0)
+            .Include(l => l.SalesOrder)
             .Where(l => l.ProductDate == prddtDate)
             .Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.StartsWith("40"));
 
@@ -77,6 +78,19 @@ public class SearchService
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
 
+        // 品目ごとに confirmed が1件でもあれば confirmed のみ、なければ全件を対象とする
+        var filteredLines = lines
+            .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
+            .GroupBy(l => l.Item!.ItemCd!)
+            .SelectMany(g =>
+            {
+                var hasConfirmed = g.Any(l => l.SalesOrder?.Status == "confirmed");
+                return hasConfirmed
+                    ? g.Where(l => l.SalesOrder?.Status == "confirmed")
+                    : g.AsEnumerable();
+            })
+            .ToList();
+
         var printedRows = await _otherDb.BaggedQuantities.AsNoTracking()
             .Where(r => r.ProductDate == prddtDate.Value && r.IsPrinted)
             .Select(r => r.ParentItemCode)
@@ -84,8 +98,7 @@ public class SearchService
             .ToListAsync(ct);
         var printedItemCodes = printedRows.ToHashSet(StringComparer.Ordinal);
 
-        var groups = lines
-            .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
+        var groups = filteredLines
             .GroupBy(l => l.Item!.ItemCd!)
             .Select(g =>
             {
