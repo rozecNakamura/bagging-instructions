@@ -33,6 +33,7 @@ public class PreparationWorkPdfService
                 l.DateDisplay,
                 l.ManufacturingRouteCode,
                 l.MiddleClassificationCode,
+                l.HasProductNo,
                 l.TemperatureRange
             })
             .ToList();
@@ -41,14 +42,14 @@ public class PreparationWorkPdfService
         {
             var groupLines = group.ToList();
             ApplyParentItemDisplayOrders(groupLines);
-            var totalPages = Math.Max(1, (groupLines.Count + RowsPerPage - 1) / RowsPerPage);
+            var pageChunks = SplitIntoPageChunks(groupLines);
+            var totalPages = pageChunks.Count;
 
-            var pageNum = 0;
-            for (var off = 0; off < groupLines.Count; off += RowsPerPage)
+            for (var pageIdx = 0; pageIdx < pageChunks.Count; pageIdx++)
             {
-                var chunk = groupLines.Skip(off).Take(RowsPerPage).ToList();
+                var chunk = pageChunks[pageIdx];
                 var first = chunk[0];
-                pageNum++;
+                var pageNum = pageIdx + 1;
                 var tags = BuildPageTagValues(
                     chunk,
                     first.MiddleClassificationName ?? "",
@@ -62,6 +63,45 @@ public class PreparationWorkPdfService
         }
 
         return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "作業前準備書");
+    }
+
+    /// <summary>
+    /// 同一 DisplayOrder が改ページ境界で分断されないよう、ページチャンクに分割する。
+    /// 末尾の行が次ページ先頭と同じ DisplayOrder を持つ場合、その ORDER のブロック全体を次ページへ送る。
+    /// ただし 1 ページが全て同一 ORDER の場合（RowsPerPage 行超え）は分割せずそのまま出力する。
+    /// </summary>
+    private static List<List<PreparationPdfLineModel>> SplitIntoPageChunks(List<PreparationPdfLineModel> groupLines)
+    {
+        var pages = new List<List<PreparationPdfLineModel>>();
+        var off = 0;
+        while (off < groupLines.Count)
+        {
+            var canTake = Math.Min(RowsPerPage, groupLines.Count - off);
+            var pageEnd = off + canTake;
+
+            // 満杯ページかつ後続行がある場合のみ ORDER 境界を調整する
+            if (canTake == RowsPerPage && pageEnd < groupLines.Count)
+            {
+                var lastOrder = groupLines[pageEnd - 1].DisplayOrder;
+                var nextOrder = groupLines[pageEnd].DisplayOrder;
+
+                if (!string.IsNullOrEmpty(lastOrder) && lastOrder == nextOrder)
+                {
+                    // 末尾から同じ ORDER のブロック先頭を探す
+                    var newEnd = pageEnd - 1;
+                    while (newEnd > off && groupLines[newEnd - 1].DisplayOrder == lastOrder)
+                        newEnd--;
+
+                    // 1行以上残るなら切り戻す（全行同一 ORDER の場合は切り戻さない）
+                    if (newEnd > off)
+                        pageEnd = newEnd;
+                }
+            }
+
+            pages.Add(groupLines.GetRange(off, pageEnd - off));
+            off = pageEnd;
+        }
+        return pages;
     }
 
     private static void ApplyParentItemDisplayOrders(IReadOnlyList<PreparationPdfLineModel> groupLines)
@@ -92,7 +132,7 @@ public class PreparationWorkPdfService
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         tags["LOCATIONFROM01"] = workplaceName;
         tags["GENRE01"] = middleClassificationName;
-        tags["ITEMTYPE01"] = middleClassificationName;
+        tags["ITEMTYPE01"] = chunk[0].HasProductNo ? "袋品" : "その他";
         tags["DATE01"] = dateDisplay;
         tags["TEMP"] = temperatureRange;
 

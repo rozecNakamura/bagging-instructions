@@ -15,6 +15,7 @@ internal static class PreparationWorkReportSort
             .ThenBy(l => l.WorkplaceCode ?? "", StringComparer.Ordinal)
             .ThenBy(l => l.ManufacturingRouteCode ?? "", StringComparer.Ordinal)
             .ThenBy(l => l.MiddleClassificationCode ?? "", StringComparer.Ordinal)
+            .ThenByDescending(l => l.HasProductNo)  // 袋品(true) → その他(false)
             .ThenBy(l => TemperatureKind(l.TemperatureRange))
             .ThenBy(l => TemperatureNumericPart(l.TemperatureRange))
             .ThenBy(l => l.TemperatureRange ?? "", StringComparer.Ordinal)
