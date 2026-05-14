@@ -318,7 +318,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
             foreach (var b in boms)
             {
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
-                var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
+                var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(qty);
                 rows.Add(new PreparationCsvRow
                 {
                     SterilizationTemperatureRange = b.ChildSteriTempRange ?? "",
@@ -365,6 +365,9 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     MiddleClassificationName = h.MiddleClassName,
                     DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     WorkplaceName = h.WorkplaceNames,
+                    WorkplaceCode = h.WorkplaceCode,
+                    ManufacturingRouteCode = h.ManufacturingRouteCode,
+                    MiddleClassificationCode = h.MiddleClassificationCode,
                     OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
                     ParentItemcode = h.ParentItemcode,
                     ParentItemname = h.ParentItemname,
@@ -382,12 +385,16 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
             foreach (var b in boms)
             {
                 var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
-                var qtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture);
+                var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(qty);
+
                 lines.Add(new PreparationPdfLineModel
                 {
                     MiddleClassificationName = h.MiddleClassName,
                     DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     WorkplaceName = h.WorkplaceNames,
+                    WorkplaceCode = h.WorkplaceCode,
+                    ManufacturingRouteCode = h.ManufacturingRouteCode,
+                    MiddleClassificationCode = h.MiddleClassificationCode,
                     OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
                     ParentItemcode = h.ParentItemcode,
                     ParentItemname = h.ParentItemname,
@@ -485,13 +492,24 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ''
                   ) AS workplace_names,
                   COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
-                  COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date
+                  COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date,
+                  COALESCE(
+                    NULLIF(TRIM(BOTH FROM wc_ord.workcentercode), ''),
+                    (SELECT string_agg(DISTINCT TRIM(BOTH FROM wc_map.workcentercode), '、' ORDER BY TRIM(BOTH FROM wc_map.workcentercode))
+                     FROM itemworkcentermapping m2
+                     INNER JOIN workcenter wc_map ON wc_map.workcentercode = m2.workcentercode
+                     WHERE m2.itemcode = i.itemcode),
+                    ''
+                  ) AS workplace_code,
+                  TRIM(COALESCE(sai.addinfo03, '')) AS manufacturing_route_code,
+                  COALESCE(mid.middleclassificationcode, '') AS middle_class_code
                 FROM ordertable ot
                 LEFT JOIN workcenter wc_ord ON (
                      wc_ord.workcentercode = TRIM(BOTH FROM ot.workcentercode)
                   OR wc_ord.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
                 )
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+                LEFT JOIN salesorderlineaddinfo sai ON sai.salesorderlineid = sol.salesorderlineid
                 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                 LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassficationcode
                   AND mn.middleclassificationcode = i.middleclassficationcode
@@ -523,7 +541,10 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     SlotDisplay = reader.GetString(8),
                     WorkplaceNames = reader.GetString(9),
                     PlannedDeliveryDate = ReadDateNullable(reader, 10),
-                    NeedDate = ReadDateNullable(reader, 11)
+                    NeedDate = ReadDateNullable(reader, 11),
+                    WorkplaceCode = reader.GetString(12),
+                    ManufacturingRouteCode = reader.GetString(13),
+                    MiddleClassificationCode = reader.GetString(14)
                 });
             }
 
@@ -631,6 +652,10 @@ public sealed class PreparationPdfLineModel
     public string MiddleClassificationName { get; set; } = "";
     public string DateDisplay { get; set; } = "";
     public string WorkplaceName { get; set; } = "";
+    public string WorkplaceCode { get; set; } = "";
+    public string ManufacturingRouteCode { get; set; } = "";
+    public string MiddleClassificationCode { get; set; } = "";
+    public string DisplayOrder { get; set; } = "";
     public string OrderNo { get; set; } = "";
     public string ParentItemcode { get; set; } = "";
     public string ParentItemname { get; set; } = "";
@@ -655,6 +680,9 @@ internal sealed class PreparationLineHeaderRow
     public string MiddleClassName { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
     public string WorkplaceNames { get; set; } = "";
+    public string WorkplaceCode { get; set; } = "";
+    public string ManufacturingRouteCode { get; set; } = "";
+    public string MiddleClassificationCode { get; set; } = "";
     public DateOnly? PlannedDeliveryDate { get; set; }
     /// <summary>納期（CSV/帳票に表示する日付）。ordertable.needdate 優先、無ければ planneddeliverydate。</summary>
     public DateOnly? NeedDate { get; set; }

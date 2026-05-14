@@ -222,7 +222,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 h.ProcurementUnitName,
                 h.Unit0Name,
                 h.ConversionValue1);
-            var parentQtyDisplay = dispQty.ToString("0.###", CultureInfo.InvariantCulture);
+            var parentQtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(dispQty);
             var parentUnitName = dispUnit;
 
             if (boms.Count == 0)
@@ -250,7 +250,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
             {
                 // 予定使用量: 単位0の製造数に対する BOM 子所要（手配単位表示の親数量とは独立）
                 var childReqQty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
-                var qtyDisplay = childReqQty.ToString("0.###", CultureInfo.InvariantCulture);
+                var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(childReqQty);
 
                 lines.Add(new CookingInstructionPdfLineModel
                 {

@@ -3,8 +3,8 @@ using System.Globalization;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 作業前準備書の帳票・CSV 明細の並び順:
-/// 製造日 → 作業区 → 殺菌温度 → 注番号 → 親品目コード → 子品目コード。
+/// 作業前準備書の帳票・CSV 明細の並び順。
+/// 帳票は改頁判定に合わせ、日付 → 職場コード → 製造便コード → 分類コード → 殺菌温度 → 注番号 → 親品目コード → 子品目コード。
 /// </summary>
 internal static class PreparationWorkReportSort
 {
@@ -12,7 +12,9 @@ internal static class PreparationWorkReportSort
     {
         return lines
             .OrderBy(l => l.DateDisplay ?? "", StringComparer.Ordinal)
-            .ThenBy(l => l.WorkplaceName ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.WorkplaceCode ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.ManufacturingRouteCode ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.MiddleClassificationCode ?? "", StringComparer.Ordinal)
             .ThenBy(l => TemperatureKind(l.TemperatureRange))
             .ThenBy(l => TemperatureNumericPart(l.TemperatureRange))
             .ThenBy(l => l.TemperatureRange ?? "", StringComparer.Ordinal)

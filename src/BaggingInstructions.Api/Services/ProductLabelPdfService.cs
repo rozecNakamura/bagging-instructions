@@ -86,5 +86,5 @@ public sealed class ProductLabelPdfService
         };
     }
 
-    private static string FormatQty(decimal q) => q.ToString("0.######", CultureInfo.InvariantCulture);
+    private static string FormatQty(decimal q) => ReportQuantityFormatter.FormatCeilingQuantity(q);
 }
