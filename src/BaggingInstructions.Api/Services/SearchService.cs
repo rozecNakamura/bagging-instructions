@@ -78,17 +78,8 @@ public class SearchService
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
 
-        // 品目ごとに confirmed が1件でもあれば confirmed のみ、なければ全件を対象とする
         var filteredLines = lines
             .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
-            .GroupBy(l => l.Item!.ItemCd!)
-            .SelectMany(g =>
-            {
-                var hasConfirmed = g.Any(l => l.SalesOrder?.Status == "confirmed");
-                return hasConfirmed
-                    ? g.Where(l => l.SalesOrder?.Status == "confirmed")
-                    : g.AsEnumerable();
-            })
             .ToList();
 
         var printedRows = await _otherDb.BaggedQuantities.AsNoTracking()

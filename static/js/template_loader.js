@@ -796,21 +796,24 @@ export function prepareBaggingInstructionData(apiResponse) {
         }];
     }
     
-    // ステップ1: 品目コードでグループ化
+    // ステップ1: 品目コード × addinfo05 でグループ化（addinfo05 が異なるものは別ページ）
     const groupedByItem = {};
     items.forEach(item => {
         const itemcd = item.itemcd;
-        if (!groupedByItem[itemcd]) {
-            groupedByItem[itemcd] = {
+        const addinfo05Key = item.addinfo05 ?? '';
+        const delvEdtKey = item.delvedt ?? '';
+        const groupKey = `${itemcd}__${addinfo05Key}__${delvEdtKey}`;
+        if (!groupedByItem[groupKey]) {
+            groupedByItem[groupKey] = {
                 items: [],
                 commonInfo: null
             };
         }
-        groupedByItem[itemcd].items.push(item);
-        
+        groupedByItem[groupKey].items.push(item);
+
         // 最初のitemから品目共通情報を保持
-        if (!groupedByItem[itemcd].commonInfo) {
-            groupedByItem[itemcd].commonInfo = {
+        if (!groupedByItem[groupKey].commonInfo) {
+            groupedByItem[groupKey].commonInfo = {
                 itemcd: item.itemcd,
                 itemnm: item.itemnm,
                 prddt: item.prddt,
@@ -835,11 +838,12 @@ export function prepareBaggingInstructionData(apiResponse) {
     
     const allPages = [];
     
-    // ステップ2: 各品目ごとにページング処理
-    Object.keys(groupedByItem).forEach(itemcd => {
-        const group = groupedByItem[itemcd];
+    // ステップ2: 各グループ（品目 × addinfo05）ごとにページング処理
+    Object.keys(groupedByItem).forEach(groupKey => {
+        const group = groupedByItem[groupKey];
         const itemList = group.items;
         const commonInfo = group.commonInfo;
+        const itemcd = commonInfo.itemcd;
         
         const qtyInvTotal = itemList.reduce((s, x) => s + (Number(x.quantity_for_inventory) || Number(x.planned_quantity) || 0), 0);
         const qtyInsTotal = itemList.reduce((s, x) => s + (Number(x.quantity_for_instruction) || Number(x.adjusted_quantity) || 0), 0);

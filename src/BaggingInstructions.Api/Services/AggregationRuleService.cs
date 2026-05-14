@@ -15,42 +15,25 @@ public static class AggregationRuleService
         ["310"] = new() { ["morning"] = null, ["lunch"] = "by_catering", ["dinner"] = "by_catering" },
     };
 
-    private static readonly Dictionary<string, string> EatingTimeMap = new()
+    /// <summary>addinfo05（1=朝, 2=昼, 3=夜）から集計用の喫食キーを決定する。</summary>
+    private static string ResolveMealPeriodKeyFromAddinfo05(string? addinfo05)
     {
-        ["朝"] = "morning",
-        ["昼"] = "lunch",
-        ["夕"] = "dinner",
-    };
-
-    /// <summary>
-    /// salesorderlineaddinfo の配送便コード・名称（addinfo04 / addinfo04name）から集計用の喫食キーを決定する。
-    /// </summary>
-    public static string ResolveMealPeriodKey(string? deliverySlotCode, string? deliverySlotName)
-    {
-        var name = deliverySlotName ?? "";
-        foreach (var kv in EatingTimeMap.OrderByDescending(x => x.Key.Length))
+        var s = (addinfo05 ?? "").Trim()
+            .Replace('１', '1')
+            .Replace('２', '2')
+            .Replace('３', '3');
+        return s switch
         {
-            if (name.Contains(kv.Key, StringComparison.Ordinal))
-                return kv.Value;
-        }
-
-        var code = (deliverySlotCode ?? "").Trim();
-        if (code.Length >= 2 && int.TryParse(code.AsSpan(0, 2), out var hour))
-        {
-            if (hour < 10) return "morning";
-            if (hour < 15) return "lunch";
-            return "dinner";
-        }
-
-        if (EatingTimeMap.TryGetValue(code, out var mapped))
-            return mapped;
-
-        return "lunch";
+            "1" => "morning",
+            "2" => "lunch",
+            "3" => "dinner",
+            _ => "lunch"
+        };
     }
 
-    public static string GetAggregationMethod(string? cuscd, string? shptm, string? shptmName = null)
+    public static string GetAggregationMethod(string? cuscd, string? addinfo05)
     {
-        var eatingKey = ResolveMealPeriodKey(shptm, shptmName);
+        var eatingKey = ResolveMealPeriodKeyFromAddinfo05(addinfo05);
         if (!AggregationRules.TryGetValue(cuscd ?? "", out var rule))
             return "by_facility";
         return rule.GetValueOrDefault(eatingKey, "by_facility") ?? "by_facility";
@@ -62,12 +45,12 @@ public static class AggregationRuleService
         var grouped = new Dictionary<string, List<BaggingDetailRow>>();
         foreach (var row in rows.OrderBy(r => r.Prkey))
         {
-            var method = GetAggregationMethod(row.Cuscd, row.Shptm, row.ShptmName);
+            var method = GetAggregationMethod(row.Cuscd, row.Addinfo05);
             var dv = row.Delvedt ?? "";
             var addinfo05 = row.Addinfo05 ?? "";
             var key = method == "by_facility"
-                ? $"{row.Itemcd}_{row.Shpctrcd}_{row.Shptm}_{dv}_{addinfo05}"
-                : $"{row.Itemcd}_CATERING_{row.Shptm}_{dv}_{addinfo05}";
+                ? $"{row.Itemcd}_{row.Shpctrcd}_{dv}_{addinfo05}"
+                : $"{row.Itemcd}_CATERING_{dv}_{addinfo05}";
             if (!grouped.ContainsKey(key))
                 grouped[key] = new List<BaggingDetailRow>();
             grouped[key].Add(row);
