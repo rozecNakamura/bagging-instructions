@@ -358,6 +358,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                 bomCache[h.ParentItemcode] = boms;
             }
 
+            var hasProductNo = !string.IsNullOrWhiteSpace(h.ProductNo);
             if (boms.Count == 0)
             {
                 lines.Add(new PreparationPdfLineModel
@@ -377,7 +378,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     TemperatureRange = "",
                     Quantity = "",
                     Unit = "",
-                    WarehouseName = ""
+                    WarehouseName = "",
+                    HasProductNo = hasProductNo
                 });
                 continue;
             }
@@ -404,7 +406,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     TemperatureRange = b.ChildSteriTempRange ?? "",
                     Quantity = qtyDisplay,
                     Unit = b.ChildUnitname ?? "",
-                    WarehouseName = b.ChildWarehouseName ?? ""
+                    WarehouseName = b.ChildWarehouseName ?? "",
+                    HasProductNo = hasProductNo
                 });
             }
         }
@@ -502,7 +505,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ''
                   ) AS workplace_code,
                   TRIM(COALESCE(sai.addinfo03, '')) AS manufacturing_route_code,
-                  COALESCE(mid.middleclassificationcode, '') AS middle_class_code
+                  COALESCE(mid.middleclassificationcode, '') AS middle_class_code,
+                  ot.productno
                 FROM ordertable ot
                 LEFT JOIN workcenter wc_ord ON (
                      wc_ord.workcentercode = TRIM(BOTH FROM ot.workcentercode)
@@ -544,7 +548,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     NeedDate = ReadDateNullable(reader, 11),
                     WorkplaceCode = reader.GetString(12),
                     ManufacturingRouteCode = reader.GetString(13),
-                    MiddleClassificationCode = reader.GetString(14)
+                    MiddleClassificationCode = reader.GetString(14),
+                    ProductNo = reader.IsDBNull(15) ? null : reader.GetString(15)
                 });
             }
 
@@ -666,6 +671,8 @@ public sealed class PreparationPdfLineModel
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
     public string WarehouseName { get; set; } = "";
+    /// <summary>ordertable.productno が存在するか（true=袋品, false=その他）。</summary>
+    public bool HasProductNo { get; set; }
 }
 
 internal sealed class PreparationLineHeaderRow
@@ -686,6 +693,8 @@ internal sealed class PreparationLineHeaderRow
     public DateOnly? PlannedDeliveryDate { get; set; }
     /// <summary>納期（CSV/帳票に表示する日付）。ordertable.needdate 優先、無ければ planneddeliverydate。</summary>
     public DateOnly? NeedDate { get; set; }
+    /// <summary>ordertable.productno（null の場合はその他、値があれば袋品）。</summary>
+    public string? ProductNo { get; set; }
 }
 
 internal sealed class PreparationBomSqlRow

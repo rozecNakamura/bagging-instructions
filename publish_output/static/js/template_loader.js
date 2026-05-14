@@ -403,9 +403,12 @@ function injectTableData(container, data) {
     }
 
     // 一番左の子品目の単位が g または kg かどうかを判定
-    const firstMbom = data.commonInfo?.mboms?.[0] ?? data.items?.[0]?.mboms?.[0];
+    const mboms = data.commonInfo?.mboms ?? data.items?.[0]?.mboms ?? [];
+    const firstMbom = mboms[0];
     const firstUnitNm = (firstMbom?.child_item?.uni?.uninm || '').toLowerCase().trim();
     const useGKgMode = firstUnitNm === 'g' || firstUnitNm === 'kg';
+    // 一番左の品目が個数系（切/尾/枚/ヶ等）の場合：j=0列は端数個数、j≥1列はBOM比率で算出
+    const useCountMode = !useGKgMode && firstMbom != null;
 
     // 施設ごとの規格袋数・端数を計算（受注数 / 規格数量）
     const computed = items.map(item => {
@@ -438,13 +441,25 @@ function injectTableData(container, data) {
         totalStandardBags += c.displayStdBags;
         totalIrregular += c.displayIrregular;
         const seasoningAmounts = items[idx]?.seasoning_amounts || [];
-        seasoningAmounts.forEach((s, j) => {
-            if (j < 10 && s.calculated_amount != null) {
-                totalColumns[j] += useGKgMode && c.ratio != null
-                    ? s.calculated_amount * c.ratio
-                    : s.calculated_amount;
+        if (useGKgMode) {
+            seasoningAmounts.forEach((s, j) => {
+                if (j < 10 && s.calculated_amount != null && c.ratio != null)
+                    totalColumns[j] += s.calculated_amount * c.ratio;
+            });
+        } else if (useCountMode) {
+            // j=0：端数個数そのもの、j≥1：(端数 / otp) * amu
+            totalColumns[0] += c.irregular;
+            for (let j = 1; j < mboms.length && j < 10; j++) {
+                const otp = Number(mboms[j]?.otp) || 0;
+                const amu = Number(mboms[j]?.amu) || 0;
+                if (otp > 0) totalColumns[j] += (c.irregular / otp) * amu;
             }
-        });
+        } else {
+            seasoningAmounts.forEach((s, j) => {
+                if (j < 10 && s.calculated_amount != null)
+                    totalColumns[j] += s.calculated_amount;
+            });
+        }
     });
 
     // 空行で水増しすると合計行だけが2ページ目に送られるため、データ行の直後に合計行を置く。
@@ -506,13 +521,22 @@ function injectTableData(container, data) {
                 const amountCell = document.createElement('td');
                 const amountContent = document.createElement('div');
                 amountContent.className = 'cell-content';
-                const rawAmount = seasoningAmounts[j]?.calculated_amount;
                 let displayAmount;
-                if (useGKgMode && c.ratio != null && rawAmount != null) {
-                    // g/kg モード：端数比率を掛けた量を表示（2個目以降も同じ比率）
-                    displayAmount = rawAmount * c.ratio;
+                if (useGKgMode && c.ratio != null) {
+                    const rawAmount = seasoningAmounts[j]?.calculated_amount;
+                    if (rawAmount != null) displayAmount = rawAmount * c.ratio;
+                } else if (useCountMode) {
+                    if (j === 0) {
+                        // 一番左の個数系品目列：端数個数
+                        displayAmount = c.irregular > 0 ? c.irregular : null;
+                    } else if (j < mboms.length) {
+                        // 右側の調味料列：(端数 / otp) * amu
+                        const otp = Number(mboms[j]?.otp) || 0;
+                        const amu = Number(mboms[j]?.amu) || 0;
+                        displayAmount = (otp > 0 && c.irregular > 0) ? (c.irregular / otp) * amu : null;
+                    }
                 } else {
-                    displayAmount = rawAmount;
+                    displayAmount = seasoningAmounts[j]?.calculated_amount;
                 }
                 amountContent.innerHTML = (displayAmount != null && displayAmount !== 0) ? formatNumber(displayAmount) : '&nbsp;';
                 amountCell.appendChild(amountContent);
@@ -772,21 +796,24 @@ export function prepareBaggingInstructionData(apiResponse) {
         }];
     }
     
-    // ステップ1: 品目コードでグループ化
+    // ステップ1: 品目コード × addinfo05 でグループ化（addinfo05 が異なるものは別ページ）
     const groupedByItem = {};
     items.forEach(item => {
         const itemcd = item.itemcd;
-        if (!groupedByItem[itemcd]) {
-            groupedByItem[itemcd] = {
+        const addinfo05Key = item.addinfo05 ?? '';
+        const delvEdtKey = item.delvedt ?? '';
+        const groupKey = `${itemcd}__${addinfo05Key}__${delvEdtKey}`;
+        if (!groupedByItem[groupKey]) {
+            groupedByItem[groupKey] = {
                 items: [],
                 commonInfo: null
             };
         }
-        groupedByItem[itemcd].items.push(item);
-        
+        groupedByItem[groupKey].items.push(item);
+
         // 最初のitemから品目共通情報を保持
-        if (!groupedByItem[itemcd].commonInfo) {
-            groupedByItem[itemcd].commonInfo = {
+        if (!groupedByItem[groupKey].commonInfo) {
+            groupedByItem[groupKey].commonInfo = {
                 itemcd: item.itemcd,
                 itemnm: item.itemnm,
                 prddt: item.prddt,
@@ -811,11 +838,12 @@ export function prepareBaggingInstructionData(apiResponse) {
     
     const allPages = [];
     
-    // ステップ2: 各品目ごとにページング処理
-    Object.keys(groupedByItem).forEach(itemcd => {
-        const group = groupedByItem[itemcd];
+    // ステップ2: 各グループ（品目 × addinfo05）ごとにページング処理
+    Object.keys(groupedByItem).forEach(groupKey => {
+        const group = groupedByItem[groupKey];
         const itemList = group.items;
         const commonInfo = group.commonInfo;
+        const itemcd = commonInfo.itemcd;
         
         const qtyInvTotal = itemList.reduce((s, x) => s + (Number(x.quantity_for_inventory) || Number(x.planned_quantity) || 0), 0);
         const qtyInsTotal = itemList.reduce((s, x) => s + (Number(x.quantity_for_instruction) || Number(x.adjusted_quantity) || 0), 0);
