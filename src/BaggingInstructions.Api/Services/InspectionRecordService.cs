@@ -114,7 +114,7 @@ public sealed class InspectionRecordService
                 QuantityDisplay = qtyDisplay,
                 UnitName = h.UnitName ?? "",
                 DeviationHandling = "",
-                StorageLocation = "",
+                StorageLocation = h.WarehouseName,
                 DeliveryTime = "",
                 TemperatureCheck = "",
                 BestBefore = "",
@@ -254,11 +254,13 @@ public sealed class InspectionRecordService
                   ot.qtyuni3,
                   i.conversionvalue1,
                   i.conversionvalue2,
-                  i.conversionvalue3
+                  i.conversionvalue3,
+                  COALESCE(w.warehousename, '') AS warehouse_name
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = NULLIF(TRIM(ot.itemcode), '')
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN warehouses w ON w.warehousecode = i.warehousecode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'PO'
                 ORDER BY ot.ordertableid
@@ -296,7 +298,8 @@ public sealed class InspectionRecordService
                     ItemName = reader.GetString(4),
                     Spec = reader.GetString(5),
                     UnitName = reader.GetString(6),
-                    Qty = qtyU0
+                    Qty = qtyU0,
+                    WarehouseName = reader.IsDBNull(19) ? "" : reader.GetString(19)
                 });
             }
 
@@ -361,5 +364,6 @@ internal sealed class InspectionRecordHeaderRow
     public string Spec { get; set; } = "";
     public string UnitName { get; set; } = "";
     public decimal Qty { get; set; }
+    public string WarehouseName { get; set; } = "";
 }
 

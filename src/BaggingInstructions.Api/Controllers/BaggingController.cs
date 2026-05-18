@@ -97,7 +97,12 @@ public class BaggingController : ControllerBase
         try
         {
             var calc = await _baggingCalculator.CalculateFullAsync(request, ct);
-            var baggingItems = calc.Items;
+            var baggingItems = calc.Items
+                .OrderBy(x => x.Delvedt)
+                .ThenBy(x => x.Addinfo05 ?? "")
+                .ThenBy(x => x.Shpctrnm)
+                .ThenBy(x => x.Itemcd)
+                .ToList();
 
             if (request.PrintType == "instruction")
                 return Ok(new BaggingInstructionResponseDto

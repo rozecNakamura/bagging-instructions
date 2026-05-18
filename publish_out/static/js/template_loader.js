@@ -756,6 +756,11 @@ function formatNumber(value) {
 }
 
 function resolveStandardBags(item) {
+    // 子品目が1個の場合はバックエンドの計算結果を優先（TotalQty入力時の按分計算を反映する）
+    const mboms = item.mboms ?? [];
+    if (mboms.length === 1 && item.standard_bags != null) {
+        return item.standard_bags || 0;
+    }
     const std = parseFloat(item.item?.std);
     if (!isNaN(std) && std > 0) {
         const qty = item.planned_quantity ?? 0;

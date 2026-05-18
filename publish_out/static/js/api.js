@@ -79,15 +79,50 @@ export async function searchBaggingGroups(productionDate, productCode, isComplet
 
 /**
  * 袋詰印刷済みとしてマーク
+ * @param {string} prddt
+ * @param {string} itemcd
+ * @param {'instruction'|'label'} printType
  */
-export async function markBaggingPrinted(prddt, itemcd) {
+export async function markBaggingPrinted(prddt, itemcd, printType) {
     const response = await fetch(`${API_BASE_URL}/bagging/mark-printed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prddt, itemcd })
+        body: JSON.stringify({ prddt, itemcd, print_type: printType })
     });
     await throwIfBaggingJsonNotOk(response, '印刷済み登録エラー');
     return await response.json();
+}
+
+/**
+ * 作業前準備書貼付け Excel をダウンロード（Blob）
+ * @param {string} prddt
+ * @param {number[]} jobordPrkeys
+ * @returns {Promise<Blob>}
+ */
+export async function downloadBaggingPreparationExcel(prddt, jobordPrkeys, aggregate = false) {
+    const response = await fetch(`${API_BASE_URL}/bagging/preparation-excel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prddt: normalizePrddt(prddt), jobord_prkeys: jobordPrkeys || [], aggregate })
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `Excelエクスポートエラー: ${response.status}`);
+    }
+    return await response.blob();
+}
+
+/**
+ * 袋詰管理 Excel エクスポート URL を構築（検索と同じフィルター条件）
+ * @param {string} prddt
+ * @param {string} [itemcd]
+ * @param {string} [isComplete] - "" | "true" | "false"
+ * @returns {string}
+ */
+export function buildBaggingSearchExportUrl(prddt, itemcd, isComplete) {
+    const params = new URLSearchParams({ prddt: normalizePrddt(prddt), itemcd: itemcd || '' });
+    if (isComplete === 'true' || isComplete === 'false') params.set('is_complete', isComplete);
+    return `${API_BASE_URL}/search/bagging/export?${params}`;
 }
 
 /**
