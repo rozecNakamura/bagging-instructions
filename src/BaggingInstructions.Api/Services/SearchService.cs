@@ -82,12 +82,18 @@ public class SearchService
             .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
             .ToList();
 
-        var printedRows = await _otherDb.BaggedQuantities.AsNoTracking()
-            .Where(r => r.ProductDate == prddtDate.Value && r.IsPrinted)
-            .Select(r => r.ParentItemCode)
-            .Distinct()
+        var printStatusRows = await _otherDb.BaggedQuantities.AsNoTracking()
+            .Where(r => r.ProductDate == prddtDate.Value)
+            .GroupBy(r => r.ParentItemCode)
+            .Select(g => new
+            {
+                ParentItemCode = g.Key,
+                IsPrinted = g.Any(r => r.IsPrinted),
+                IsInstructionPrinted = g.Any(r => r.IsInstructionPrinted),
+                IsLabelPrinted = g.Any(r => r.IsLabelPrinted)
+            })
             .ToListAsync(ct);
-        var printedItemCodes = printedRows.ToHashSet(StringComparer.Ordinal);
+        var printStatusByCode = printStatusRows.ToDictionary(r => r.ParentItemCode, StringComparer.Ordinal);
 
         var groups = filteredLines
             .GroupBy(l => l.Item!.ItemCd!)
@@ -95,7 +101,7 @@ public class SearchService
             {
                 var first = g.First();
                 var item = first.Item!;
-                var printed = printedItemCodes.Contains(g.Key);
+                printStatusByCode.TryGetValue(g.Key, out var ps);
                 return new BaggingSearchGroupDto
                 {
                     Prddt = prddtDate.Value.ToString("yyyyMMdd"),
@@ -105,7 +111,9 @@ public class SearchService
                     UnitCode = item.Unit0?.UnitCode,
                     UnitName = item.Unit0?.UnitName,
                     LinePrkeys = g.Select(x => x.SalesOrderLineId).OrderBy(id => id).ToList(),
-                    IsPrinted = printed
+                    IsPrinted = ps?.IsPrinted ?? false,
+                    IsInstructionPrinted = ps?.IsInstructionPrinted ?? false,
+                    IsLabelPrinted = ps?.IsLabelPrinted ?? false
                 };
             })
             .OrderBy(x => x.Itemcd, StringComparer.Ordinal)

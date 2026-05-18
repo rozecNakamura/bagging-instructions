@@ -12,17 +12,20 @@ public class BaggingController : ControllerBase
     private readonly BaggingCalculatorService _baggingCalculator;
     private readonly BaggingInputService _baggingInputService;
     private readonly BaggingLabelPdfService _baggingLabelPdf;
+    private readonly BaggingPreparationExcelService _baggingPrepExcel;
     private readonly IWebHostEnvironment _env;
 
     public BaggingController(
         BaggingCalculatorService baggingCalculator,
         BaggingInputService baggingInputService,
         BaggingLabelPdfService baggingLabelPdf,
+        BaggingPreparationExcelService baggingPrepExcel,
         IWebHostEnvironment env)
     {
         _baggingCalculator = baggingCalculator;
         _baggingInputService = baggingInputService;
         _baggingLabelPdf = baggingLabelPdf;
+        _baggingPrepExcel = baggingPrepExcel;
         _env = env;
     }
 
@@ -81,7 +84,7 @@ public class BaggingController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(body.Prddt) || string.IsNullOrWhiteSpace(body.Itemcd))
             return BadRequest(new { detail = "prddt と itemcd を指定してください。" });
-        await _baggingInputService.MarkPrintedAsync(body.Prddt.Trim(), body.Itemcd.Trim(), ct);
+        await _baggingInputService.MarkPrintedAsync(body.Prddt.Trim(), body.Itemcd.Trim(), body.PrintType, ct);
         return Ok(new { ok = true });
     }
 
@@ -114,9 +117,8 @@ public class BaggingController : ControllerBase
                         item.Prddt ?? item.Delvedt,
                         item.Item?.ShelflifeDays ?? LabelGeneratorService.DefaultDaysAfter);
                 var unitName = item.Item?.Uni?.Uninm ?? item.Item?.Uni?.Uniinfnm;
-                var baseQty = item.PlannedQuantity;
-                var labelStdBags = fillQty > 0 ? (int)(baseQty / fillQty) : item.StandardBags;
-                var labelIrregular = fillQty > 0 ? (baseQty % fillQty) : item.IrregularQuantity;
+                var labelStdBags = item.StandardBags;
+                var labelIrregular = item.IrregularQuantity;
                 var pageNo = labelStdBags + (labelIrregular > 0 ? 1 : 0);
                 var shptmName = item.ShptmName;
                 var classification1Name = item.Item?.Classification1Name;
@@ -132,6 +134,30 @@ public class BaggingController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { detail = $"計算エラー: {ex.Message}" });
+        }
+    }
+
+    /// <summary>作業前準備書貼付け Excel を生成（POST）。</summary>
+    [HttpPost("preparation-excel")]
+    public async Task<IActionResult> DownloadPreparationExcel(
+        [FromBody] BaggingPreparationExcelRequestDto body,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Prddt))
+            return BadRequest(new { detail = "prddt を指定してください。" });
+        if (body.JobordPrkeys == null || body.JobordPrkeys.Count == 0)
+            return BadRequest(new { detail = "jobord_prkeys を指定してください。" });
+        try
+        {
+            var bytes = await _baggingPrepExcel.BuildAsync(body.JobordPrkeys, body.Prddt.Trim(), body.Aggregate, ct);
+            var fileName = $"作業前準備書貼付け_{body.Prddt}.xlsx";
+            return File(bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = ex.Message });
         }
     }
 

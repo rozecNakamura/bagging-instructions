@@ -88,6 +88,12 @@ public class BaggingSearchGroupDto
 
     [JsonPropertyName("is_printed")]
     public bool IsPrinted { get; set; } = false;
+
+    [JsonPropertyName("is_instruction_printed")]
+    public bool IsInstructionPrinted { get; set; } = false;
+
+    [JsonPropertyName("is_label_printed")]
+    public bool IsLabelPrinted { get; set; } = false;
 }
 
 public class BaggingSearchResponseDto

@@ -49,10 +49,13 @@ public class BaggingCalculatorService
         var effectiveSpecFillQty = payload?.Lines?.FirstOrDefault(l => l.SpecQty.HasValue && l.SpecQty > 0)?.SpecQty
                                   ?? first.DefaultSpecQty;
 
+        var anyUserEnteredTotalQty = payload?.Lines?.Any(l => l.TotalQty.HasValue) == true;
+
         if (payload?.Lines is { Count: > 0 })
         {
             BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
-                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals, effectiveSpecFillQty);
+                items, first.Divisor, first.SeasoningBoms, mboms, globalTotals, effectiveSpecFillQty,
+                anyUserEnteredTotalQty);
         }
 
         // 登録済みペイロードがない場合も右上テーブルを表示（規格数量は品目マスタ STD のデフォルトで補完）

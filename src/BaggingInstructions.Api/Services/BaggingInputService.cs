@@ -186,9 +186,13 @@ public class BaggingInputService
             .ToList();
         if (validLines.Count == 0) return;
 
-        var wasPrinted = await _otherDb.BaggedQuantities.AsNoTracking()
+        var existingPrint = await _otherDb.BaggedQuantities.AsNoTracking()
             .Where(r => r.ProductDate == productDate && r.ParentItemCode == parentItemCode)
-            .AnyAsync(r => r.IsPrinted, ct);
+            .Select(r => new { r.IsInstructionPrinted, r.IsLabelPrinted, r.IsPrinted })
+            .FirstOrDefaultAsync(ct);
+        var wasInstructionPrinted = existingPrint?.IsInstructionPrinted ?? false;
+        var wasLabelPrinted = existingPrint?.IsLabelPrinted ?? false;
+        var wasPrinted = existingPrint?.IsPrinted ?? false;
 
         await using var tx = await _otherDb.Database.BeginTransactionAsync(ct);
         try
@@ -214,7 +218,7 @@ public class BaggingInputService
                 var id = nextId++;
 
                 await _otherDb.Database.ExecuteSqlAsync(
-                    $"INSERT INTO baggedquantity (baggedquantityid, productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, isprinted, updatedat) VALUES ({id}, {productDate}, {parentItemCode}, {citem}, {inputOrder}, {specQty}, {totalQty}, {wasPrinted}, {now})",
+                    $"INSERT INTO baggedquantity (baggedquantityid, productdate, parentitemcode, childitemcode, inputorder, standardquantity, totalquantity, isprinted, isinstructionprinted, islabelprinted, updatedat) VALUES ({id}, {productDate}, {parentItemCode}, {citem}, {inputOrder}, {specQty}, {totalQty}, {wasPrinted}, {wasInstructionPrinted}, {wasLabelPrinted}, {now})",
                     ct);
             }
             await tx.CommitAsync(ct);
@@ -226,7 +230,11 @@ public class BaggingInputService
         }
     }
 
-    public async Task MarkPrintedAsync(string prddt, string itemcd, CancellationToken ct = default)
+    /// <summary>
+    /// 指定した印刷タイプを印刷済みとしてマークする。
+    /// 指示書とラベルの両方が印刷済みになったとき <c>isprinted</c> を true にする。
+    /// </summary>
+    public async Task MarkPrintedAsync(string prddt, string itemcd, string? printType, CancellationToken ct = default)
     {
         var date = ParsePrddt(prddt);
         if (!date.HasValue) return;
@@ -239,7 +247,10 @@ public class BaggingInputService
 
         foreach (var row in rows)
         {
-            row.IsPrinted = true;
+            if (printType == "instruction") row.IsInstructionPrinted = true;
+            else if (printType == "label") row.IsLabelPrinted = true;
+            else { row.IsInstructionPrinted = true; row.IsLabelPrinted = true; }  // 後方互換
+            row.IsPrinted = row.IsInstructionPrinted && row.IsLabelPrinted;
             row.UpdatedAt = now;
         }
 

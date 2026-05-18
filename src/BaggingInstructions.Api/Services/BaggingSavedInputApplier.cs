@@ -69,7 +69,8 @@ public static class BaggingSavedInputApplier
         IReadOnlyList<SeasoningBomRow> seasoningBoms,
         IReadOnlyList<MbomDetailDto> mboms,
         IReadOnlyList<decimal>? globalTotalsForSeasoning = null,
-        decimal? specQty = null)
+        decimal? specQty = null,
+        bool useIngredientAllocation = false)
     {
         if (items.Count == 0) return;
 
@@ -127,32 +128,51 @@ public static class BaggingSavedInputApplier
         }
 
         if (specQty is decimal sq && sq > 0)
-            ApplySpecBagCounts(items, sq, mboms, globalTotalsForSeasoning);
+            ApplySpecBagCounts(items, sq, mboms, globalTotalsForSeasoning, useIngredientAllocation);
     }
 
+    /// <summary>
+    /// 規格数量に基づき、各施設の規格袋数と端数を計算して上書きする。
+    /// <paramref name="useIngredientAllocation"/> が true かつ先頭子品目が g/kg 単位の場合、
+    /// ユーザーが入力した総数量から有効製品量（childAllocated ÷ amu/otp）を逆算して端数を求める。
+    /// false の場合は常に PlannedQuantity を基準にする。
+    /// </summary>
     public static void ApplySpecBagCounts(
         List<BaggingInstructionItemDto> items,
         decimal specQty,
-        IReadOnlyList<MbomDetailDto> mboms,
-        IReadOnlyList<decimal>? globalTotalsForSeasoning = null)
+        IReadOnlyList<MbomDetailDto>? mboms = null,
+        IReadOnlyList<decimal>? globalTotalsForSeasoning = null,
+        bool useIngredientAllocation = false)
     {
         if (items.Count == 0 || specQty <= 0) return;
 
         var totalOrder = items.Sum(i => i.PlannedQuantity);
-        var firstChildIndex = FirstRecipeChildIndex(mboms);
-        var useAllocatedChildQuantity = firstChildIndex >= 0
-                                        && IsGramOrKg(ChildUnitName(mboms[firstChildIndex]))
-                                        && globalTotalsForSeasoning is { Count: > 0 }
-                                        && firstChildIndex < globalTotalsForSeasoning.Count
-                                        && totalOrder > 0;
+        var firstChildIndex = mboms != null ? FirstRecipeChildIndex(mboms) : -1;
+        var firstUnitName = (firstChildIndex >= 0 && mboms != null) ? ChildUnitName(mboms[firstChildIndex]) : null;
+
+        // g/kg子品目 + TotalQty入力時: 入力総数量を受注比で直接按分（specQtyと同単位のため変換不要）
+        var useDirectChildAllocation = useIngredientAllocation
+            && firstChildIndex >= 0
+            && mboms != null
+            && IsGramOrKg(ChildUnitName(mboms[firstChildIndex]))
+            && globalTotalsForSeasoning is { Count: > 0 }
+            && firstChildIndex < globalTotalsForSeasoning.Count
+            && totalOrder > 0;
+
+        Console.WriteLine($"[DBG ApplySpecBagCounts] useIngredientAllocation={useIngredientAllocation} firstChildIndex={firstChildIndex} mboms?.Count={mboms?.Count} firstUnitName={firstUnitName} IsGKg={IsGramOrKg(firstUnitName)} globalTotals?.Count={globalTotalsForSeasoning?.Count} totalOrder={totalOrder} useDirectChildAllocation={useDirectChildAllocation} globalTotals[0]={globalTotalsForSeasoning?.ElementAtOrDefault(0)}");
 
         foreach (var item in items)
         {
-            var baseQuantity = item.PlannedQuantity;
-            if (useAllocatedChildQuantity)
+            decimal baseQuantity;
+            if (useDirectChildAllocation)
             {
-                var share = item.PlannedQuantity / totalOrder;
+                // 入力総数量 × 施設受注比 = この施設の按分量（g） → 規格(g)で割って袋数算出
+                var share = totalOrder > 0 ? item.PlannedQuantity / totalOrder : 0m;
                 baseQuantity = globalTotalsForSeasoning![firstChildIndex] * share;
+            }
+            else
+            {
+                baseQuantity = item.PlannedQuantity;
             }
 
             var (standardBags, irregularQuantity) = CalculateBagsAndRoundedRemainder(baseQuantity, specQty);

@@ -171,14 +171,14 @@ export function injectData(templateHtml, data) {
     // ヘッダー情報を注入
     injectHeaderData(doc, data);
     
-    // 工程・レシピ情報テーブル（右上）を注入
-    injectIngredientsTableData(doc, data);
-    
     // メインテーブルのヘッダー行を動的に設定
     injectMainTableHeaders(doc, data);
-    
-    // テーブルデータを注入（合計行も含む）
-    injectTableData(doc, data);
+
+    // テーブルデータを注入（合計行も含む）→ オーバーフロー補正後の合計を取得
+    const correctedTotals = injectTableData(doc, data);
+
+    // 工程・レシピ情報テーブル（右上）を注入（補正済み規格袋合計を渡す）
+    injectIngredientsTableData(doc, data, correctedTotals);
     
     // スタイルタグを抽出
     const styles = doc.querySelectorAll('style');
@@ -410,27 +410,55 @@ function injectTableData(container, data) {
     // 一番左の品目が個数系（切/尾/枚/ヶ等）の場合：j=0列は端数個数、j≥1列はBOM比率で算出
     const useCountMode = !useGKgMode && firstMbom != null;
 
-    // 施設ごとの規格袋数・端数を計算（受注数 / 規格数量）
+    // 施設ごとの規格袋数・端数を計算
+    // バックエンドが按分等を適用して計算した standard_bags/irregular_quantity を優先使用
     const computed = items.map(item => {
-        const qty = Number(item.planned_quantity) || Number(item.adjusted_quantity) || 0;
-        const stdBags = specQty > 0 ? Math.floor(qty / specQty) : (item.standard_bags || 0);
-        const irregular = specQty > 0 ? (qty % specQty) : (item.irregular_quantity || 0);
-        // g/kg モード時：端数比率（1個目の比率を2個目以降の列にも適用）
-        const ratio = (useGKgMode && qty > 0) ? irregular / qty : null;
-        return { stdBags, irregular, ratio, qty };
+        const rawQty = Number(item.planned_quantity) || Number(item.adjusted_quantity) || 0;
+        let stdBags = item.standard_bags != null ? (item.standard_bags || 0)
+                    : specQty > 0 ? Math.floor(rawQty / specQty)
+                    : 0;
+        let irregular = item.irregular_quantity != null ? Number(item.irregular_quantity) || 0
+                      : specQty > 0 ? rawQty % specQty
+                      : 0;
+        // 浮動小数点誤差で irregular >= specQty になる場合の安全策
+        if (specQty > 0 && irregular >= specQty) {
+            stdBags += Math.floor(irregular / specQty);
+            irregular = irregular % specQty;
+        }
+        // g/kg モード：有効配分量（stdBags × specQty + 端数）に対する端数の比率
+        const effectiveQty = specQty > 0 ? (stdBags * specQty + irregular) : rawQty;
+        const ratio = (useGKgMode && effectiveQty > 0) ? irregular / effectiveQty : null;
+        return { stdBags, irregular, ratio, qty: effectiveQty };
     });
 
-    // g/kgモード：調味液列の合計（端数）が規格数量を超える場合、超過分を規格袋数に加算
+    // g/kgモード：各品目端数分を先行計算し、合計がspecQtyを超えた場合は規格袋を補正する
     const extendedComputed = computed.map((c, idx) => {
-        if (!useGKgMode || c.ratio == null || specQty <= 0) {
-            return { ...c, bonusBags: 0, displayIrregular: c.irregular, displayStdBags: c.stdBags };
+        const seasoningAmounts = items[idx]?.seasoning_amounts || [];
+        let displayStdBags = c.stdBags;
+        let displayIrregular = c.irregular;
+        let childAmounts = null;
+
+        if (useGKgMode && c.ratio != null) {
+            const amounts = [];
+            for (let j = 0; j < 10; j++) {
+                const rawAmount = seasoningAmounts[j]?.calculated_amount;
+                amounts.push(rawAmount != null ? rawAmount * c.ratio : null);
+            }
+            const childTotal = amounts.reduce((sum, v) => sum + (v || 0), 0);
+            if (specQty > 0 && childTotal > specQty) {
+                // 各品目端数分合計が規格を超えた → 規格袋を追加し余りを新たな端数とする
+                const extraBags = Math.floor(childTotal / specQty);
+                displayStdBags += extraBags;
+                const newTotal = childTotal % specQty;
+                const scale = childTotal > 0 ? newTotal / childTotal : 0;
+                childAmounts = amounts.map(v => v != null ? v * scale : null);
+                displayIrregular = newTotal;
+            } else {
+                childAmounts = amounts;
+            }
         }
-        const sa = items[idx]?.seasoning_amounts || [];
-        const rawIrregularTotal = sa.reduce((sum, s, j) =>
-            (j < 10 && s.calculated_amount != null) ? sum + s.calculated_amount * c.ratio : sum, 0);
-        const bonusBags = Math.floor(rawIrregularTotal / specQty);
-        const displayIrregular = rawIrregularTotal % specQty;
-        return { ...c, bonusBags, displayIrregular, displayStdBags: c.stdBags + bonusBags };
+
+        return { ...c, displayIrregular, displayStdBags, childAmounts };
     });
 
     // 合計値
@@ -442,10 +470,11 @@ function injectTableData(container, data) {
         totalIrregular += c.displayIrregular;
         const seasoningAmounts = items[idx]?.seasoning_amounts || [];
         if (useGKgMode) {
-            seasoningAmounts.forEach((s, j) => {
-                if (j < 10 && s.calculated_amount != null && c.ratio != null)
-                    totalColumns[j] += s.calculated_amount * c.ratio;
-            });
+            if (c.childAmounts) {
+                c.childAmounts.forEach((amt, j) => {
+                    if (j < 10 && amt != null) totalColumns[j] += amt;
+                });
+            }
         } else if (useCountMode) {
             // j=0：端数個数そのもの、j≥1：(端数 / otp) * amu
             totalColumns[0] += c.irregular;
@@ -522,9 +551,9 @@ function injectTableData(container, data) {
                 const amountContent = document.createElement('div');
                 amountContent.className = 'cell-content';
                 let displayAmount;
-                if (useGKgMode && c.ratio != null) {
-                    const rawAmount = seasoningAmounts[j]?.calculated_amount;
-                    if (rawAmount != null) displayAmount = rawAmount * c.ratio;
+                if (useGKgMode) {
+                    if (c.childAmounts && c.childAmounts[j] != null)
+                        displayAmount = c.childAmounts[j];
                 } else if (useCountMode) {
                     if (j === 0) {
                         // 一番左の個数系品目列：端数個数
@@ -560,6 +589,10 @@ function injectTableData(container, data) {
 
         tbody.appendChild(row);
     }
+
+    // オーバーフロー補正後の合計を返す（右上の規格袋合計に使用）
+    const totalIrregularBagCount = extendedComputed.filter(c => c.displayIrregular > 0).length;
+    return { totalStandardBags, totalIrregularBagCount };
 }
 
 /**
@@ -567,8 +600,9 @@ function injectTableData(container, data) {
  * 品目全体の合計を表示
  * @param {HTMLElement} container - コンテナ要素
  * @param {Object} data - データオブジェクト
+ * @param {{totalStandardBags: number, totalIrregularBagCount: number}|null} correctedTotals - 下段補正済み合計
  */
-function injectIngredientsTableData(container, data) {
+function injectIngredientsTableData(container, data, correctedTotals = null) {
     const tbody = container.querySelector('#ingredientsTableBody');
     if (!tbody) return;
 
@@ -587,25 +621,18 @@ function injectIngredientsTableData(container, data) {
     let computedTotalStdBags = 0;
     let computedIrregularBagCount = 0;
     allItems.forEach(item => {
-        const qty = Number(item.planned_quantity) || Number(item.adjusted_quantity) || 0;
-        const stdBags = specQtyTop > 0 ? Math.floor(qty / specQtyTop) : (item.standard_bags || 0);
-        const irregular = specQtyTop > 0 ? (qty % specQtyTop) : (item.irregular_quantity || 0);
-        const ratio = (useGKgTop && qty > 0) ? irregular / qty : null;
-        // g/kgモード：調味液列合計が規格数量を超えた分も規格袋数に加算
-        let displayStdBags = stdBags;
-        if (useGKgTop && ratio != null && specQtyTop > 0) {
-            const sa = item.seasoning_amounts || [];
-            const rawIrregularTotal = sa.reduce((sum, s, j) =>
-                (j < 10 && s.calculated_amount != null) ? sum + s.calculated_amount * ratio : sum, 0);
-            displayStdBags = stdBags + Math.floor(rawIrregularTotal / specQtyTop);
+        let stdBags = item.standard_bags != null ? (item.standard_bags || 0)
+                    : specQtyTop > 0 ? Math.floor((Number(item.planned_quantity) || 0) / specQtyTop)
+                    : 0;
+        let irregular = item.irregular_quantity != null ? Number(item.irregular_quantity) || 0
+                      : specQtyTop > 0 ? (Number(item.planned_quantity) || 0) % specQtyTop
+                      : 0;
+        if (specQtyTop > 0 && irregular >= specQtyTop) {
+            stdBags += Math.floor(irregular / specQtyTop);
+            irregular = irregular % specQtyTop;
         }
-        computedTotalStdBags += displayStdBags;
-        // 一番左の品目列の値が 0 より大きい施設を1件としてカウント
-        const firstAmt = item.seasoning_amounts?.[0]?.calculated_amount;
-        const firstDisplay = (useGKgTop && ratio != null && firstAmt != null)
-            ? firstAmt * ratio
-            : firstAmt;
-        if (firstDisplay != null && firstDisplay > 0) computedIrregularBagCount += 1;
+        computedTotalStdBags += stdBags;
+        if (irregular > 0) computedIrregularBagCount += 1;
     });
 
     // 投入量登録反映：API の ingredient_display_rows で右上を上書き
@@ -631,10 +658,12 @@ function injectIngredientsTableData(container, data) {
         if (totalRow) {
             const totalStandardBagsCell = totalRow.querySelector('#totalStandardBagsTop');
             const totalIrregularBagsCell = totalRow.querySelector('#totalIrregularBagsTop');
+            const finalStdBags = correctedTotals ? correctedTotals.totalStandardBags : computedTotalStdBags;
+            const finalIrregularCount = correctedTotals ? correctedTotals.totalIrregularBagCount : computedIrregularBagCount;
             if (totalStandardBagsCell)
-                totalStandardBagsCell.textContent = computedTotalStdBags > 0 ? String(computedTotalStdBags) : '';
+                totalStandardBagsCell.textContent = finalStdBags > 0 ? String(finalStdBags) : '';
             if (totalIrregularBagsCell)
-                totalIrregularBagsCell.textContent = computedIrregularBagCount > 0 ? String(computedIrregularBagCount) : '';
+                totalIrregularBagsCell.textContent = finalIrregularCount > 0 ? String(finalIrregularCount) : '';
         }
         return;
     }
@@ -727,6 +756,11 @@ function formatNumber(value) {
 }
 
 function resolveStandardBags(item) {
+    // 子品目が1個の場合はバックエンドの計算結果を優先（TotalQty入力時の按分計算を反映する）
+    const mboms = item.mboms ?? [];
+    if (mboms.length === 1 && item.standard_bags != null) {
+        return item.standard_bags || 0;
+    }
     const std = parseFloat(item.item?.std);
     if (!isNaN(std) && std > 0) {
         const qty = item.planned_quantity ?? 0;

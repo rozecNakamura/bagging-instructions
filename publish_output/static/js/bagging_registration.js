@@ -62,6 +62,8 @@ function closeSection() {
     lineEditors = [];
     const specInput = document.getElementById('baggingRegSpecQty');
     if (specInput) specInput.value = '';
+    const expiryInput = document.getElementById('baggingRegExpiryOverride');
+    if (expiryInput) expiryInput.value = '';
 }
 
 /** 検索結果クリア時など、他モジュールから呼ぶ用 */
@@ -133,6 +135,8 @@ function buildPayloadFromEditors() {
 async function loadRegistrationUi(group) {
     activeGroup = group;
     const prddt = prddtFromFormOrGroup(group);
+    const expiryInput = document.getElementById('baggingRegExpiryOverride');
+    if (expiryInput) expiryInput.value = '';
 
     const ctx = document.getElementById('baggingRegContext');
     if (ctx) {
@@ -248,7 +252,7 @@ document.getElementById('baggingRegPrintBtn')?.addEventListener('click', async (
         // 印刷済みフラグをセットし検索結果を更新
         const printedPrddt = prddtFromFormOrGroup(activeGroup);
         try {
-            await markBaggingPrinted(printedPrddt, activeGroup.itemcd);
+            await markBaggingPrinted(printedPrddt, activeGroup.itemcd, printType);
             const { refreshBaggingSearch } = await import('./search.js');
             await refreshBaggingSearch();
         } catch { /* 印刷自体は成功しているので無視 */ }

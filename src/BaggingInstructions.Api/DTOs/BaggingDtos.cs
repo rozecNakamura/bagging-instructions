@@ -242,4 +242,20 @@ public class MarkPrintedRequestDto
 
     [JsonPropertyName("itemcd")]
     public string Itemcd { get; set; } = "";
+
+    /// <summary>"instruction" または "label"。省略時は両方を印刷済みとしてマークする（後方互換）。</summary>
+    [JsonPropertyName("print_type")]
+    public string? PrintType { get; set; }
+}
+
+public class BaggingPreparationExcelRequestDto
+{
+    [JsonPropertyName("prddt")]
+    public string Prddt { get; set; } = "";
+
+    [JsonPropertyName("jobord_prkeys")]
+    public List<long> JobordPrkeys { get; set; } = new();
+
+    [JsonPropertyName("aggregate")]
+    public bool Aggregate { get; set; } = false;
 }

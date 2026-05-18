@@ -33,6 +33,12 @@ public class BaggedQuantity
     [Column("isprinted")]
     public bool IsPrinted { get; set; }
 
+    [Column("isinstructionprinted")]
+    public bool IsInstructionPrinted { get; set; }
+
+    [Column("islabelprinted")]
+    public bool IsLabelPrinted { get; set; }
+
     [Column("updatedat")]
     public DateTime UpdatedAt { get; set; }
 }

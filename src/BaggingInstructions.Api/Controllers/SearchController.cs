@@ -9,10 +9,12 @@ namespace BaggingInstructions.Api.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly SearchService _searchService;
+    private readonly BaggingSearchExcelService _baggingExcel;
 
-    public SearchController(SearchService searchService)
+    public SearchController(SearchService searchService, BaggingSearchExcelService baggingExcel)
     {
         _searchService = searchService;
+        _baggingExcel = baggingExcel;
     }
 
     /// <summary>受注明細を検索（製造日・品目コード）。itemcd は部分一致。</summary>
@@ -58,6 +60,32 @@ public class SearchController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { detail = $"検索エラー: {ex.Message}" });
+        }
+    }
+
+    /// <summary>袋詰管理画面の検索結果を Excel 出力（検索と同じフィルター条件）。</summary>
+    [HttpGet("search/bagging/export")]
+    public async Task<IActionResult> ExportBaggingExcel(
+        [FromQuery] string prddt,
+        [FromQuery] string? itemcd,
+        [FromQuery(Name = "is_complete")] string? isComplete,
+        CancellationToken ct)
+    {
+        bool? isCompleteFilter = isComplete switch { "true" => true, "false" => false, _ => null };
+        try
+        {
+            var groups = await _searchService.SearchBaggingGroupedAsync(prddt, itemcd, isCompleteFilter, ct);
+            var bytes = _baggingExcel.Build(groups, prddt);
+            var fileName = $"袋詰管理_{prddt}.xlsx";
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"Excel出力エラー: {ex.Message}" });
         }
     }
 

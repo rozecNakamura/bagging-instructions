@@ -33,6 +33,8 @@ builder.Services.AddDbContext<CstmeatDbContext>(options =>
     options.UseNpgsql(connOther));
 
 builder.Services.AddScoped<SearchService>();
+builder.Services.AddScoped<BaggingSearchExcelService>();
+builder.Services.AddScoped<BaggingPreparationExcelService>();
 builder.Services.AddScoped<ProductLabelPdfService>();
 builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<BaggingInputService>();
