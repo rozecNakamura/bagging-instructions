@@ -155,11 +155,13 @@ public class PreparationWorkPdfService
         {
             var r = chunk[i];
             var nn = i.ToString("D2");
-            tags[$"ITEMPALNUM{nn}"] = r.ParentItemcode;
-            tags[$"ITEMPALNM{nn}"] = r.ParentItemname;
+            var isFirstInParentGroup = i == 0 || chunk[i - 1].ParentItemcode != r.ParentItemcode;
+
+            tags[$"ITEMPALNUM{nn}"] = isFirstInParentGroup ? r.ParentItemcode : "";
+            tags[$"ITEMPALNM{nn}"] = isFirstInParentGroup ? r.ParentItemname : "";
             tags[$"ITEMCHINUM{nn}"] = r.ChildItemcode;
             tags[$"ITEMCHINM{nn}"] = r.ChildItemname;
-            tags[$"ORDERNO{nn}"] = r.OrderNo;
+            tags[$"ORDERNO{nn}"] = isFirstInParentGroup ? r.OrderNo : "";
             tags[$"ORDER{nn}"] = r.DisplayOrder;
             tags[$"STANDARD{nn}"] = r.Standard;
             tags[$"QUANTITY{nn}"] = r.Quantity;

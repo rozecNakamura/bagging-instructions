@@ -159,17 +159,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (async () => {
         try {
-            const [wcs, slots] = await Promise.all([
-                fetchProductionInstructionWorkcenters(),
-                fetchProductionInstructionSlots()
-            ]);
+            const wcs = await fetchProductionInstructionWorkcenters();
             prodWorkcenterList = wcs || [];
-            prodSlotList = slots || [];
+            prodSlotList = [];
             buildProdWorkcenterSlotPanels();
         } catch (e) {
             console.error('調味液配合表仕様 マスタ取得エラー:', e);
         }
     })();
+
+    async function loadProdSlots(needDate) {
+        prodSelectedSlotCodes = new Set();
+        prodSlotList = [];
+        const container = document.getElementById('prodSlotOptions');
+        if (container) container.innerHTML = '';
+        if (!needDate) {
+            updateProdWorkcenterSlotLabels();
+            return;
+        }
+        try {
+            prodSlotList = await fetchProductionInstructionSlots(needDate) || [];
+            buildProdWorkcenterSlotPanels();
+        } catch (e) {
+            console.error('調味液配合表仕様 便一覧取得エラー:', e);
+            updateProdWorkcenterSlotLabels();
+        }
+    }
+
+    const prodNeedDateInput = document.getElementById('prodNeedDate');
+    const onProdNeedDateChanged = () => loadProdSlots(prodNeedDateInput?.value || '');
+    prodNeedDateInput?.addEventListener('change', onProdNeedDateChanged);
+    prodNeedDateInput?.addEventListener('input', onProdNeedDateChanged);
+    if (prodNeedDateInput?.value) {
+        loadProdSlots(prodNeedDateInput.value);
+    }
 
     function closeAllProdPanels() {
         const p1 = document.getElementById('prodWorkcenterOptions');

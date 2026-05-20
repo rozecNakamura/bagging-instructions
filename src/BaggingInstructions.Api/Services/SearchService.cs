@@ -448,8 +448,8 @@ public class SearchService
 
             if (majorCode != null)
             {
-                sql.AppendLine("AND i.majorclassficationcode = @majorCode");
-                cmd.Parameters.AddWithValue("majorCode", majorCode);
+                sql.AppendLine("AND TRIM(COALESCE(i.majorclassficationcode, '')) = TRIM(@majorCode)");
+                cmd.Parameters.AddWithValue("majorCode", majorCode.Trim());
             }
             if (!string.IsNullOrWhiteSpace(itemCode))
             {

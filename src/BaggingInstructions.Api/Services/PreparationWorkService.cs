@@ -82,15 +82,17 @@ public class PreparationWorkService
         var rows = await _db.Database
             .SqlQuery<PreparationWorkManufacturingRouteSqlRow>($@"
 SELECT
-  TRIM(COALESCE(a.addinfo03, '')) AS ""Code"",
-  COALESCE(MAX(TRIM(COALESCE(a.addinfo03name, ''))), '') AS ""Name""
+  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS ""Code"",
+  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""Name""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-INNER JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
+LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
-  AND TRIM(COALESCE(a.addinfo03, '')) <> ''
-GROUP BY TRIM(COALESCE(a.addinfo03, ''))
-ORDER BY TRIM(COALESCE(a.addinfo03, ''))
+  AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  AND TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) <> ''
+GROUP BY TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), TRIM(ds.slotname)
+ORDER BY TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
 ")
             .ToListAsync(ct);
 
@@ -160,16 +162,16 @@ SELECT
   COUNT(*)::int AS ""LineCount""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
   AND mid.middleclassificationcode = i.middleclassficationcode
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
-  AND ({mfgRoutes.Length} = 0 OR EXISTS (
-        SELECT 1 FROM salesorderlineaddinfo sai
-        WHERE sai.salesorderlineid = sol.salesorderlineid
-          AND TRIM(COALESCE(sai.addinfo03, '')) = ANY ({mfgRoutes})
-      ))
+  AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  AND ({mfgRoutes.Length} = 0 OR
+        TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY ({mfgRoutes})
+      )
   AND ({wcIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM itemworkcentermapping m3
         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
@@ -242,19 +244,19 @@ ORDER BY ""MajorCode"", ""MiddleCode""
 SELECT ot.ordertableid AS ""Ordertableid""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
 LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassficationcode
   AND midt.middleclassificationcode = i.middleclassficationcode
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+  AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}
-  AND ({mfgRoutes.Length} = 0 OR EXISTS (
-        SELECT 1 FROM salesorderlineaddinfo sai
-        WHERE sai.salesorderlineid = sol.salesorderlineid
-          AND TRIM(COALESCE(sai.addinfo03, '')) = ANY ({mfgRoutes})
-      ))
+  AND ({mfgRoutes.Length} = 0 OR
+        TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY ({mfgRoutes})
+      )
   AND ({wcIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM itemworkcentermapping m3
         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
@@ -284,15 +286,24 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
         var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
-
         var rows = new List<PreparationCsvRow>();
-        foreach (var h in headers)
+
+        // 同一製造便・同一品目のオーダーを集約して数量を合算
+        var groups = headers
+            .GroupBy(h => (h.ManufacturingRouteCode, h.ParentItemcode))
+            .ToList();
+
+        foreach (var grp in groups)
         {
-            var asof = h.PlannedDeliveryDate ?? h.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            if (!bomCache.TryGetValue(h.ParentItemcode, out var boms))
+            var first = grp.First();
+            var totalMfgQty = grp.Sum(h => h.MfgQty);
+            var mergedOrderNo = string.Join("・", grp.Select(h => h.Ordertableid));
+            var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+
+            if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
             {
-                boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, ct);
-                bomCache[h.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, ct);
+                bomCache[first.ParentItemcode] = boms;
             }
 
             if (boms.Count == 0)
@@ -300,13 +311,13 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                 rows.Add(new PreparationCsvRow
                 {
                     SterilizationTemperatureRange = "",
-                    WorkplaceName = h.WorkplaceNames,
-                    DeliveryDate = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    Slot = h.SlotDisplay,
-                    SmallClassName = h.MinorClassName,
-                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
-                    ParentItemcode = h.ParentItemcode,
-                    ParentItemname = h.ParentItemname,
+                    WorkplaceName = first.WorkplaceNames,
+                    DeliveryDate = first.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    Slot = first.SlotDisplay,
+                    SmallClassName = first.MinorClassName,
+                    OrderNo = mergedOrderNo,
+                    ParentItemcode = first.ParentItemcode,
+                    ParentItemname = first.ParentItemname,
                     ChildItemcode = "",
                     ChildItemname = "",
                     Quantity = "",
@@ -317,18 +328,18 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
 
             foreach (var b in boms)
             {
-                var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qty = PreparationBomQuantity.ComputeRequiredQty(totalMfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(qty);
                 rows.Add(new PreparationCsvRow
                 {
                     SterilizationTemperatureRange = b.ChildSteriTempRange ?? "",
-                    WorkplaceName = h.WorkplaceNames,
-                    DeliveryDate = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    Slot = h.SlotDisplay,
-                    SmallClassName = h.MinorClassName,
-                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
-                    ParentItemcode = h.ParentItemcode,
-                    ParentItemname = h.ParentItemname,
+                    WorkplaceName = first.WorkplaceNames,
+                    DeliveryDate = first.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    Slot = first.SlotDisplay,
+                    SmallClassName = first.MinorClassName,
+                    OrderNo = mergedOrderNo,
+                    ParentItemcode = first.ParentItemcode,
+                    ParentItemname = first.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
                     Quantity = qtyDisplay,
@@ -347,31 +358,40 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
         var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
-
         var lines = new List<PreparationPdfLineModel>();
-        foreach (var h in headers)
+
+        // 同一製造便・同一品目のオーダーを集約して数量を合算
+        var groups = headers
+            .GroupBy(h => (h.ManufacturingRouteCode, h.ParentItemcode))
+            .ToList();
+
+        foreach (var grp in groups)
         {
-            var asof = h.PlannedDeliveryDate ?? h.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            if (!bomCache.TryGetValue(h.ParentItemcode, out var boms))
+            var first = grp.First();
+            var totalMfgQty = grp.Sum(h => h.MfgQty);
+            var mergedOrderNo = string.Join("・", grp.Select(h => h.Ordertableid));
+            var hasProductNo = grp.Any(h => !string.IsNullOrWhiteSpace(h.ProductNo));
+            var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+
+            if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
             {
-                boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, ct);
-                bomCache[h.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, ct);
+                bomCache[first.ParentItemcode] = boms;
             }
 
-            var hasProductNo = !string.IsNullOrWhiteSpace(h.ProductNo);
             if (boms.Count == 0)
             {
                 lines.Add(new PreparationPdfLineModel
                 {
-                    MiddleClassificationName = h.MiddleClassName,
-                    DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    WorkplaceName = h.WorkplaceNames,
-                    WorkplaceCode = h.WorkplaceCode,
-                    ManufacturingRouteCode = h.ManufacturingRouteCode,
-                    MiddleClassificationCode = h.MiddleClassificationCode,
-                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
-                    ParentItemcode = h.ParentItemcode,
-                    ParentItemname = h.ParentItemname,
+                    MiddleClassificationName = first.MiddleClassName,
+                    DateDisplay = first.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    WorkplaceName = first.WorkplaceNames,
+                    WorkplaceCode = first.WorkplaceCode,
+                    ManufacturingRouteCode = first.ManufacturingRouteCode,
+                    MiddleClassificationCode = first.MiddleClassificationCode,
+                    OrderNo = mergedOrderNo,
+                    ParentItemcode = first.ParentItemcode,
+                    ParentItemname = first.ParentItemname,
                     ChildItemcode = "",
                     ChildItemname = "",
                     Standard = "",
@@ -386,20 +406,20 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
 
             foreach (var b in boms)
             {
-                var qty = PreparationBomQuantity.ComputeRequiredQty(h.MfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qty = PreparationBomQuantity.ComputeRequiredQty(totalMfgQty, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(qty);
 
                 lines.Add(new PreparationPdfLineModel
                 {
-                    MiddleClassificationName = h.MiddleClassName,
-                    DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    WorkplaceName = h.WorkplaceNames,
-                    WorkplaceCode = h.WorkplaceCode,
-                    ManufacturingRouteCode = h.ManufacturingRouteCode,
-                    MiddleClassificationCode = h.MiddleClassificationCode,
-                    OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture),
-                    ParentItemcode = h.ParentItemcode,
-                    ParentItemname = h.ParentItemname,
+                    MiddleClassificationName = first.MiddleClassName,
+                    DateDisplay = first.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    WorkplaceName = first.WorkplaceNames,
+                    WorkplaceCode = first.WorkplaceCode,
+                    ManufacturingRouteCode = first.ManufacturingRouteCode,
+                    MiddleClassificationCode = first.MiddleClassificationCode,
+                    OrderNo = mergedOrderNo,
+                    ParentItemcode = first.ParentItemcode,
+                    ParentItemname = first.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
                     Standard = b.ChildStd ?? "",
@@ -504,7 +524,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                      WHERE m2.itemcode = i.itemcode),
                     ''
                   ) AS workplace_code,
-                  TRIM(COALESCE(sai.addinfo03, '')) AS manufacturing_route_code,
+                  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS manufacturing_route_code,
                   COALESCE(mid.middleclassificationcode, '') AS middle_class_code,
                   ot.productno
                 FROM ordertable ot
@@ -513,7 +533,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                   OR wc_ord.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
                 )
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                LEFT JOIN salesorderlineaddinfo sai ON sai.salesorderlineid = sol.salesorderlineid
+                LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
                 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                 LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassficationcode
                   AND mn.middleclassificationcode = i.middleclassficationcode

@@ -193,7 +193,7 @@ public class CutPreparationController : ControllerBase
             var instructionType = string.IsNullOrWhiteSpace(body.InstructionType) ? "cut" : body.InstructionType;
 
             var pdfBytes = await _productLabelPdfService.GeneratePdfAsync(
-                fullPath, lineIds, labelCount, instructionType, ct);
+                fullPath, lineIds, labelCount, instructionType, null, ct);
             if (pdfBytes.Length == 0)
                 return BadRequest(new { detail = "出力対象の現品ラベルがありません" });
 

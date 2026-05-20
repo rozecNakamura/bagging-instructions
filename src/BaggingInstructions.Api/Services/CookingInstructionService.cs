@@ -32,25 +32,41 @@ public sealed class CookingInstructionService
         return rows.ConvertAll(w => new CookingInstructionWorkcenterOptionDto
         {
             Id = w.WorkcenterId ?? 0,
+            Code = w.WorkcenterCode ?? "",
             Name = w.WorkcenterName ?? ""
         });
     }
 
-    public async Task<List<CookingInstructionSlotOptionDto>> ListSlotsAsync(CancellationToken ct = default)
+    /// <summary>
+    /// 指定納期の調理指示書対象オーダーに紐づく便の一覧（納期連動）。
+    /// </summary>
+    public async Task<List<CookingInstructionSlotOptionDto>> ListSlotsAsync(string needDate, CancellationToken ct = default)
     {
+        var date = ParseYyyymmdd(needDate);
+        if (!date.HasValue)
+            throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needDate));
+        var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
         var rows = await _db.Database
             .SqlQuery<CookingInstructionSlotSqlRow>($@"
-SELECT COALESCE(slotcode, '') AS ""Code"", COALESCE(slotname, '') AS ""Name""
-FROM deliveryslot
-ORDER BY slotcode
+SELECT DISTINCT
+  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS ""Code"",
+  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""Name""
+FROM ordertable ot
+INNER JOIN item i ON i.itemcode = ot.itemcode
+LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = {needDateYyyymmdd}
+  AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
+  AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
+  AND TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) <> ''
+ORDER BY 1
 ")
             .ToListAsync(ct);
 
         return rows
             .Where(r => !string.IsNullOrWhiteSpace(r.Code))
-            .GroupBy(r => r.Code, StringComparer.Ordinal)
-            .Select(g => g.First())
-            .OrderBy(r => r.Code, StringComparer.Ordinal)
             .Select(r => new CookingInstructionSlotOptionDto
             {
                 Code = r.Code ?? "",
@@ -60,55 +76,12 @@ ORDER BY slotcode
     }
 
     /// <summary>
-    /// 指定納期の MO 受注に紐づく製造便（<c>salesorderlineaddinfo.addinfo03</c>）の一覧。コード順。
-    /// </summary>
-    public async Task<List<CookingInstructionManufacturingRouteOptionDto>> ListManufacturingRoutesForNeedDateAsync(
-        string needDate,
-        CancellationToken ct = default)
-    {
-        var date = ParseYyyymmdd(needDate);
-        if (!date.HasValue)
-            throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needDate));
-
-        var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-
-        var rows = await _db.Database
-            .SqlQuery<CookingInstructionManufacturingRouteSqlRow>($@"
-SELECT
-  TRIM(COALESCE(a.addinfo03, '')) AS ""Code"",
-  COALESCE(MAX(TRIM(COALESCE(a.addinfo03name, ''))), '') AS ""Name""
-FROM ordertable ot
-INNER JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-INNER JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
-WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-  AND TO_CHAR(
-        COALESCE(ot.needdate, ot.releasedate),
-        'YYYYMMDD'
-      ) = {needDateYyyymmdd}
-  AND TRIM(COALESCE(a.addinfo03, '')) <> ''
-GROUP BY TRIM(COALESCE(a.addinfo03, ''))
-ORDER BY TRIM(COALESCE(a.addinfo03, ''))
-")
-            .ToListAsync(ct);
-
-        return rows
-            .Where(r => !string.IsNullOrWhiteSpace(r.Code))
-            .Select(r => new CookingInstructionManufacturingRouteOptionDto
-            {
-                Code = r.Code ?? "",
-                Name = string.IsNullOrWhiteSpace(r.Name) ? (r.Code ?? "") : r.Name!
-            })
-            .ToList();
-    }
-
-    /// <summary>
-    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便・製造便は未選択なら絞り込まない。
+    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便は未選択なら絞り込まない。
     /// </summary>
     public async Task<List<CookingInstructionSearchRowDto>> SearchAsync(
         string needDate,
         IReadOnlyList<long>? workcenterIds,
         IReadOnlyList<string>? slotCodes,
-        IReadOnlyList<string>? manufacturingRouteCodes,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(needDate);
@@ -121,11 +94,6 @@ ORDER BY TRIM(COALESCE(a.addinfo03, ''))
             .Where(s => s.Length > 0)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var mfgRoutes = (manufacturingRouteCodes ?? Array.Empty<string>())
-            .Select(s => (s ?? "").Trim())
-            .Where(s => s.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
 
         var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 
@@ -133,27 +101,23 @@ ORDER BY TRIM(COALESCE(a.addinfo03, ''))
             .SqlQuery<CookingInstructionSearchSqlRow>($@"
 SELECT
   ot.ordertableid AS ""OrderTableId"",
+  TRIM(COALESCE(ot.itemcode, i.itemcode, '')) AS ""ItemCode"",
   COALESCE(i.itemname, '') AS ""ItemName"",
   TO_CHAR(
     COALESCE(ot.needdate, ot.releasedate),
     'YYYYMMDD'
   ) AS ""NeedDate"",
-  COALESCE(ds.slotname, ds.slotcode, '') AS ""SlotDisplay""
+  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""SlotDisplay""
 FROM ordertable ot
 INNER JOIN item i ON i.itemcode = ot.itemcode
-LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
+LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(
         COALESCE(ot.needdate, ot.releasedate),
         'YYYYMMDD'
       ) = {needDateYyyymmdd}
-  AND ({slots.Length} = 0 OR COALESCE(ds.slotcode, '') = ANY ({slots}))
-  AND ({mfgRoutes.Length} = 0 OR EXISTS (
-        SELECT 1 FROM salesorderlineaddinfo sai
-        WHERE sai.salesorderlineid = sol.salesorderlineid
-          AND TRIM(COALESCE(sai.addinfo03, '')) = ANY ({mfgRoutes})
-      ))
+  AND ({slots.Length} = 0 OR TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY ({slots}))
   AND ({wcIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM itemworkcentermapping m3
         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
@@ -161,13 +125,14 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
       ))
   AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
-ORDER BY i.itemname, ds.slotcode, ot.ordertableid
+ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ot.ordertableid
 ")
             .ToListAsync(ct);
 
         return rows.Select(r => new CookingInstructionSearchRowDto
         {
             OrderTableId = r.OrderTableId,
+            ItemCode = r.ItemCode ?? "",
             ItemName = r.ItemName ?? "",
             NeedDate = FormatDateDisplay(r.NeedDate),
             SlotDisplay = r.SlotDisplay ?? ""
@@ -344,7 +309,7 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
                   i.conversionvalue3 AS cv3,
-                  COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
+                  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS slot_display,
                   COALESCE((
                     SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
                     FROM itemworkcentermapping m2
@@ -358,8 +323,8 @@ ORDER BY i.itemname, ds.slotcode, ot.ordertableid
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
-                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
+                LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                 ORDER BY ot.ordertableid
@@ -514,6 +479,7 @@ internal sealed class CookingInstructionManufacturingRouteSqlRow
 internal sealed class CookingInstructionSearchSqlRow
 {
     public long OrderTableId { get; set; }
+    public string ItemCode { get; set; } = "";
     public string ItemName { get; set; } = "";
     public string NeedDate { get; set; } = "";
     public string SlotDisplay { get; set; } = "";

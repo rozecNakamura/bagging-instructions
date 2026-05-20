@@ -31,13 +31,15 @@ public sealed class ProductLabelPdfService
         _juicePdf = juicePdf;
     }
 
-    /// <param name="labelCount">1ラベルあたりの印刷枚数（デフォルト1）。</param>
+    /// <param name="labelCount">1ラベルあたりの印刷枚数（デフォルト1）。perRowCounts で上書き可能。</param>
     /// <param name="instructionType">指示書種別（"cut"/"seasoning"/"cooking"/null）。指定時はBOM再帰探索で子品目を抽出。</param>
+    /// <param name="perRowCounts">オーダID別の印刷枚数上書き。キーは ordertableid の文字列。</param>
     public async Task<byte[]> GeneratePdfAsync(
         string rxzTemplatePath,
         IReadOnlyList<long> orderTableIds,
         int labelCount = 1,
         string? instructionType = null,
+        IReadOnlyDictionary<string, int>? perRowCounts = null,
         CancellationToken ct = default)
     {
         var idList = orderTableIds.Where(id => id > 0).Distinct().ToList();
@@ -53,16 +55,19 @@ public sealed class ProductLabelPdfService
         if (rows.Count == 0)
             return Array.Empty<byte>();
 
-        var count = Math.Max(1, labelCount);
-        var pages = new List<Dictionary<string, string>>(rows.Count * count);
+        var defaultCount = Math.Max(1, labelCount);
+        var pages = new List<Dictionary<string, string>>(rows.Count * defaultCount);
         foreach (var row in rows)
         {
             var tags = BuildPageTags(row);
-            for (var i = 0; i < count; i++)
+            var rowCount = defaultCount;
+            if (perRowCounts != null && perRowCounts.TryGetValue(row.OrderTableId.ToString(), out var rc))
+                rowCount = Math.Max(1, rc);
+            for (var i = 0; i < rowCount; i++)
                 pages.Add(tags);
         }
 
-        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "現品票（調理）1枚", AlignmentOverrides, scaleContentToFillPage: true);
+        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "現品票（調理）1枚", AlignmentOverrides);
     }
 
     private static Dictionary<string, string> BuildPageTags(ProductLabelOrderSqlRow row)

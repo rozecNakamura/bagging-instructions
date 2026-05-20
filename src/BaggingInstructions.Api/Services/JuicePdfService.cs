@@ -63,6 +63,8 @@ public class JuicePdfService
         public double? ShrinkToFitMinFontSizePts { get; set; }
         /// <summary>rxz の AlignVertical。1=上 2=中央 3=下。同一矩形に複数 Data を重ねるテンプレで必須。</summary>
         public int AlignVertical { get; set; } = 2;
+        /// <summary>rxz の AutoLineFeed。true のとき枠幅を超えた文字を自動折り返しする。</summary>
+        public bool AutoLineFeed { get; set; }
         /// <summary>rxz の Box（枠）。true のとき Data/Text ではなく矩形のみ描画する。</summary>
         public bool IsBox { get; set; }
         public int FillPattern { get; set; }
@@ -286,6 +288,7 @@ public class JuicePdfService
         }
         bool shrinkToFit = (bool?)text.Element("ShrinkToFit") ?? false;
         int alignVertical = (int?)text.Element("AlignVertical") ?? 2;
+        bool autoLineFeed = (bool?)text.Element("AutoLineFeed") ?? false;
 
         item = new RxzTextItem
         {
@@ -309,7 +312,8 @@ public class JuicePdfService
             MarginBottom = marginBottom,
             ShrinkToFit = shrinkToFit,
             AlignVertical = alignVertical,
-            ShrinkToFitMinFontSizePts = null
+            ShrinkToFitMinFontSizePts = null,
+            AutoLineFeed = autoLineFeed
         };
         if (IsQuantityUnitFieldName(name))
             item.ShrinkToFit = true;
@@ -617,6 +621,20 @@ public class JuicePdfService
 
             var font = new XFont(JuicePdfFontResolver.JapaneseFaceName, fontSize, XFontStyleEx.Regular);
 
+            // AutoLineFeed: 文字単位で折り返し。折り返し後も高さ超過なら段階的に縮小。
+            if (item.AutoLineFeed && !string.IsNullOrEmpty(item.TextData))
+            {
+                double minSzWrap = item.ShrinkToFitMinFontSizePts ?? DefaultShrinkToFitMinFontSizePts;
+                var wrapped = WrapTextToLines(lines, font, textRect.Width, gfx);
+                while (font.GetHeight() * wrapped.Length > textRect.Height && fontSize - ShrinkToFitStepPts >= minSzWrap)
+                {
+                    fontSize -= ShrinkToFitStepPts;
+                    font = new XFont(JuicePdfFontResolver.JapaneseFaceName, fontSize, XFontStyleEx.Regular);
+                    wrapped = WrapTextToLines(lines, font, textRect.Width, gfx);
+                }
+                lines = wrapped;
+            }
+
             var format = new XStringFormat();
             if (item.Alignment == 2) format.Alignment = XStringAlignment.Far;
             else if (item.Alignment == 3) format.Alignment = XStringAlignment.Center;
@@ -643,6 +661,37 @@ public class JuicePdfService
             }
             gfx.Restore();
         }
+    }
+
+    /// <summary>
+    /// テキスト行を最大幅内で文字単位に折り返す（日本語対応）。
+    /// </summary>
+    private static string[] WrapTextToLines(string[] rawLines, XFont font, double maxWidth, XGraphics gfx)
+    {
+        var result = new List<string>();
+        foreach (var rawLine in rawLines)
+        {
+            if (string.IsNullOrEmpty(rawLine))
+            {
+                result.Add("");
+                continue;
+            }
+            var sb = new System.Text.StringBuilder();
+            foreach (var ch in rawLine)
+            {
+                sb.Append(ch);
+                if (gfx.MeasureString(sb.ToString(), font).Width > maxWidth && sb.Length > 1)
+                {
+                    sb.Remove(sb.Length - 1, 1);
+                    result.Add(sb.ToString());
+                    sb.Clear();
+                    sb.Append(ch);
+                }
+            }
+            if (sb.Length > 0)
+                result.Add(sb.ToString());
+        }
+        return result.ToArray();
     }
 
     /// <summary>

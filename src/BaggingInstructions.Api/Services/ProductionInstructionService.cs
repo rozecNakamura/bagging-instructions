@@ -41,21 +41,32 @@ public sealed class ProductionInstructionService
     /// <summary>
     /// 便マスタ（複数選択プルダウン用）。
     /// </summary>
-    public async Task<List<ProductionInstructionSlotOptionDto>> ListSlotsAsync(CancellationToken ct = default)
+    public async Task<List<ProductionInstructionSlotOptionDto>> ListSlotsAsync(string needDate, CancellationToken ct = default)
     {
+        var date = ParseYyyymmdd(needDate);
+        if (!date.HasValue)
+            throw new ArgumentException("納期はYYYYMMDD形式（8桁）で指定してください。", nameof(needDate));
+        var needDateYyyymmdd = date.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
         var rows = await _db.Database
             .SqlQuery<ProductionInstructionSlotSqlRow>($@"
-SELECT COALESCE(slotcode, '') AS ""Code"", COALESCE(slotname, '') AS ""Name""
-FROM deliveryslot
-ORDER BY slotcode
+SELECT DISTINCT
+  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS ""Code"",
+  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""Name""
+FROM ordertable ot
+LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = {needDateYyyymmdd}
+  AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
+  AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
+  AND TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) <> ''
+ORDER BY 1
 ")
             .ToListAsync(ct);
 
         return rows
             .Where(r => !string.IsNullOrWhiteSpace(r.Code))
-            .GroupBy(r => r.Code, StringComparer.Ordinal)
-            .Select(g => g.First())
-            .OrderBy(r => r.Code, StringComparer.Ordinal)
             .Select(r => new ProductionInstructionSlotOptionDto
             {
                 Code = r.Code ?? "",
@@ -104,7 +115,7 @@ ORDER BY slotcode
                   COALESCE(ot.itemcode, i.itemcode, ''),
                   COALESCE(i.itemname, ''),
                   TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD'),
-                  COALESCE(ds.slotname, ds.slotcode, ''),
+                  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))),
                   COALESCE(ot.qty, 0),
                   ot.qtyuni0,
                   ot.qtyuni1,
@@ -124,11 +135,11 @@ ORDER BY slotcode
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
-                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
+                LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                   AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = @needdate
-                  AND (@slot_count = 0 OR COALESCE(ds.slotcode, '') = ANY(@slots))
+                  AND (@slot_count = 0 OR TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY(@slots))
                   AND (@wc_count = 0 OR EXISTS (
                         SELECT 1 FROM itemworkcentermapping m3
                         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
@@ -140,7 +151,7 @@ ORDER BY slotcode
                       ))
                   AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
                   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
-                ORDER BY i.itemname, ds.slotcode, ot.ordertableid
+                ORDER BY i.itemname, COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))), ot.ordertableid
                 """,
                 conn);
             cmd.Parameters.AddWithValue("needdate", needDateYyyymmdd);
@@ -219,59 +230,57 @@ ORDER BY slotcode
             return new List<ProductionInstructionPdfLineModel>();
 
         var bomCache = new Dictionary<string, List<ProductionInstructionBomSqlRow>>(StringComparer.Ordinal);
-
         var lines = new List<ProductionInstructionPdfLineModel>();
-        foreach (var h in headers)
+
+        // 同一製造便・同一品目のオーダーを集約して数量を合算
+        var groups = headers
+            .GroupBy(h => (h.SlotDisplay, h.ParentItemcode))
+            .ToList();
+
+        foreach (var group in groups)
         {
-            var asof = h.NeedDate ?? h.ReleaseDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            if (!bomCache.TryGetValue(h.ParentItemcode, out var boms))
+            var first = group.First();
+            var asof = first.NeedDate ?? first.ReleaseDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+
+            if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
             {
-                boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, ct);
-                bomCache[h.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, ct);
+                bomCache[first.ParentItemcode] = boms;
             }
 
-            var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
-                h.RawOrdertableQty,
-                h.QtyUni0,
-                h.QtyUni1,
-                h.QtyUni2,
-                h.QtyUni3,
-                h.IaCar1,
-                h.IaCar2,
-                h.IaCar3,
-                h.IaCar0,
-                h.ConversionValue1,
-                h.ConversionValue2,
-                h.ConversionValue3);
-            var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
-                qtyU0,
-                h.QtyUni1,
-                h.ProcurementUnitName,
-                h.ParentUnitName,
-                h.ConversionValue1);
-            var parentQtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(dispQty);
-            var parentUnitName = dispUnit;
+            var totalQtyU0 = group.Sum(h => CookingInstructionQuantity.ResolveParentQtyInUnit0(
+                h.RawOrdertableQty, h.QtyUni0, h.QtyUni1, h.QtyUni2, h.QtyUni3,
+                h.IaCar1, h.IaCar2, h.IaCar3, h.IaCar0,
+                h.ConversionValue1, h.ConversionValue2, h.ConversionValue3));
 
-            var printAddinfo = MapParentItemPrintAddinfo(h);
+            var (dispQty, dispUnit) = CookingInstructionQuantity.ParentPlannedQtyDisplay(
+                totalQtyU0,
+                first.QtyUni1,
+                first.ProcurementUnitName,
+                first.ParentUnitName,
+                first.ConversionValue1);
+            var parentQtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(dispQty);
+            var printAddinfo = MapParentItemPrintAddinfo(first);
+            var mergedOrderNo = string.Join("・", group.Select(h => h.OrderNo));
 
             if (boms.Count == 0)
             {
                 lines.Add(new ProductionInstructionPdfLineModel
                 {
-                    OrderNo = h.OrderNo ?? "",
-                    ParentItemCode = h.ParentItemcode,
-                    ParentItemName = h.ParentItemname,
+                    OrderNo = mergedOrderNo,
+                    ParentItemCode = first.ParentItemcode,
+                    ParentItemName = first.ParentItemname,
                     PlannedQuantityDisplay = parentQtyDisplay,
-                    PlanUnitName = parentUnitName,
+                    PlanUnitName = dispUnit,
                     ChildItemCode = "",
                     ChildItemName = "",
                     ChildSpec = "",
                     ChildRequiredQtyDisplay = "",
                     ChildUnitName = "",
                     ChildYieldPercentDisplay = "",
-                    NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    WorkcenterName = h.WorkcenterName,
-                    SlotDisplay = h.SlotDisplay,
+                    NeedDateDisplay = first.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    WorkcenterName = first.WorkcenterName,
+                    SlotDisplay = first.SlotDisplay,
                     ParentItemPrintAddinfo = printAddinfo
                 });
                 continue;
@@ -279,26 +288,26 @@ ORDER BY slotcode
 
             foreach (var b in boms)
             {
-                var qty = PreparationBomQuantity.ComputeRequiredQty(qtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
+                var qty = PreparationBomQuantity.ComputeRequiredQty(totalQtyU0, b.InputQty, b.OutputQty, b.YieldPercent);
                 var qtyDisplay = ReportQuantityFormatter.FormatCeilingQuantity(qty);
                 var yieldDisplay = b.YieldPercent.ToString("0.###", CultureInfo.InvariantCulture);
 
                 lines.Add(new ProductionInstructionPdfLineModel
                 {
-                    OrderNo = h.OrderNo ?? "",
-                    ParentItemCode = h.ParentItemcode,
-                    ParentItemName = h.ParentItemname,
+                    OrderNo = mergedOrderNo,
+                    ParentItemCode = first.ParentItemcode,
+                    ParentItemName = first.ParentItemname,
                     PlannedQuantityDisplay = parentQtyDisplay,
-                    PlanUnitName = parentUnitName,
+                    PlanUnitName = dispUnit,
                     ChildItemCode = b.ChildItemcode,
                     ChildItemName = b.ChildItemname ?? "",
                     ChildSpec = b.ChildSpec ?? "",
                     ChildRequiredQtyDisplay = qtyDisplay,
                     ChildUnitName = b.ChildUnitname ?? "",
                     ChildYieldPercentDisplay = yieldDisplay,
-                    NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
-                    WorkcenterName = h.WorkcenterName,
-                    SlotDisplay = h.SlotDisplay,
+                    NeedDateDisplay = first.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                    WorkcenterName = first.WorkcenterName,
+                    SlotDisplay = first.SlotDisplay,
                     ParentItemPrintAddinfo = printAddinfo
                 });
             }
@@ -337,7 +346,7 @@ ORDER BY slotcode
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
                   i.conversionvalue3 AS cv3,
-                  COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
+                  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS slot_display,
                   COALESCE(wc.workcentername, '') AS workcenter_name,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.releasedate,
@@ -360,10 +369,10 @@ ORDER BY slotcode
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
-                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
-                LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
+                LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                 LEFT JOIN workcenter wc ON wc.workcentercode = ot.workcentercode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'

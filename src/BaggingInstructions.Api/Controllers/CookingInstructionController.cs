@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
 using BaggingInstructions.Api.Core;
@@ -39,11 +40,15 @@ public class CookingInstructionController : ControllerBase
     }
 
     [HttpGet("slots")]
-    public async Task<ActionResult<List<CookingInstructionSlotOptionDto>>> ListSlots(CancellationToken ct)
+    public async Task<ActionResult<List<CookingInstructionSlotOptionDto>>> ListSlots(
+        [FromQuery(Name = "needdate")] string? needDate,
+        CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(needDate))
+            return Ok(new List<CookingInstructionSlotOptionDto>());
         try
         {
-            var list = await _service.ListSlotsAsync(ct);
+            var list = await _service.ListSlotsAsync(needDate, ct);
             return Ok(list);
         }
         catch (Exception ex)
@@ -52,40 +57,18 @@ public class CookingInstructionController : ControllerBase
         }
     }
 
-    [HttpGet("manufacturing-routes")]
-    public async Task<ActionResult<List<CookingInstructionManufacturingRouteOptionDto>>> ListManufacturingRoutes(
-        [FromQuery(Name = "needdate")] string needDate,
-        CancellationToken ct)
-    {
-        try
-        {
-            var list = await _service.ListManufacturingRoutesForNeedDateAsync(needDate, ct);
-            return Ok(list);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { detail = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { detail = $"製造便一覧取得エラー: {ex.Message}" });
-        }
-    }
-
     [HttpGet("search")]
     public async Task<ActionResult<CookingInstructionSearchResponseDto>> Search(
         [FromQuery(Name = "needdate")] string needDate,
         [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
-        [FromQuery(Name = "manufacturing_route_code")] string[]? manufacturingRouteCode,
         CancellationToken ct)
     {
         try
         {
             var wc = workcenterId ?? Array.Empty<long>();
             var sc = slotCode ?? Array.Empty<string>();
-            var mfg = manufacturingRouteCode ?? Array.Empty<string>();
-            var rows = await _service.SearchAsync(needDate, wc, sc, mfg, ct);
+            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
             return Ok(new CookingInstructionSearchResponseDto
             {
                 Total = rows.Count,
@@ -99,6 +82,58 @@ public class CookingInstructionController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { detail = $"検索エラー: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("export-excel")]
+    public async Task<IActionResult> ExportExcel(
+        [FromQuery(Name = "needdate")] string needDate,
+        [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
+        [FromQuery(Name = "slot_code")] string[]? slotCode,
+        CancellationToken ct)
+    {
+        try
+        {
+            var wc = workcenterId ?? Array.Empty<long>();
+            var sc = slotCode ?? Array.Empty<string>();
+            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
+
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("調理指示書");
+            ws.Cell(1, 1).Value = "品目コード";
+            ws.Cell(1, 2).Value = "品目名";
+            ws.Cell(1, 3).Value = "納期";
+            ws.Cell(1, 4).Value = "便";
+            var headerRow = ws.Row(1);
+            headerRow.Style.Font.Bold = true;
+            headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                var row = i + 2;
+                ws.Cell(row, 1).Value = r.ItemCode;
+                ws.Cell(row, 2).Value = r.ItemName;
+                ws.Cell(row, 3).Value = r.NeedDate;
+                ws.Cell(row, 4).Value = r.SlotDisplay;
+            }
+
+            ws.Columns().AdjustToContents();
+
+            using var ms = new MemoryStream();
+            wb.SaveAs(ms);
+            ms.Position = 0;
+            return File(ms.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "調理指示書.xlsx");
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"Excel出力エラー: {ex.Message}" });
         }
     }
 

@@ -134,6 +134,17 @@ function displayProductLabelResults(rows) {
         tr.insertCell().textContent = row.child_count != null ? String(row.child_count) : '-';
         tr.insertCell().textContent = row.qty != null ? String(row.qty) : '-';
         tr.insertCell().textContent = row.workcenter_name || '-';
+
+        const tdCount = tr.insertCell();
+        const countInput = document.createElement('input');
+        countInput.type = 'number';
+        countInput.min = '1';
+        countInput.max = '99';
+        countInput.value = '1';
+        countInput.style.cssText = 'width:55px;padding:2px 4px;';
+        countInput.className = 'product-label-row-count';
+        countInput.dataset.orderTableId = String(row.order_table_id);
+        tdCount.appendChild(countInput);
     });
 
     if (productLabelSelectAll) productLabelSelectAll.checked = true;
@@ -156,4 +167,17 @@ export function getSelectedProductLabelOrderTableIds() {
         if (Number.isFinite(id) && id > 0) ids.push(id);
     });
     return ids;
+}
+
+/** 印刷用：選択された {id, count} の配列（行ごとの枚数を含む）。*/
+export function getSelectedProductLabelItems() {
+    const items = [];
+    document.querySelectorAll('.product-label-row-check:checked').forEach((el) => {
+        const id = Number(el.dataset.orderTableId, 10);
+        if (!Number.isFinite(id) || id <= 0) return;
+        const countEl = document.querySelector(`.product-label-row-count[data-order-table-id="${id}"]`);
+        const count = countEl ? Math.max(1, parseInt(countEl.value, 10) || 1) : 1;
+        items.push({ id, count });
+    });
+    return items;
 }

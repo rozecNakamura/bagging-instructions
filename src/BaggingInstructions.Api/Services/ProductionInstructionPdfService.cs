@@ -9,7 +9,7 @@ public sealed class ProductionInstructionPdfService
 {
     // 調味液配合表のレイアウトは調理指示書と同系統（00〜12行など）なので、同じ行数・ページング設定を用いる。
     private const int TemplateRowCount = 14;
-    private const int RowsPerPage = 12;
+    private const int RowsPerPage = 13;
 
     private readonly JuicePdfService _juicePdf;
 
@@ -37,25 +37,61 @@ public sealed class ProductionInstructionPdfService
             .ThenBy(g => g.Key.WorkcenterName, StringComparer.Ordinal)
             .ThenBy(g => g.Key.SlotDisplay, StringComparer.Ordinal);
 
-        var totalPages = orderedGroups.Sum(g => Math.Max(1, (g.Count() + RowsPerPage - 1) / RowsPerPage));
-        if (totalPages < 1) totalPages = 1;
+        // 親品目境界でページを分割してから総ページ数を確定する
+        var allChunks = orderedGroups
+            .SelectMany(grp => SplitIntoPageChunks(grp.ToList())
+                .Select(chunk => (grp.Key, chunk)))
+            .ToList();
 
+        var totalPages = Math.Max(1, allChunks.Count);
         var pageNum = 0;
-        foreach (var grp in orderedGroups)
+
+        foreach (var (key, chunk) in allChunks)
         {
-            var list = grp.ToList();
-            for (var off = 0; off < list.Count; off += RowsPerPage)
-            {
-                var chunk = list.Skip(off).Take(RowsPerPage).ToList();
-                pageNum++;
-                var tags = BuildPageTagValues(chunk, grp.Key.SlotDisplay, grp.Key.NeedDate, grp.Key.WorkcenterName);
-                JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
-                tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
-                pages.Add(tags);
-            }
+            pageNum++;
+            var tags = BuildPageTagValues(chunk, key.SlotDisplay, key.NeedDate, key.WorkcenterName);
+            JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
+            tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
+            pages.Add(tags);
         }
 
         return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "調味液配合表");
+    }
+
+    /// <summary>
+    /// 同一親品目が改ページ境界で分断されないようページチャンクに分割する。
+    /// ただし 1 ページが全行同一親品目の場合は分割せずそのまま出力する。
+    /// </summary>
+    private static List<List<ProductionInstructionPdfLineModel>> SplitIntoPageChunks(
+        List<ProductionInstructionPdfLineModel> groupLines)
+    {
+        var result = new List<List<ProductionInstructionPdfLineModel>>();
+        var off = 0;
+        while (off < groupLines.Count)
+        {
+            var canTake = Math.Min(RowsPerPage, groupLines.Count - off);
+            var pageEnd = off + canTake;
+
+            if (canTake == RowsPerPage && pageEnd < groupLines.Count)
+            {
+                var lastParent = groupLines[pageEnd - 1].ParentItemCode;
+                var nextParent = groupLines[pageEnd].ParentItemCode;
+
+                if (lastParent == nextParent)
+                {
+                    var newEnd = pageEnd - 1;
+                    while (newEnd > off && groupLines[newEnd - 1].ParentItemCode == lastParent)
+                        newEnd--;
+
+                    if (newEnd > off)
+                        pageEnd = newEnd;
+                }
+            }
+
+            result.Add(groupLines.GetRange(off, pageEnd - off));
+            off = pageEnd;
+        }
+        return result;
     }
 
     internal static Dictionary<string, string> BuildPageTagValues(
@@ -92,15 +128,16 @@ public sealed class ProductionInstructionPdfService
         {
             var r = chunk[i];
             var nn = i.ToString("D2");
+            var isFirstInParentGroup = i == 0 || chunk[i - 1].ParentItemCode != r.ParentItemCode;
 
-            tags[$"ITEMPALNUM{nn}"] = r.ParentItemCode ?? string.Empty;
-            tags[$"ORDERNO{nn}"] = (r.OrderNo ?? "").Trim();
-            tags[$"ITEMPALNM{nn}"] = r.ParentItemName ?? string.Empty;
+            tags[$"ITEMPALNUM{nn}"] = isFirstInParentGroup ? (r.ParentItemCode ?? string.Empty) : string.Empty;
+            tags[$"ORDERNO{nn}"] = isFirstInParentGroup ? (r.OrderNo ?? "").Trim() : string.Empty;
+            tags[$"ITEMPALNM{nn}"] = isFirstInParentGroup ? (r.ParentItemName ?? string.Empty) : string.Empty;
             tags[$"ITEMCHINUM{nn}"] = r.ChildItemCode ?? string.Empty;
             tags[$"ITEMCHINM{nn}"] = r.ChildItemName ?? string.Empty;
-            tags[$"MAKEQUNPLAN{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
+            tags[$"MAKEQUNPLAN{nn}"] = isFirstInParentGroup ? (r.PlannedQuantityDisplay ?? string.Empty) : string.Empty;
             tags[$"USEQUNPLAN{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
-            tags[$"UNITPAR{nn}"] = (r.PlanUnitName ?? "").Trim();
+            tags[$"UNITPAR{nn}"] = isFirstInParentGroup ? (r.PlanUnitName ?? "").Trim() : string.Empty;
             tags[$"UNITCHI{nn}"] = (r.ChildUnitName ?? "").Trim();
             tags[$"ITEMSPEC{nn}"] = r.ChildSpec ?? string.Empty;
         }

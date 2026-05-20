@@ -7,6 +7,10 @@ public sealed class CookingInstructionSearchRowDto
     [JsonPropertyName("orderTableId")]
     public long OrderTableId { get; set; }
 
+    /// <summary>品目コード。</summary>
+    [JsonPropertyName("itemCode")]
+    public string ItemCode { get; set; } = "";
+
     /// <summary>品目名（ordertable の item に紐づく）。</summary>
     [JsonPropertyName("itemName")]
     public string ItemName { get; set; } = "";
@@ -34,6 +38,9 @@ public sealed class CookingInstructionWorkcenterOptionDto
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }
+
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";

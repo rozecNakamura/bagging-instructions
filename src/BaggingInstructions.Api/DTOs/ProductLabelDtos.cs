@@ -45,7 +45,7 @@ public class ProductLabelPrintRequestDto
     [JsonPropertyName("order_table_ids")]
     public List<long> OrderTableIds { get; set; } = new();
 
-    /// <summary>1オーダあたりの印刷枚数（デフォルト1）。</summary>
+    /// <summary>1オーダあたりの印刷枚数（デフォルト1）。per_row_counts が指定された行はそちらを優先する。</summary>
     [JsonPropertyName("label_count")]
     public int LabelCount { get; set; } = 1;
 
@@ -56,6 +56,10 @@ public class ProductLabelPrintRequestDto
     /// <summary>指示書種別: "cut"=50/51, "seasoning"=55, "cooking"=50以外。BOM再帰探索の抽出条件として使用。</summary>
     [JsonPropertyName("instruction_type")]
     public string? InstructionType { get; set; }
+
+    /// <summary>オーダID別の印刷枚数上書き。キーは ordertableid の文字列表現。指定があれば label_count より優先。</summary>
+    [JsonPropertyName("per_row_counts")]
+    public Dictionary<string, int>? PerRowCounts { get; set; }
 }
 
 /// <summary>袋詰め画面など：受注明細（salesorderlineid）から現品票 PDF を出すときのリクエスト。</summary>

@@ -49,12 +49,20 @@ public class ProductionInstructionController : ControllerBase
     }
 
     [HttpGet("slots")]
-    public async Task<ActionResult<List<ProductionInstructionSlotOptionDto>>> ListSlots(CancellationToken ct)
+    public async Task<ActionResult<List<ProductionInstructionSlotOptionDto>>> ListSlots(
+        [FromQuery(Name = "needdate")] string? needDate,
+        CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(needDate))
+            return Ok(new List<ProductionInstructionSlotOptionDto>());
         try
         {
-            var list = await _service.ListSlotsAsync(ct);
+            var list = await _service.ListSlotsAsync(needDate, ct);
             return Ok(list);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { detail = ex.Message });
         }
         catch (Exception ex)
         {

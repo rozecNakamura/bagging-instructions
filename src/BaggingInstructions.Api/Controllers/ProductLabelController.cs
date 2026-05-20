@@ -133,7 +133,8 @@ public class ProductLabelController : ControllerBase
         try
         {
             var labelCount = Math.Max(1, body.LabelCount);
-            var pdfBytes = await _pdfService.GeneratePdfAsync(fullPath, body.OrderTableIds, labelCount, body.InstructionType, ct);
+            IReadOnlyDictionary<string, int>? perRowCounts = body.PerRowCounts is { Count: > 0 } d ? d : null;
+            var pdfBytes = await _pdfService.GeneratePdfAsync(fullPath, body.OrderTableIds, labelCount, body.InstructionType, perRowCounts, ct);
             if (pdfBytes.Length == 0)
                 return BadRequest(new { detail = "BOM内に該当する品目が見つかりません。指示書種別をご確認ください。" });
 
@@ -171,7 +172,7 @@ public class ProductLabelController : ControllerBase
                 return BadRequest(new { detail = "現品票に紐づくオーダテーブルが見つかりません。ordertable が未登録の受注明細は印刷対象外です。" });
 
             var labelCount = Math.Max(1, body.LabelCount);
-            var pdfBytes = await _pdfService.GeneratePdfAsync(fullPath, orderTableIds, labelCount, null, ct);
+            var pdfBytes = await _pdfService.GeneratePdfAsync(fullPath, orderTableIds, labelCount, null, null, ct);
             if (pdfBytes.Length == 0)
                 return BadRequest(new { detail = "該当するオーダが見つかりません" });
 

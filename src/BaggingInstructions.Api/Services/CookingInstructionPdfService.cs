@@ -9,7 +9,7 @@ namespace BaggingInstructions.Api.Services;
 public sealed class CookingInstructionPdfService
 {
     private const int TemplateRowCount = 14;
-    private const int RowsPerPage = 12;
+    private const int RowsPerPage = 13;
 
     private readonly JuicePdfService _juicePdf;
 
@@ -33,29 +33,60 @@ public sealed class CookingInstructionPdfService
             .OrderBy(g => g.Key.WorkplaceNames, StringComparer.Ordinal)
             .ThenBy(g => g.Key.NeedDateDisplay, StringComparer.Ordinal);
 
-        var totalPages = orderedGroups.Sum(g => Math.Max(1, (g.Count() + RowsPerPage - 1) / RowsPerPage));
-        if (totalPages < 1) totalPages = 1;
+        var allChunks = orderedGroups
+            .SelectMany(grp => SplitIntoPageChunks(grp.ToList())
+                .Select(chunk => (grp.Key, chunk)))
+            .ToList();
 
+        var totalPages = Math.Max(1, allChunks.Count);
         var pageNum = 0;
-        foreach (var grp in orderedGroups)
+
+        foreach (var (key, chunk) in allChunks)
         {
-            var list = grp.ToList();
-            for (var off = 0; off < list.Count; off += RowsPerPage)
-            {
-                var chunk = list.Skip(off).Take(RowsPerPage).ToList();
-                pageNum++;
-                var tags = BuildPageTagValues(
-                    chunk,
-                    chunk.FirstOrDefault()?.SlotDisplay ?? string.Empty,
-                    grp.Key.NeedDateDisplay);
-                JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
-                tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
-                pages.Add(tags);
-            }
+            pageNum++;
+            var tags = BuildPageTagValues(
+                chunk,
+                chunk.FirstOrDefault()?.SlotDisplay ?? string.Empty,
+                key.NeedDateDisplay);
+            JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
+            tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
+            pages.Add(tags);
         }
 
         var title = string.IsNullOrWhiteSpace(documentTitle) ? "調理指示書" : documentTitle.Trim();
         return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, title);
+    }
+
+    private static List<List<CookingInstructionPdfLineModel>> SplitIntoPageChunks(
+        List<CookingInstructionPdfLineModel> groupLines)
+    {
+        var result = new List<List<CookingInstructionPdfLineModel>>();
+        var off = 0;
+        while (off < groupLines.Count)
+        {
+            var canTake = Math.Min(RowsPerPage, groupLines.Count - off);
+            var pageEnd = off + canTake;
+
+            if (canTake == RowsPerPage && pageEnd < groupLines.Count)
+            {
+                var lastParent = groupLines[pageEnd - 1].ParentItemCode;
+                var nextParent = groupLines[pageEnd].ParentItemCode;
+
+                if (lastParent == nextParent)
+                {
+                    var newEnd = pageEnd - 1;
+                    while (newEnd > off && groupLines[newEnd - 1].ParentItemCode == lastParent)
+                        newEnd--;
+
+                    if (newEnd > off)
+                        pageEnd = newEnd;
+                }
+            }
+
+            result.Add(groupLines.GetRange(off, pageEnd - off));
+            off = pageEnd;
+        }
+        return result;
     }
 
     internal static Dictionary<string, string> BuildPageTagValues(
@@ -95,31 +126,23 @@ public sealed class CookingInstructionPdfService
         {
             var r = chunk[i];
             var nn = i.ToString("D2");
+            var isFirstInParentGroup = i == 0 || chunk[i - 1].ParentItemCode != r.ParentItemCode;
 
-            // 指定マッピング:
-            // ORDERNO=ordertableid, ITEMPALNUM=親品目コード, ITEMCHINUM=子品目コード,
-            // ITEMPALNM=親品目名称, ITEMCHINM=子品目名称
-            var orderNo = (r.OrderNo ?? "").Trim();
-            var parentCode = (r.ParentItemCode ?? "").Trim();
-            var parentName = (r.ParentItemName ?? "").Trim();
-            var childCode = (r.ChildItemCode ?? "").Trim();
-            var childName = (r.ChildItemName ?? "").Trim();
+            tags[$"ITEMPALNUM{nn}"] = isFirstInParentGroup ? (r.ParentItemCode ?? "").Trim() : string.Empty;
+            tags[$"ITEMPALNM{nn}"] = isFirstInParentGroup ? (r.ParentItemName ?? "").Trim() : string.Empty;
+            tags[$"ORDERNO{nn}"] = isFirstInParentGroup ? (r.OrderNo ?? "").Trim() : string.Empty;
+            tags[$"MAKEQUNPLAN{nn}"] = isFirstInParentGroup ? (r.PlannedQuantityDisplay ?? string.Empty) : string.Empty;
 
-            tags[$"ITEMPALNM{nn}"] = parentName;
-            tags[$"ITEMCHINM{nn}"] = childName;
-            tags[$"ITEMPALNUM{nn}"] = parentCode;
-            tags[$"ITEMCHINUM{nn}"] = childCode;
+            tags[$"ITEMCHINUM{nn}"] = (r.ChildItemCode ?? "").Trim();
+            tags[$"ITEMCHINM{nn}"] = (r.ChildItemName ?? "").Trim();
             if (i <= 12)
                 tags[$"STANDARD{nn}"] = (r.Standard ?? "").Trim();
-            tags[$"MAKEQUNPLAN{nn}"] = r.PlannedQuantityDisplay ?? string.Empty;
             tags[$"USEQUNPLAN{nn}"] = r.ChildRequiredQtyDisplay ?? string.Empty;
+            tags[$"UNITCHI{nn}"] = (r.ChildUnitName ?? "").Trim();
 
             // 調理指示書.rxz では UNITPAR00/01 の Y がデータ行 1/0 と対応しており、番号が逆。
-            // 単位は全文を渡す（JuicePdf が UNITPAR/UNITCHI で ShrinkToFit を強制）。
             var unitParNn = UnitParTagIndexForDataRow(i).ToString("D2");
-            tags[$"UNITPAR{unitParNn}"] = (r.PlanUnitName ?? "").Trim();
-            tags[$"UNITCHI{nn}"] = (r.ChildUnitName ?? "").Trim();
-            tags[$"ORDERNO{nn}"] = orderNo;
+            tags[$"UNITPAR{unitParNn}"] = isFirstInParentGroup ? (r.PlanUnitName ?? "").Trim() : string.Empty;
         }
 
         return tags;
