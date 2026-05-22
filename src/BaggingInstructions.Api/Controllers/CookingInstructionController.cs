@@ -39,6 +39,20 @@ public class CookingInstructionController : ControllerBase
         }
     }
 
+    [HttpGet("classification3")]
+    public async Task<ActionResult<List<CookingInstructionClassification3OptionDto>>> ListClassification3s(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _service.ListClassification3sAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"マスタ取得エラー: {ex.Message}" });
+        }
+    }
+
     [HttpGet("slots")]
     public async Task<ActionResult<List<CookingInstructionSlotOptionDto>>> ListSlots(
         [FromQuery(Name = "needdate")] string? needDate,
@@ -62,13 +76,15 @@ public class CookingInstructionController : ControllerBase
         [FromQuery(Name = "needdate")] string needDate,
         [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "classification3_code")] string[]? classification3Code,
         CancellationToken ct)
     {
         try
         {
             var wc = workcenterId ?? Array.Empty<long>();
             var sc = slotCode ?? Array.Empty<string>();
-            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
+            var c3 = classification3Code ?? Array.Empty<string>();
+            var rows = await _service.SearchAsync(needDate, wc, sc, c3, ct);
             return Ok(new CookingInstructionSearchResponseDto
             {
                 Total = rows.Count,
@@ -90,13 +106,15 @@ public class CookingInstructionController : ControllerBase
         [FromQuery(Name = "needdate")] string needDate,
         [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "classification3_code")] string[]? classification3Code,
         CancellationToken ct)
     {
         try
         {
             var wc = workcenterId ?? Array.Empty<long>();
             var sc = slotCode ?? Array.Empty<string>();
-            var rows = await _service.SearchAsync(needDate, wc, sc, ct);
+            var c3 = classification3Code ?? Array.Empty<string>();
+            var rows = await _service.SearchAsync(needDate, wc, sc, c3, ct);
 
             using var wb = new XLWorkbook();
             var ws = wb.Worksheets.Add("調理指示書");

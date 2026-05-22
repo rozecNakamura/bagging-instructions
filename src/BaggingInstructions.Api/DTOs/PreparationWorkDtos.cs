@@ -88,6 +88,9 @@ public sealed class PreparationWorkWorkcenterOptionDto
     [JsonPropertyName("id")]
     public long Id { get; set; }
 
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
 }

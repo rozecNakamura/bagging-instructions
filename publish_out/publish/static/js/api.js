@@ -321,8 +321,13 @@ export async function generateDeliveryNotePdfBlob(rows) {
 /**
  * 作業前準備書：中分類マスタ一覧（大分類ID指定）
  */
-export async function fetchMiddleClassifications(majorId) {
-    const params = new URLSearchParams({ majorclassificationid: String(majorId) });
+export async function fetchMiddleClassifications(majorIds) {
+    const ids = Array.isArray(majorIds) ? majorIds : [majorIds];
+    const params = new URLSearchParams();
+    ids.forEach(id => {
+        if (id != null && !Number.isNaN(Number(id)) && Number(id) > 0)
+            params.append('majorclassificationid', String(id));
+    });
     const res = await fetch(`${API_BASE_URL}/preparation-work/middle-classifications?${params}`);
     if (!res.ok) {
         throw new Error(`中分類取得エラー: ${res.status}`);
@@ -396,7 +401,7 @@ export async function searchPreparationWork(delvedt, options = {}) {
     }
     const params = new URLSearchParams({ delvedt: delvedtStr });
     const itemcd = options.itemcd;
-    const majorId = options.majorId;
+    const majorIds = options.majorIds || [];
     const middleId = options.middleId;
     const manufacturingRouteCodes = options.manufacturingRouteCodes || [];
     const workcenterIds = options.workcenterIds || [];
@@ -417,7 +422,11 @@ export async function searchPreparationWork(delvedt, options = {}) {
         }
     });
     if (itemcd && itemcd.trim()) params.set('itemcd', itemcd.trim());
-    if (majorId) params.set('majorclassificationid', String(majorId));
+    (majorIds || []).forEach(id => {
+        if (id != null && !Number.isNaN(Number(id)) && Number(id) > 0) {
+            params.append('majorclassificationid', String(id));
+        }
+    });
     if (middleId) params.set('middleclassificationid', String(middleId));
 
     const res = await fetch(`${API_BASE_URL}/preparation-work/search?${params}`);
@@ -759,13 +768,16 @@ export async function searchProductLabel({ needDate, majorClassificationId, item
  * @param {number} [labelCount=1] - 1ラベルあたりの印刷枚数
  * @param {string} [cutMode="no_cut"] - "cut_on_item_change" | "no_cut"
  * @param {string} [instructionType] - "cut" | "seasoning" | "cooking"（BOM再帰探索の抽出条件）
+ * @param {Object|null} [perRowCounts=null] - ordertableid文字列→枚数のマップ
  * @returns {Promise<Blob>}
  */
-export async function generateProductLabelPdfBlob(orderTableIds, labelCount = 1, cutMode = 'no_cut', instructionType = '') {
+export async function generateProductLabelPdfBlob(orderTableIds, labelCount = 1, cutMode = 'no_cut', instructionType = '', perRowCounts = null) {
+    const bodyObj = { order_table_ids: orderTableIds, label_count: labelCount, cut_mode: cutMode, instruction_type: instructionType || undefined };
+    if (perRowCounts && Object.keys(perRowCounts).length > 0) bodyObj.per_row_counts = perRowCounts;
     const response = await fetch(`${API_BASE_URL}/product-label/pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_table_ids: orderTableIds, label_count: labelCount, cut_mode: cutMode, instruction_type: instructionType || undefined })
+        body: JSON.stringify(bodyObj)
     });
     if (!response.ok) {
         const t = await response.text();
@@ -871,6 +883,23 @@ export async function calculateBagging(jobordPrkeys, printType, useSavedInput = 
 }
 
 /**
+ * 調理指示書：作業名マスタ（classfication3）
+ * @returns {Promise<{ code: string, name: string }[]>}
+ */
+export async function fetchCookingClassification3s() {
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/classification3`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`作業名マスタ取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
  * 調理指示書：作業区マスタ
  * @returns {Promise<{ id: number, name: string }[]>}
  */
@@ -888,56 +917,37 @@ export async function fetchCookingWorkcenters() {
 }
 
 /**
- * 調理指示書：便マスタ
- * @returns {Promise<{ code: string, name: string }[]>}
- */
-export async function fetchCookingSlots() {
-    const res = await fetch(`${API_BASE_URL}/cooking-instruction/slots`);
-    if (!res.ok) {
-        let detail = '';
-        try {
-            const body = await res.json();
-            detail = body.detail ? ` - ${body.detail}` : '';
-        } catch (_) { /* ignore */ }
-        throw new Error(`便マスタ取得エラー: ${res.status}${detail}`);
-    }
-    return await res.json();
-}
-
-/**
- * 調理指示書：製造便一覧（納期当日の受注付帯より）
+ * 調理指示書：便一覧（納期当日の受注より）
  * @param {string} needDate
  * @returns {Promise<{ code: string, name: string }[]>}
  */
-export async function fetchCookingManufacturingRoutes(needDate) {
+export async function fetchCookingSlots(needDate) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
     }
-    if (!needdateStr || needdateStr.length !== 8) {
-        return [];
-    }
+    if (!needdateStr || needdateStr.length !== 8) return [];
     const params = new URLSearchParams({ needdate: needdateStr });
-    const res = await fetch(`${API_BASE_URL}/cooking-instruction/manufacturing-routes?${params}`);
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/slots?${params}`);
     if (!res.ok) {
         let detail = '';
         try {
             const body = await res.json();
             detail = body.detail ? ` - ${body.detail}` : '';
         } catch (_) { /* ignore */ }
-        throw new Error(`製造便一覧取得エラー: ${res.status}${detail}`);
+        throw new Error(`便一覧取得エラー: ${res.status}${detail}`);
     }
     return await res.json();
 }
 
 /**
- * 調理指示書：検索（納期・作業区 ID 複数・便コード複数・製造便コード複数）
+ * 調理指示書：検索（納期・作業区 ID 複数・便コード複数・作業名コード複数）
  * @param {string} needDate
  * @param {number[]} workcenterIds
  * @param {string[]} slotCodes
- * @param {string[]} manufacturingRouteCodes
+ * @param {string[]} [classification3Codes]
  */
-export async function searchCookingInstruction(needDate, workcenterIds, slotCodes, manufacturingRouteCodes) {
+export async function searchCookingInstruction(needDate, workcenterIds, slotCodes, classification3Codes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
@@ -952,9 +962,9 @@ export async function searchCookingInstruction(needDate, workcenterIds, slotCode
         const c = code != null ? String(code).trim() : '';
         if (c) params.append('slot_code', c);
     });
-    (manufacturingRouteCodes || []).forEach(code => {
+    (classification3Codes || []).forEach(code => {
         const c = code != null ? String(code).trim() : '';
-        if (c) params.append('manufacturing_route_code', c);
+        if (c) params.append('classification3_code', c);
     });
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/search?${params}`);
@@ -967,6 +977,47 @@ export async function searchCookingInstruction(needDate, workcenterIds, slotCode
         throw new Error(`検索エラー: ${res.status}${detail}`);
     }
     return await res.json();
+}
+
+/**
+ * 調理指示書：Excel 出力（検索結果をそのまま xlsx 化）
+ * @param {string} needDate
+ * @param {number[]} workcenterIds
+ * @param {string[]} slotCodes
+ * @param {string[]} [classification3Codes]
+ * @returns {Promise<Blob>}
+ */
+export async function exportCookingInstructionExcel(needDate, workcenterIds, slotCodes, classification3Codes) {
+    let needdateStr = needDate;
+    if (needDate && needDate.includes('-')) {
+        needdateStr = needDate.replace(/-/g, '');
+    }
+    const params = new URLSearchParams({ needdate: needdateStr });
+    (workcenterIds || []).forEach(id => {
+        if (id != null && id !== '' && !Number.isNaN(Number(id))) {
+            params.append('workcenter_id', String(id));
+        }
+    });
+    (slotCodes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('slot_code', c);
+    });
+    (classification3Codes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('classification3_code', c);
+    });
+
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/export-excel?${params}`);
+    if (!res.ok) {
+        const t = await res.text();
+        let msg = `Excel出力エラー: ${res.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await res.blob();
 }
 
 /**
@@ -1111,8 +1162,10 @@ export async function exportSortingInquiryJournalBlob(delvedt, slotCodes) {
     return await res.blob();
 }
 
-export async function fetchProductionInstructionSlots() {
-    const res = await fetch(`${API_BASE_URL}/production-instruction/slots`);
+export async function fetchProductionInstructionSlots(needdate) {
+    const nd = needdate ? String(needdate).replace(/-/g, '') : '';
+    const params = nd ? `?needdate=${encodeURIComponent(nd)}` : '';
+    const res = await fetch(`${API_BASE_URL}/production-instruction/slots${params}`);
     if (!res.ok) {
         let detail = '';
         try {

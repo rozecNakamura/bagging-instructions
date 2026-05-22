@@ -201,7 +201,7 @@ public class BaggingSavedInputApplierTests
         };
 
         BaggingSavedInputApplier.ApplySavedInputPerFacilityRounding(
-            items, 10m, seasoningBoms, mboms, new List<decimal> { 120m }, 10m);
+            items, 10m, seasoningBoms, mboms, new List<decimal> { 120m }, 10m, useIngredientAllocation: true);
 
         Assert.Equal(3, items[0].StandardBags);
         Assert.Equal(0m, items[0].IrregularQuantity);

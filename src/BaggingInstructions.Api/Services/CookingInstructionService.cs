@@ -50,17 +50,38 @@ public sealed class CookingInstructionService
         var rows = await _db.Database
             .SqlQuery<CookingInstructionSlotSqlRow>($@"
 SELECT DISTINCT
-  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS ""Code"",
-  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""Name""
+  COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) AS ""Code"",
+  COALESCE(
+    NULLIF(TRIM(ds.slotname), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) AS ""Name""
 FROM ordertable ot
 INNER JOIN item i ON i.itemcode = ot.itemcode
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = {needDateYyyymmdd}
-  AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
-  AND TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) <> ''
+  AND COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) <> ''
 ORDER BY 1
 ")
             .ToListAsync(ct);
@@ -75,13 +96,37 @@ ORDER BY 1
             .ToList();
     }
 
+    public async Task<List<CookingInstructionClassification3OptionDto>> ListClassification3sAsync(CancellationToken ct = default)
+    {
+        var rows = await _db.Database
+            .SqlQuery<CookingInstructionClass3SqlRow>($@"
+SELECT
+  TRIM(classification3code) AS ""Code"",
+  COALESCE(NULLIF(TRIM(classification3name), ''), TRIM(classification3code)) AS ""Name""
+FROM classification3
+WHERE TRIM(COALESCE(classification3code, '')) <> ''
+ORDER BY 1
+")
+            .ToListAsync(ct);
+
+        return rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Code))
+            .Select(r => new CookingInstructionClassification3OptionDto
+            {
+                Code = r.Code ?? "",
+                Name = r.Name ?? ""
+            })
+            .ToList();
+    }
+
     /// <summary>
-    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便は未選択なら絞り込まない。
+    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便・作業名は未選択なら絞り込まない。
     /// </summary>
     public async Task<List<CookingInstructionSearchRowDto>> SearchAsync(
         string needDate,
         IReadOnlyList<long>? workcenterIds,
         IReadOnlyList<string>? slotCodes,
+        IReadOnlyList<string>? classification3Codes = null,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(needDate);
@@ -90,6 +135,11 @@ ORDER BY 1
 
         var wcIds = (workcenterIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
         var slots = (slotCodes ?? Array.Empty<string>())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var class3Codes = (classification3Codes ?? Array.Empty<string>())
             .Select(s => (s ?? "").Trim())
             .Where(s => s.Length > 0)
             .Distinct(StringComparer.Ordinal)
@@ -107,25 +157,54 @@ SELECT
     COALESCE(ot.needdate, ot.releasedate),
     'YYYYMMDD'
   ) AS ""NeedDate"",
-  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""SlotDisplay""
+  COALESCE(
+    NULLIF(TRIM(ds.slotname), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) AS ""SlotDisplay""
 FROM ordertable ot
 INNER JOIN item i ON i.itemcode = ot.itemcode
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(
         COALESCE(ot.needdate, ot.releasedate),
         'YYYYMMDD'
       ) = {needDateYyyymmdd}
-  AND ({slots.Length} = 0 OR TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY ({slots}))
-  AND ({wcIds.Length} = 0 OR EXISTS (
-        SELECT 1 FROM itemworkcentermapping m3
-        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
-        WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY ({wcIds})
+  AND ({slots.Length} = 0 OR COALESCE(
+        NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+        NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+        NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+        ''
+      ) = ANY ({slots}))
+  AND ({wcIds.Length} = 0 OR (
+        EXISTS (
+          SELECT 1 FROM itemworkcentermapping m3
+          INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+          WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY ({wcIds})
+        )
+        OR EXISTS (
+          SELECT 1 FROM workcenter wc_d
+          WHERE wc_d.workcentercode = TRIM(COALESCE(ot.workcentercode, ''))
+            AND wc_d.workcenterid = ANY ({wcIds})
+        )
       ))
-  AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
+  AND ({class3Codes.Length} = 0 OR TRIM(COALESCE(i.classfication3code, '')) = ANY ({class3Codes}))
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
-ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ot.ordertableid
+ORDER BY i.itemname, COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ), ot.ordertableid
 ")
             .ToListAsync(ct);
 
@@ -206,7 +285,7 @@ ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                     ChildUnitName = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay,
-                    WorkplaceNames = h.WorkplaceNames
+                    WorkName = h.WorkName
                 });
                 continue;
             }
@@ -231,7 +310,7 @@ ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                     ChildUnitName = (b.ChildUnitname ?? "").Trim(),
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay,
-                    WorkplaceNames = h.WorkplaceNames
+                    WorkName = h.WorkName
                 });
             }
         }
@@ -309,13 +388,14 @@ ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
                   i.conversionvalue3 AS cv3,
-                  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS slot_display,
-                  COALESCE((
-                    SELECT string_agg(DISTINCT wc.workcentername, '、' ORDER BY wc.workcentername)
-                    FROM itemworkcentermapping m2
-                    INNER JOIN workcenter wc ON wc.workcentercode = m2.workcentercode
-                    WHERE m2.itemcode = COALESCE(ot.itemcode, i.itemcode)
-                  ), '') AS workplace_names,
+                  COALESCE(
+                    NULLIF(TRIM(ds.slotname), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  ) AS slot_display,
+                  COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classfication3code, ''))) AS work_name,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.ordertableid::text AS order_no_for_pdf
                 FROM ordertable ot
@@ -324,7 +404,14 @@ ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-                LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+                LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  )
+                LEFT JOIN classification3 c3 ON TRIM(c3.classification3code) = TRIM(i.classfication3code)
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                 ORDER BY ot.ordertableid
@@ -358,7 +445,7 @@ ORDER BY i.itemname, TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
                     ConversionValue2 = ReadDecimalNullable(reader, 15),
                     ConversionValue3 = ReadDecimalNullable(reader, 16),
                     SlotDisplay = reader.GetString(17),
-                    WorkplaceNames = reader.GetString(18),
+                    WorkName = reader.GetString(18),
                     NeedDate = ReadDateNullable(reader, 19),
                     OrderNo = reader.GetString(20)
                 });
@@ -476,6 +563,12 @@ internal sealed class CookingInstructionManufacturingRouteSqlRow
     public string Name { get; set; } = "";
 }
 
+internal sealed class CookingInstructionClass3SqlRow
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
 internal sealed class CookingInstructionSearchSqlRow
 {
     public long OrderTableId { get; set; }
@@ -505,7 +598,8 @@ internal sealed class CookingInstructionLineHeaderRow
     public decimal? ConversionValue2 { get; set; }
     public decimal? ConversionValue3 { get; set; }
     public string SlotDisplay { get; set; } = "";
-    public string WorkplaceNames { get; set; } = "";
+    /// <summary>作業名: classfication3.classfication3name（GENRE01 タグに設定）。</summary>
+    public string WorkName { get; set; } = "";
     public DateOnly? NeedDate { get; set; }
     /// <summary>PDF 注番: ordertable.ordertableid（文字列）。</summary>
     public string OrderNo { get; set; } = "";

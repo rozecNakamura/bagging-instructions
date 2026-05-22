@@ -78,6 +78,11 @@ public static class BaggingSavedInputApplier
         var useGlobalSplit = globalTotalsForSeasoning is { Count: > 0 }
                              && totalOrder > 0
                              && seasoningBoms.Count > 0;
+        // g/kg品目+総数量入力時: seasoningBomsを使わず mboms×globalTotals×share で按分
+        var useGKgIngredientPath = useIngredientAllocation
+                                   && globalTotalsForSeasoning is { Count: > 0 }
+                                   && totalOrder > 0
+                                   && mboms.Count > 0;
 
         foreach (var item in items)
         {
@@ -87,6 +92,27 @@ public static class BaggingSavedInputApplier
             item.QuantityForInstruction = item.AdjustedQuantity;
             item.StandardBags = (int)standardCount;
             item.IrregularQuantity = irregularCount;
+
+            if (useGKgIngredientPath)
+            {
+                var share = item.PlannedQuantity / totalOrder;
+                var proportional = new List<SeasoningAmountDto>();
+                var n = Math.Min(mboms.Count, globalTotalsForSeasoning!.Count);
+                for (var j = 0; j < n; j++)
+                {
+                    var m = mboms[j];
+                    proportional.Add(new SeasoningAmountDto
+                    {
+                        Citemcd = m.Citemcd ?? "",
+                        Amu = m.Amu ?? 0,
+                        Otp = m.Otp ?? 0,
+                        CalculatedAmount = globalTotalsForSeasoning[j] * share,
+                        ChildItem = m.ChildItem
+                    });
+                }
+                item.SeasoningAmounts = proportional;
+                continue;
+            }
 
             if (!useGlobalSplit)
             {
@@ -102,13 +128,13 @@ public static class BaggingSavedInputApplier
                 continue;
             }
 
-            var share = item.PlannedQuantity / totalOrder;
-            var proportional = new List<SeasoningAmountDto>();
-            var n = Math.Min(seasoningBoms.Count, globalTotalsForSeasoning!.Count);
-            for (var j = 0; j < n; j++)
+            var share2 = item.PlannedQuantity / totalOrder;
+            var proportional2 = new List<SeasoningAmountDto>();
+            var n2 = Math.Min(seasoningBoms.Count, globalTotalsForSeasoning!.Count);
+            for (var j = 0; j < n2; j++)
             {
                 var row = seasoningBoms[j];
-                var amt = globalTotalsForSeasoning[j] * share;
+                var amt = globalTotalsForSeasoning[j] * share2;
                 var dto = new SeasoningAmountDto
                 {
                     Citemcd = row.ChildItemCd ?? "",
@@ -121,10 +147,10 @@ public static class BaggingSavedInputApplier
                     string.Equals(x.Citemcd, dto.Citemcd, StringComparison.Ordinal));
                 if (m != null)
                     dto.ChildItem = m.ChildItem;
-                proportional.Add(dto);
+                proportional2.Add(dto);
             }
 
-            item.SeasoningAmounts = proportional;
+            item.SeasoningAmounts = proportional2;
         }
 
         if (specQty is decimal sq && sq > 0)
@@ -150,36 +176,38 @@ public static class BaggingSavedInputApplier
         var firstChildIndex = mboms != null ? FirstRecipeChildIndex(mboms) : -1;
         var firstUnitName = (firstChildIndex >= 0 && mboms != null) ? ChildUnitName(mboms[firstChildIndex]) : null;
 
-        // g/kg子品目 + TotalQty入力時: 入力総数量を受注比で直接按分（specQtyと同単位のため変換不要）
+        // g/kg子品目 + TotalQty入力時: 全品目の入力総数量合計を受注比で直接按分（specQtyと同単位のため変換不要）
         var useDirectChildAllocation = useIngredientAllocation
             && firstChildIndex >= 0
             && mboms != null
             && IsGramOrKg(ChildUnitName(mboms[firstChildIndex]))
             && globalTotalsForSeasoning is { Count: > 0 }
-            && firstChildIndex < globalTotalsForSeasoning.Count
             && totalOrder > 0;
-
-        Console.WriteLine($"[DBG ApplySpecBagCounts] useIngredientAllocation={useIngredientAllocation} firstChildIndex={firstChildIndex} mboms?.Count={mboms?.Count} firstUnitName={firstUnitName} IsGKg={IsGramOrKg(firstUnitName)} globalTotals?.Count={globalTotalsForSeasoning?.Count} totalOrder={totalOrder} useDirectChildAllocation={useDirectChildAllocation} globalTotals[0]={globalTotalsForSeasoning?.ElementAtOrDefault(0)}");
 
         foreach (var item in items)
         {
-            decimal baseQuantity;
             if (useDirectChildAllocation)
             {
-                // 入力総数量 × 施設受注比 = この施設の按分量（g） → 規格(g)で割って袋数算出
+                // 按分量を規格数量で割り、余りをそのまま端数とする（切り上げなし→合計Aと一致）
                 var share = totalOrder > 0 ? item.PlannedQuantity / totalOrder : 0m;
-                baseQuantity = globalTotalsForSeasoning![firstChildIndex] * share;
+                var baseQty = globalTotalsForSeasoning!.Sum() * share;
+                var standardBags = (int)Math.Floor(baseQty / specQty);
+                var rem = baseQty % specQty;
+                const decimal eps = 0.0000000001m;
+                var irregularQuantity = rem > eps ? rem : 0m;
+                item.StandardBags = standardBags;
+                item.IrregularQuantity = irregularQuantity;
+                item.AdjustedQuantity = standardBags + (irregularQuantity > 0 ? 1 : 0);
+                item.QuantityForInstruction = item.AdjustedQuantity;
             }
             else
             {
-                baseQuantity = item.PlannedQuantity;
+                var (standardBags, irregularQuantity) = CalculateBagsAndRoundedRemainder(item.PlannedQuantity, specQty);
+                item.StandardBags = standardBags;
+                item.IrregularQuantity = irregularQuantity;
+                item.AdjustedQuantity = standardBags + irregularQuantity;
+                item.QuantityForInstruction = item.AdjustedQuantity;
             }
-
-            var (standardBags, irregularQuantity) = CalculateBagsAndRoundedRemainder(baseQuantity, specQty);
-            item.StandardBags = standardBags;
-            item.IrregularQuantity = irregularQuantity;
-            item.AdjustedQuantity = standardBags + irregularQuantity;
-            item.QuantityForInstruction = item.AdjustedQuantity;
         }
     }
 

@@ -19,16 +19,26 @@ public class PreparationWorkService
         _db = db;
     }
 
-    public async Task<List<MiddleClassificationOptionDto>> ListMiddleClassificationsAsync(long majorClassificationId, CancellationToken ct = default)
+    public async Task<List<MiddleClassificationOptionDto>> ListMiddleClassificationsAsync(long[] majorClassificationIds, CancellationToken ct = default)
     {
-        var major = await _db.MajorClassifications.AsNoTracking()
-            .FirstOrDefaultAsync(m => m.MajorClassificationId == majorClassificationId, ct);
-        if (major == null || string.IsNullOrEmpty(major.MajorClassificationCode))
+        var majIds = (majorClassificationIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
+        if (majIds.Length == 0)
+            return new List<MiddleClassificationOptionDto>();
+
+        var majorCodes = await _db.MajorClassifications.AsNoTracking()
+            .Where(m => majIds.Contains(m.MajorClassificationId))
+            .Select(m => m.MajorClassificationCode)
+            .Where(c => c != null && c.Length > 0)
+            .ToListAsync(ct);
+
+        var codes = majorCodes.OfType<string>().ToList();
+        if (codes.Count == 0)
             return new List<MiddleClassificationOptionDto>();
 
         return await _db.MiddleClassifications.AsNoTracking()
-            .Where(m => m.MajorClassificationCode == major.MajorClassificationCode)
-            .OrderBy(m => m.MiddleClassificationCode ?? "")
+            .Where(m => m.MajorClassificationCode != null && codes.Contains(m.MajorClassificationCode))
+            .OrderBy(m => m.MajorClassificationCode ?? "")
+            .ThenBy(m => m.MiddleClassificationCode ?? "")
             .Select(m => new MiddleClassificationOptionDto
             {
                 Id = m.MiddleClassificationId,
@@ -48,6 +58,7 @@ public class PreparationWorkService
         return rows.ConvertAll(w => new PreparationWorkWorkcenterOptionDto
         {
             Id = w.WorkcenterId ?? 0,
+            Code = w.WorkcenterCode ?? "",
             Name = w.WorkcenterName ?? ""
         });
     }
@@ -110,7 +121,7 @@ ORDER BY TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
         string delvedt,
         IReadOnlyList<string> manufacturingRouteCodes,
         string? itemcd,
-        long? majorClassificationId,
+        long[]? majorClassificationIds,
         long? middleClassificationId,
         IReadOnlyList<long> workcenterIds,
         IReadOnlyList<long> warehouseIds,
@@ -132,15 +143,17 @@ ORDER BY TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
         var itemF = itemcd?.Trim() ?? "";
 
         // major / middle は ID ではなく「コード」で SQL フィルタする（NULL パラメータ型不明エラー回避）
-        string majorCodeFilter = "";
+        string[] majorCodes = Array.Empty<string>();
         string middleCodeFilter = "";
 
-        if (majorClassificationId is long majId and > 0)
+        var majIds = (majorClassificationIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
+        if (majIds.Length > 0)
         {
-            var major = await _db.MajorClassifications.AsNoTracking()
-                .FirstOrDefaultAsync(m => m.MajorClassificationId == majId, ct);
-            if (major?.MajorClassificationCode is { Length: > 0 } code)
-                majorCodeFilter = code;
+            var codes = await _db.MajorClassifications.AsNoTracking()
+                .Where(m => majIds.Contains(m.MajorClassificationId))
+                .Select(m => m.MajorClassificationCode)
+                .ToListAsync(ct);
+            majorCodes = codes.Where(c => !string.IsNullOrEmpty(c)).Select(c => c!).ToArray();
         }
 
         if (middleClassificationId is long midId and > 0)
@@ -172,11 +185,19 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND ({mfgRoutes.Length} = 0 OR
         TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY ({mfgRoutes})
       )
-  AND ({wcIds.Length} = 0 OR EXISTS (
-        SELECT 1 FROM itemworkcentermapping m3
-        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
-        WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
-          AND wc.workcenterid = ANY ({wcIds})
+  AND ({wcIds.Length} = 0 OR (
+        EXISTS (
+          SELECT 1 FROM itemworkcentermapping m3
+          INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+          WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
+            AND wc.workcenterid = ANY ({wcIds})
+        )
+        OR EXISTS (
+          SELECT 1 FROM workcenter wc_d
+          WHERE (wc_d.workcentercode = TRIM(BOTH FROM ot.workcentercode)
+              OR wc_d.workcenterid::text = TRIM(BOTH FROM ot.workcentercode))
+            AND wc_d.workcenterid = ANY ({wcIds})
+        )
       ))
   AND ({whIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM warehouses wh_f
@@ -184,8 +205,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
           AND TRIM(COALESCE(wh_f.warehousecode, '')) = TRIM(COALESCE(i.warehousecode, ''))
       ))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
-  AND ({majorCodeFilter} = '' OR mc.majorclassificationcode = {majorCodeFilter})
-  AND ({middleCodeFilter} = '' OR mid.middleclassificationcode = {middleCodeFilter})
+  AND ({majorCodes.Length} = 0 OR TRIM(COALESCE(i.majorclassficationcode, '')) = ANY ({majorCodes}))
+  AND ({middleCodeFilter} = '' OR TRIM(COALESCE(i.middleclassficationcode, '')) = {middleCodeFilter})
 GROUP BY
   TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
   mc.majorclassificationcode,
@@ -257,11 +278,19 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND ({mfgRoutes.Length} = 0 OR
         TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY ({mfgRoutes})
       )
-  AND ({wcIds.Length} = 0 OR EXISTS (
-        SELECT 1 FROM itemworkcentermapping m3
-        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
-        WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
-          AND wc.workcenterid = ANY ({wcIds})
+  AND ({wcIds.Length} = 0 OR (
+        EXISTS (
+          SELECT 1 FROM itemworkcentermapping m3
+          INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+          WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
+            AND wc.workcenterid = ANY ({wcIds})
+        )
+        OR EXISTS (
+          SELECT 1 FROM workcenter wc_d
+          WHERE (wc_d.workcentercode = TRIM(BOTH FROM ot.workcentercode)
+              OR wc_d.workcenterid::text = TRIM(BOTH FROM ot.workcentercode))
+            AND wc_d.workcenterid = ANY ({wcIds})
+        )
       ))
   AND ({whIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM warehouses wh_f
@@ -320,6 +349,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ParentItemname = first.ParentItemname,
                     ChildItemcode = "",
                     ChildItemname = "",
+                    WarehouseDisplay = "",
                     Quantity = "",
                     Unit = ""
                 });
@@ -342,6 +372,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ParentItemname = first.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
+                    WarehouseDisplay = FormatWarehouseDisplay(b.ChildWarehouseCode, b.ChildWarehouseName),
                     Quantity = qtyDisplay,
                     Unit = b.ChildUnitname ?? ""
                 });
@@ -435,6 +466,16 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
         return lines;
     }
 
+    private static string FormatWarehouseDisplay(string? code, string? name)
+    {
+        var c = string.IsNullOrWhiteSpace(code) ? "" : code.Trim();
+        var n = string.IsNullOrWhiteSpace(name) ? "" : name.Trim();
+        if (c.Length == 0 && n.Length == 0) return "";
+        if (c.Length == 0) return n;
+        if (n.Length == 0) return c;
+        return $"{c}・{n}";
+    }
+
     public static byte[] WriteCsvUtf8Bom(IReadOnlyList<PreparationCsvRow> rows)
     {
         static string Esc(string? s)
@@ -446,7 +487,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("職場名,日付,製造便,分類名,注番,親品目コード,親品目,子品目コード,子品目,数量,単位");
+        sb.AppendLine("職場名,日付,製造便,分類名,注番,親品目コード,親品目,子品目コード,子品目,倉庫,数量,単位");
         foreach (var r in rows)
         {
             sb.Append(Esc(r.WorkplaceName)).Append(',')
@@ -458,6 +499,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                 .Append(Esc(r.ParentItemname)).Append(',')
                 .Append(Esc(r.ChildItemcode)).Append(',')
                 .Append(Esc(r.ChildItemname)).Append(',')
+                .Append(Esc(r.WarehouseDisplay)).Append(',')
                 .Append(Esc(r.Quantity)).Append(',')
                 .Append(Esc(r.Unit))
                 .AppendLine();
@@ -505,7 +547,13 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                   COALESCE(i.itemname, '') AS parent_itemname,
                   COALESCE(mn.minorclassificationname, '') AS minor_class_name,
                   COALESCE(mid.middleclassificationname, '') AS middle_class_name,
-                  COALESCE(ds.slotname, ds.slotcode, '') AS slot_display,
+                  COALESCE(
+                    NULLIF(TRIM(ds.slotname), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  ) AS slot_display,
                   COALESCE(
                     NULLIF(TRIM(BOTH FROM wc_ord.workcentername), ''),
                     (SELECT string_agg(DISTINCT wc_map.workcentername, '、' ORDER BY wc_map.workcentername)
@@ -524,7 +572,12 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                      WHERE m2.itemcode = i.itemcode),
                     ''
                   ) AS workplace_code,
-                  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS manufacturing_route_code,
+                  COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  ) AS manufacturing_route_code,
                   COALESCE(mid.middleclassificationcode, '') AS middle_class_code,
                   ot.productno
                 FROM ordertable ot
@@ -534,13 +587,19 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                 )
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
+                LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
                 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                 LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassficationcode
                   AND mn.middleclassificationcode = i.middleclassficationcode
                   AND mn.minorclassificationcode = i.minorclassficationcode
                 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
                   AND mid.middleclassificationcode = i.middleclassficationcode
-                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(sol.slotcode, ot.slotcode)
+                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  )
                 WHERE ot.ordertableid = ANY(@ids)
                 ORDER BY ot.ordertableid
                 """, conn);
@@ -604,7 +663,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     WHEN ia.steritemprange IS NULL THEN ''
                     ELSE TO_CHAR(ia.steritemprange, 'FM999999990.###')
                   END AS child_steritemprange,
-                  COALESCE(wh_child.warehousename, wh_child.warehousecode, '') AS child_warehouse_name
+                  COALESCE(wh_child.warehousecode, '') AS child_warehouse_code,
+                  COALESCE(wh_child.warehousename, '') AS child_warehouse_name
                 FROM bom b
                 LEFT JOIN item ci ON TRIM(ci.itemcode) = TRIM(b.childitemcode)
                 LEFT JOIN warehouses wh_child ON wh_child.warehousecode = ci.warehousecode
@@ -632,7 +692,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ChildUnitname = reader.GetString(5),
                     ChildStd = reader.GetString(6),
                     ChildSteriTempRange = reader.GetString(7),
-                    ChildWarehouseName = reader.GetString(8)
+                    ChildWarehouseCode = reader.GetString(8),
+                    ChildWarehouseName = reader.GetString(9)
                 });
             }
 
@@ -668,6 +729,7 @@ public sealed class PreparationCsvRow
     public string ParentItemname { get; set; } = "";
     public string ChildItemcode { get; set; } = "";
     public string ChildItemname { get; set; } = "";
+    public string WarehouseDisplay { get; set; } = "";
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
 }
@@ -729,6 +791,8 @@ internal sealed class PreparationBomSqlRow
     public string? ChildStd { get; set; }
     /// <summary>子品目の殺菌温度レンジ（<c>itemadditionalinformation.steritemprange</c>）。</summary>
     public string? ChildSteriTempRange { get; set; }
+    /// <summary>子品目の保管倉庫コード（<c>item.warehousecode</c> → <c>warehouses.warehousecode</c>）。</summary>
+    public string? ChildWarehouseCode { get; set; }
     /// <summary>子品目の保管倉庫名（<c>item.warehousecode</c> → <c>warehouses.warehousename</c>）。</summary>
     public string? ChildWarehouseName { get; set; }
 }

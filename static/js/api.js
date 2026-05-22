@@ -321,8 +321,13 @@ export async function generateDeliveryNotePdfBlob(rows) {
 /**
  * 作業前準備書：中分類マスタ一覧（大分類ID指定）
  */
-export async function fetchMiddleClassifications(majorId) {
-    const params = new URLSearchParams({ majorclassificationid: String(majorId) });
+export async function fetchMiddleClassifications(majorIds) {
+    const ids = Array.isArray(majorIds) ? majorIds : [majorIds];
+    const params = new URLSearchParams();
+    ids.forEach(id => {
+        if (id != null && !Number.isNaN(Number(id)) && Number(id) > 0)
+            params.append('majorclassificationid', String(id));
+    });
     const res = await fetch(`${API_BASE_URL}/preparation-work/middle-classifications?${params}`);
     if (!res.ok) {
         throw new Error(`中分類取得エラー: ${res.status}`);
@@ -396,7 +401,7 @@ export async function searchPreparationWork(delvedt, options = {}) {
     }
     const params = new URLSearchParams({ delvedt: delvedtStr });
     const itemcd = options.itemcd;
-    const majorId = options.majorId;
+    const majorIds = options.majorIds || [];
     const middleId = options.middleId;
     const manufacturingRouteCodes = options.manufacturingRouteCodes || [];
     const workcenterIds = options.workcenterIds || [];
@@ -417,7 +422,11 @@ export async function searchPreparationWork(delvedt, options = {}) {
         }
     });
     if (itemcd && itemcd.trim()) params.set('itemcd', itemcd.trim());
-    if (majorId) params.set('majorclassificationid', String(majorId));
+    (majorIds || []).forEach(id => {
+        if (id != null && !Number.isNaN(Number(id)) && Number(id) > 0) {
+            params.append('majorclassificationid', String(id));
+        }
+    });
     if (middleId) params.set('middleclassificationid', String(middleId));
 
     const res = await fetch(`${API_BASE_URL}/preparation-work/search?${params}`);
@@ -874,6 +883,23 @@ export async function calculateBagging(jobordPrkeys, printType, useSavedInput = 
 }
 
 /**
+ * 調理指示書：作業名マスタ（classfication3）
+ * @returns {Promise<{ code: string, name: string }[]>}
+ */
+export async function fetchCookingClassification3s() {
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/classification3`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`作業名マスタ取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
  * 調理指示書：作業区マスタ
  * @returns {Promise<{ id: number, name: string }[]>}
  */
@@ -915,12 +941,13 @@ export async function fetchCookingSlots(needDate) {
 }
 
 /**
- * 調理指示書：検索（納期・作業区 ID 複数・便コード複数）
+ * 調理指示書：検索（納期・作業区 ID 複数・便コード複数・作業名コード複数）
  * @param {string} needDate
  * @param {number[]} workcenterIds
  * @param {string[]} slotCodes
+ * @param {string[]} [classification3Codes]
  */
-export async function searchCookingInstruction(needDate, workcenterIds, slotCodes) {
+export async function searchCookingInstruction(needDate, workcenterIds, slotCodes, classification3Codes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
@@ -934,6 +961,10 @@ export async function searchCookingInstruction(needDate, workcenterIds, slotCode
     (slotCodes || []).forEach(code => {
         const c = code != null ? String(code).trim() : '';
         if (c) params.append('slot_code', c);
+    });
+    (classification3Codes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('classification3_code', c);
     });
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/search?${params}`);
@@ -953,9 +984,10 @@ export async function searchCookingInstruction(needDate, workcenterIds, slotCode
  * @param {string} needDate
  * @param {number[]} workcenterIds
  * @param {string[]} slotCodes
+ * @param {string[]} [classification3Codes]
  * @returns {Promise<Blob>}
  */
-export async function exportCookingInstructionExcel(needDate, workcenterIds, slotCodes) {
+export async function exportCookingInstructionExcel(needDate, workcenterIds, slotCodes, classification3Codes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
@@ -969,6 +1001,10 @@ export async function exportCookingInstructionExcel(needDate, workcenterIds, slo
     (slotCodes || []).forEach(code => {
         const c = code != null ? String(code).trim() : '';
         if (c) params.append('slot_code', c);
+    });
+    (classification3Codes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('classification3_code', c);
     });
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/export-excel?${params}`);

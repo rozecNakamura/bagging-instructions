@@ -756,9 +756,11 @@ function formatNumber(value) {
 }
 
 function resolveStandardBags(item) {
-    // 子品目が1個の場合はバックエンドの計算結果を優先（TotalQty入力時の按分計算を反映する）
+    // 子品目が1個、またはg/kg単位の場合はバックエンドの計算結果を優先（TotalQty入力時の按分計算を反映する）
     const mboms = item.mboms ?? [];
-    if (mboms.length === 1 && item.standard_bags != null) {
+    const firstUnitNm = (mboms[0]?.child_item?.uni?.uninm || '').toLowerCase().trim();
+    const isGKgMode = firstUnitNm === 'g' || firstUnitNm === 'kg';
+    if ((mboms.length === 1 || isGKgMode) && item.standard_bags != null) {
         return item.standard_bags || 0;
     }
     const std = parseFloat(item.item?.std);

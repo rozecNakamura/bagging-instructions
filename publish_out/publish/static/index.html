@@ -579,10 +579,6 @@
                                         <option value="cooking">調理指示書（50以外）</option>
                                     </select>
                                 </div>
-                                <div class="form-group" style="flex-direction: row; align-items: center; gap: 6px;">
-                                    <label for="productLabelLabelCount">枚数:</label>
-                                    <input type="number" id="productLabelLabelCount" value="1" min="1" max="99" style="width: 60px;">
-                                </div>
                                 <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
                                     <label><input type="radio" name="productLabelCutMode" value="no_cut" checked> 連続出力</label>
                                     <label><input type="radio" name="productLabelCutMode" value="cut_on_item_change"> 品目切替でカット</label>
@@ -608,6 +604,7 @@
                                         <th>子品目数</th>
                                         <th>数量</th>
                                         <th>作業区</th>
+                                        <th>枚数</th>
                                     </tr>
                                 </thead>
                                 <tbody id="productLabelResultsBody">
@@ -713,16 +710,6 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>製造便:</label>
-                                <div class="multi-select-dropdown" id="cookManufacturingRouteDropdown">
-                                    <div class="multi-select-display" id="cookManufacturingRouteDisplay">
-                                        <span id="cookManufacturingRouteSelectedLabel" class="multi-select-summary">納期を選択してください</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="cookManufacturingRouteOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
-                            </div>
-                            <div class="form-group">
                                 <label>便:</label>
                                 <div class="multi-select-dropdown" id="cookSlotDropdown">
                                     <div class="multi-select-display" id="cookSlotDisplay">
@@ -732,9 +719,20 @@
                                     <div id="cookSlotOptions" class="multi-select-panel" style="display:none;"></div>
                                 </div>
                             </div>
+                            <div class="form-group">
+                                <label>作業名:</label>
+                                <div class="multi-select-dropdown" id="cookClassification3Dropdown">
+                                    <div class="multi-select-display" id="cookClassification3Display">
+                                        <span id="cookClassification3SelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="cookClassification3Options" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
                             <button type="button" id="cookSearchBtn" class="btn btn-primary">検索</button>
                             <div id="cookPrintSection" class="search-form-inline-actions print-section" style="display: none;">
                                 <button type="button" id="cookPrintBtn" class="btn btn-success">帳票印刷（PDF）</button>
+                                <button type="button" id="cookExcelBtn" class="btn btn-secondary">Excel出力</button>
                             </div>
                         </div>
                     </section>
@@ -752,6 +750,7 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="cookHeaderCheckbox"></th>
+                                        <th>品目コード</th>
                                         <th>品目名</th>
                                         <th>納期</th>
                                         <th>便</th>

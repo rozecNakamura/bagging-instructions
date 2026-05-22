@@ -22,13 +22,14 @@ public class CookingInstructionPdfServiceTests
             ChildUnitName = "g",
             NeedDateDisplay = "2025/03/01",
             SlotDisplay = "朝便",
-            WorkplaceNames = "調理場A"
+            WorkName = "調理場A"
         };
 
         var tags = CookingInstructionPdfService.BuildPageTagValues(
             new[] { line },
             line.SlotDisplay,
-            line.NeedDateDisplay);
+            line.NeedDateDisplay,
+            line.WorkName);
 
         Assert.Equal("調理場A", tags["GENRE01"]);
         Assert.Equal("2025/03/01", tags["DATE01"]);
@@ -62,7 +63,7 @@ public class CookingInstructionPdfServiceTests
             ChildUnitName = "g",
             NeedDateDisplay = "2025/01/01",
             SlotDisplay = "便",
-            WorkplaceNames = ""
+            WorkName = ""
         };
         var b = new CookingInstructionPdfLineModel
         {
@@ -77,7 +78,7 @@ public class CookingInstructionPdfServiceTests
             ChildUnitName = "g",
             NeedDateDisplay = "2025/01/01",
             SlotDisplay = "便",
-            WorkplaceNames = ""
+            WorkName = ""
         };
 
         var tags = CookingInstructionPdfService.BuildPageTagValues(new[] { a, b }, "便", "2025/01/01");

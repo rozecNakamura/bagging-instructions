@@ -7,11 +7,11 @@ public class BaggingEatingTimeLabelTests
     [Theory]
     [InlineData("1", "朝")]
     [InlineData("2", "昼")]
-    [InlineData("3", "夜")]
+    [InlineData("3", "夕")]
     [InlineData(" 1 ", "朝")]
     [InlineData("01", "朝")]
     [InlineData("02", "昼")]
-    [InlineData("03", "夜")]
+    [InlineData("03", "夕")]
     [InlineData("\uFF11", "朝")]
     public void MapFromAddinfo05_known_codes(string raw, string expected) =>
         Assert.Equal(expected, BaggingEatingTimeLabel.MapFromAddinfo05(raw));

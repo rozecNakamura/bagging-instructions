@@ -1,10 +1,12 @@
-import { searchCookingInstruction, fetchCookingWorkcenters, fetchCookingSlots, exportCookingInstructionExcel } from './api.js';
+import { searchCookingInstruction, fetchCookingWorkcenters, fetchCookingSlots, fetchCookingClassification3s, exportCookingInstructionExcel } from './api.js';
 
 let cookRows = [];
 let cookWorkcenterList = [];
 let cookSlotList = [];
+let cookClassification3List = [];
 let cookSelectedWorkcenters = new Set();
 let cookSelectedSlots = new Set();
+let cookSelectedClassification3s = new Set();
 
 function updateCookWorkcenterSummary() {
     const label = document.getElementById('cookWorkcenterSelectedLabel');
@@ -35,6 +37,46 @@ function updateCookSlotSummary() {
     }
 }
 
+function updateCookClassification3Summary() {
+    const label = document.getElementById('cookClassification3SelectedLabel');
+    if (!label) return;
+    if (cookClassification3List.length === 0) {
+        label.textContent = '未選択';
+        return;
+    }
+    if (cookSelectedClassification3s.size === 0) {
+        label.textContent = '未選択';
+    } else if (cookSelectedClassification3s.size === cookClassification3List.length && cookClassification3List.length > 0) {
+        label.textContent = 'すべて選択';
+    } else {
+        label.textContent = `${cookSelectedClassification3s.size}件選択`;
+    }
+}
+
+function buildCookClassification3Panel() {
+    const container = document.getElementById('cookClassification3Options');
+    if (!container) return;
+    container.innerHTML = '';
+    cookClassification3List.forEach(c => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = c.code || '';
+        if (cookSelectedClassification3s.has(cb.value)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) cookSelectedClassification3s.add(cb.value);
+            else cookSelectedClassification3s.delete(cb.value);
+            updateCookClassification3Summary();
+        });
+        const text = document.createElement('span');
+        text.textContent = c.code ? `${c.code} ${c.name}` : (c.name || '');
+        label.appendChild(cb);
+        label.appendChild(text);
+        container.appendChild(label);
+    });
+    updateCookClassification3Summary();
+}
+
 function buildCookWorkcenterPanel() {
     const container = document.getElementById('cookWorkcenterOptions');
     if (!container) return;
@@ -51,7 +93,7 @@ function buildCookWorkcenterPanel() {
             updateCookWorkcenterSummary();
         });
         const text = document.createElement('span');
-        text.textContent = w.name || '';
+        text.textContent = w.code ? `${w.code} ${w.name}` : (w.name || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
@@ -167,6 +209,10 @@ function getSelectedSlotCodes() {
     return Array.from(cookSelectedSlots.values()).filter(c => c && String(c).trim());
 }
 
+function getSelectedClassification3Codes() {
+    return Array.from(cookSelectedClassification3s.values()).filter(c => c && String(c).trim());
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchBtn = document.getElementById('cookSearchBtn');
     const headerCheckbox = document.getElementById('cookHeaderCheckbox');
@@ -174,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const deselectAllBtn = document.getElementById('cookDeselectAllBtn');
     const workcenterDisplay = document.getElementById('cookWorkcenterDisplay');
     const slotDisplay = document.getElementById('cookSlotDisplay');
+    const classification3Display = document.getElementById('cookClassification3Display');
     const needDateInput = document.getElementById('cookNeedDate');
 
     if (!searchBtn) return;
@@ -184,12 +231,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (async () => {
         try {
-            const wcs = await fetchCookingWorkcenters();
+            const [wcs, c3s] = await Promise.all([
+                fetchCookingWorkcenters(),
+                fetchCookingClassification3s()
+            ]);
             cookWorkcenterList = wcs || [];
             // 「11011」をデフォルト選択
             const defaultWc = cookWorkcenterList.find(w => w.code === '11011');
             if (defaultWc) cookSelectedWorkcenters.add(String(defaultWc.id));
             buildCookWorkcenterPanel();
+
+            cookClassification3List = c3s || [];
+            buildCookClassification3Panel();
         } catch (e) {
             console.error('調理指示書 マスタ取得エラー:', e);
         }
@@ -198,8 +251,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeAllCookPanels() {
         const w = document.getElementById('cookWorkcenterOptions');
         const s = document.getElementById('cookSlotOptions');
+        const c = document.getElementById('cookClassification3Options');
         if (w) w.style.display = 'none';
         if (s) s.style.display = 'none';
+        if (c) c.style.display = 'none';
     }
 
     if (workcenterDisplay) {
@@ -217,6 +272,17 @@ document.addEventListener('DOMContentLoaded', () => {
         slotDisplay.addEventListener('click', (e) => {
             e.stopPropagation();
             const panel = document.getElementById('cookSlotOptions');
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none' || panel.style.display === '';
+            closeAllCookPanels();
+            panel.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    if (classification3Display) {
+        classification3Display.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('cookClassification3Options');
             if (!panel) return;
             const isHidden = panel.style.display === 'none' || panel.style.display === '';
             closeAllCookPanels();
@@ -243,9 +309,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const workcenterIds = getSelectedWorkcenterIds();
         const slotCodes = getSelectedSlotCodes();
+        const classification3Codes = getSelectedClassification3Codes();
 
         try {
-            const res = await searchCookingInstruction(needDate, workcenterIds, slotCodes);
+            const res = await searchCookingInstruction(needDate, workcenterIds, slotCodes, classification3Codes);
             cookRows = res.rows || [];
             displayCookingResults(cookRows);
         } catch (e) {
@@ -264,7 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const blob = await exportCookingInstructionExcel(
                 needDate,
                 getSelectedWorkcenterIds(),
-                getSelectedSlotCodes()
+                getSelectedSlotCodes(),
+                getSelectedClassification3Codes()
             );
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

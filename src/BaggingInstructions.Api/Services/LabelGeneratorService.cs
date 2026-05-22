@@ -72,7 +72,8 @@ public static class LabelGeneratorService
         string? shpctrnm = null,
         string? classification1Name = null,
         int pageNo = 0,
-        int startPageNo = 1)
+        int startPageNo = 1,
+        string eatingTimeLabel = "")
     {
         if (standardBags <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
@@ -94,7 +95,8 @@ public static class LabelGeneratorService
                 Shpctrnm = shpctrnm,
                 Classification1Name = classification1Name,
                 PageNo = pageNo,
-                StartPageNo = startPageNo
+                StartPageNo = startPageNo,
+                EatingTimeLabel = eatingTimeLabel
             }
         };
     }
@@ -113,7 +115,8 @@ public static class LabelGeneratorService
         string? shptmName = null,
         string? classification1Name = null,
         int pageNo = 0,
-        int startPageNo = 1)
+        int startPageNo = 1,
+        string eatingTimeLabel = "")
     {
         if (irregularQuantity <= 0) return new List<LabelItemDto>();
         return new List<LabelItemDto>
@@ -134,7 +137,8 @@ public static class LabelGeneratorService
                 UnitName = unitName,
                 Classification1Name = classification1Name,
                 PageNo = pageNo,
-                StartPageNo = startPageNo
+                StartPageNo = startPageNo,
+                EatingTimeLabel = eatingTimeLabel
             }
         };
     }

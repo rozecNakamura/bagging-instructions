@@ -60,6 +60,10 @@ public class LabelItemDto
     /// <summary>品目の単位0名称（item.uni0）。</summary>
     [JsonPropertyName("unit_name")]
     public string? UnitName { get; set; }
+
+    /// <summary>喫食時間表示（昼・夕など）。ラベル枚数の時間帯別集計に使用。</summary>
+    [JsonPropertyName("eating_time_label")]
+    public string EatingTimeLabel { get; set; } = "";
 }
 
 public class LabelResponseDto

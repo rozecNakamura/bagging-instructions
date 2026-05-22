@@ -26,12 +26,13 @@ public class PreparationWorkController : ControllerBase
     /// <summary>大分類に紐づく中分類マスタ（プルダウン用）。</summary>
     [HttpGet("middle-classifications")]
     public async Task<ActionResult<List<MiddleClassificationOptionDto>>> ListMiddleClassifications(
-        [FromQuery] long majorclassificationid,
+        [FromQuery(Name = "majorclassificationid")] long[]? majorclassificationid,
         CancellationToken ct)
     {
-        if (majorclassificationid <= 0)
+        var ids = (majorclassificationid ?? Array.Empty<long>()).Where(id => id > 0).ToArray();
+        if (ids.Length == 0)
             return BadRequest(new { detail = "majorclassificationid を指定してください" });
-        var list = await _preparationWorkService.ListMiddleClassificationsAsync(majorclassificationid, ct);
+        var list = await _preparationWorkService.ListMiddleClassificationsAsync(ids, ct);
         return Ok(list);
     }
 
@@ -89,7 +90,7 @@ public class PreparationWorkController : ControllerBase
         [FromQuery] string delvedt,
         [FromQuery(Name = "manufacturing_route_code")] string[]? manufacturingRouteCode,
         [FromQuery] string? itemcd,
-        [FromQuery] long? majorclassificationid,
+        [FromQuery(Name = "majorclassificationid")] long[]? majorclassificationid,
         [FromQuery] long? middleclassificationid,
         [FromQuery(Name = "workcenter_id")] long[]? workcenterId,
         [FromQuery(Name = "warehouse_id")] long[]? warehouseId,

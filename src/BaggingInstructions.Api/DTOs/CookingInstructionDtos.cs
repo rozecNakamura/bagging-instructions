@@ -56,6 +56,16 @@ public sealed class CookingInstructionSlotOptionDto
     public string Name { get; set; } = "";
 }
 
+/// <summary>作業名マスタ（調理指示書画面プルダウン用）。classfication3 テーブルより。</summary>
+public sealed class CookingInstructionClassification3OptionDto
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+}
+
 /// <summary>製造便（<c>salesorderlineaddinfo.addinfo03</c>／<c>addinfo03name</c>）。納期当日の MO に現れるコードの一覧。</summary>
 public sealed class CookingInstructionManufacturingRouteOptionDto
 {
@@ -85,6 +95,6 @@ public sealed class CookingInstructionPdfLineModel
     public string NeedDateDisplay { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
 
-    /// <summary>Workplace names used as 作業名 on the report header.</summary>
-    public string WorkplaceNames { get; set; } = "";
+    /// <summary>作業名（classfication3.classfication3name）。帳票の GENRE01 タグに設定。</summary>
+    public string WorkName { get; set; } = "";
 }

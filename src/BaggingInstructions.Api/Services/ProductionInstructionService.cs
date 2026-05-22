@@ -51,16 +51,38 @@ public sealed class ProductionInstructionService
         var rows = await _db.Database
             .SqlQuery<ProductionInstructionSlotSqlRow>($@"
 SELECT DISTINCT
-  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS ""Code"",
-  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""Name""
+  COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) AS ""Code"",
+  COALESCE(
+    NULLIF(TRIM(ds.slotname), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) AS ""Name""
 FROM ordertable ot
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = {needDateYyyymmdd}
   AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
-  AND TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) <> ''
+  AND COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    ''
+  ) <> ''
 ORDER BY 1
 ")
             .ToListAsync(ct);
@@ -115,7 +137,13 @@ ORDER BY 1
                   COALESCE(ot.itemcode, i.itemcode, ''),
                   COALESCE(i.itemname, ''),
                   TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD'),
-                  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))),
+                  COALESCE(
+                    NULLIF(TRIM(ds.slotname), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  ),
                   COALESCE(ot.qty, 0),
                   ot.qtyuni0,
                   ot.qtyuni1,
@@ -136,14 +164,32 @@ ORDER BY 1
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-                LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+                LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  )
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                   AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = @needdate
-                  AND (@slot_count = 0 OR TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) = ANY(@slots))
-                  AND (@wc_count = 0 OR EXISTS (
-                        SELECT 1 FROM itemworkcentermapping m3
-                        INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
-                        WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY(@wc_ids)
+                  AND (@slot_count = 0 OR COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  ) = ANY(@slots))
+                  AND (@wc_count = 0 OR (
+                        EXISTS (
+                          SELECT 1 FROM itemworkcentermapping m3
+                          INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
+                          WHERE m3.itemcode = COALESCE(ot.itemcode, i.itemcode) AND wc.workcenterid = ANY(@wc_ids)
+                        )
+                        OR EXISTS (
+                          SELECT 1 FROM workcenter wc_d
+                          WHERE wc_d.workcentercode = TRIM(COALESCE(ot.workcentercode, ''))
+                            AND wc_d.workcenterid = ANY(@wc_ids)
+                        )
                       ))
                   AND (length(trim(@item_term)) = 0 OR (
                         strpos(lower(COALESCE(ot.itemcode, i.itemcode, '')), lower(@item_term)) > 0
@@ -151,7 +197,13 @@ ORDER BY 1
                       ))
                   AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
                   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
-                ORDER BY i.itemname, COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))), ot.ordertableid
+                ORDER BY i.itemname, COALESCE(
+                  NULLIF(TRIM(ds.slotname), ''),
+                  NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                  NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                  NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                  ''
+                ), ot.ordertableid
                 """,
                 conn);
             cmd.Parameters.AddWithValue("needdate", needDateYyyymmdd);
@@ -346,7 +398,13 @@ ORDER BY 1
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
                   i.conversionvalue3 AS cv3,
-                  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS slot_display,
+                  COALESCE(
+                    NULLIF(TRIM(ds.slotname), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  ) AS slot_display,
                   COALESCE(wc.workcentername, '') AS workcenter_name,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.releasedate,
@@ -372,7 +430,13 @@ ORDER BY 1
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-                LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+                LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    ''
+                  )
                 LEFT JOIN workcenter wc ON wc.workcentercode = ot.workcentercode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'

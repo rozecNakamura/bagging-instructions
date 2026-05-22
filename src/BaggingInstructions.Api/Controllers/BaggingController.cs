@@ -129,10 +129,12 @@ public class BaggingController : ControllerBase
                 var classification1Name = item.Item?.Classification1Name;
                 labelItems.AddRange(LabelGeneratorService.GenerateStandardLabelsFromDto(
                     item.Itemcd, item.Itemnm, st, item.Item?.Kikunip, item.Delvedt, item.Shptm, labelStdBags, fillQty, effectiveExpiry, unitName,
-                    shptmName: shptmName, shpctrnm: item.Shpctrnm, classification1Name: classification1Name, pageNo: pageNo, startPageNo: 1));
+                    shptmName: shptmName, shpctrnm: item.Shpctrnm, classification1Name: classification1Name, pageNo: pageNo, startPageNo: 1,
+                    eatingTimeLabel: item.EatingTimeLabel));
                 labelItems.AddRange(LabelGeneratorService.GenerateIrregularLabelsFromDto(
                     item.Itemcd, item.Itemnm, st, item.Delvedt, item.Shptm, item.Shpctrnm, labelIrregular, effectiveExpiry, unitName,
-                    shptmName: shptmName, classification1Name: classification1Name, pageNo: pageNo, startPageNo: labelStdBags + 1));
+                    shptmName: shptmName, classification1Name: classification1Name, pageNo: pageNo, startPageNo: labelStdBags + 1,
+                    eatingTimeLabel: item.EatingTimeLabel));
             }
             return Ok(new LabelResponseDto { Items = labelItems });
         }

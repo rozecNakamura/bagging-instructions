@@ -1,12 +1,12 @@
-import { searchCookingInstruction, fetchCookingWorkcenters, fetchCookingSlots, fetchCookingManufacturingRoutes } from './api.js';
+import { searchCookingInstruction, fetchCookingWorkcenters, fetchCookingSlots, fetchCookingClassification3s, exportCookingInstructionExcel } from './api.js';
 
 let cookRows = [];
 let cookWorkcenterList = [];
 let cookSlotList = [];
-let cookManufacturingRouteList = [];
+let cookClassification3List = [];
 let cookSelectedWorkcenters = new Set();
 let cookSelectedSlots = new Set();
-let cookSelectedManufacturingRoutes = new Set();
+let cookSelectedClassification3s = new Set();
 
 function updateCookWorkcenterSummary() {
     const label = document.getElementById('cookWorkcenterSelectedLabel');
@@ -23,6 +23,11 @@ function updateCookWorkcenterSummary() {
 function updateCookSlotSummary() {
     const label = document.getElementById('cookSlotSelectedLabel');
     if (!label) return;
+    if (cookSlotList.length === 0) {
+        const needDate = document.getElementById('cookNeedDate')?.value;
+        label.textContent = needDate ? '該当する便がありません' : '納期を選択してください';
+        return;
+    }
     if (cookSelectedSlots.size === 0) {
         label.textContent = '未選択';
     } else if (cookSelectedSlots.size === cookSlotList.length && cookSlotList.length > 0) {
@@ -32,25 +37,44 @@ function updateCookSlotSummary() {
     }
 }
 
-function updateCookManufacturingRouteSummary() {
-    const label = document.getElementById('cookManufacturingRouteSelectedLabel');
+function updateCookClassification3Summary() {
+    const label = document.getElementById('cookClassification3SelectedLabel');
     if (!label) return;
-    const needDate = document.getElementById('cookNeedDate')?.value;
-    if (!needDate) {
-        label.textContent = '納期を選択してください';
-        return;
-    }
-    if (cookManufacturingRouteList.length === 0) {
-        label.textContent = '該当する製造便がありません';
-        return;
-    }
-    if (cookSelectedManufacturingRoutes.size === 0) {
+    if (cookClassification3List.length === 0) {
         label.textContent = '未選択';
-    } else if (cookSelectedManufacturingRoutes.size === cookManufacturingRouteList.length) {
+        return;
+    }
+    if (cookSelectedClassification3s.size === 0) {
+        label.textContent = '未選択';
+    } else if (cookSelectedClassification3s.size === cookClassification3List.length && cookClassification3List.length > 0) {
         label.textContent = 'すべて選択';
     } else {
-        label.textContent = `${cookSelectedManufacturingRoutes.size}件選択`;
+        label.textContent = `${cookSelectedClassification3s.size}件選択`;
     }
+}
+
+function buildCookClassification3Panel() {
+    const container = document.getElementById('cookClassification3Options');
+    if (!container) return;
+    container.innerHTML = '';
+    cookClassification3List.forEach(c => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = c.code || '';
+        if (cookSelectedClassification3s.has(cb.value)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) cookSelectedClassification3s.add(cb.value);
+            else cookSelectedClassification3s.delete(cb.value);
+            updateCookClassification3Summary();
+        });
+        const text = document.createElement('span');
+        text.textContent = c.code ? `${c.code} ${c.name}` : (c.name || '');
+        label.appendChild(cb);
+        label.appendChild(text);
+        container.appendChild(label);
+    });
+    updateCookClassification3Summary();
 }
 
 function buildCookWorkcenterPanel() {
@@ -69,7 +93,7 @@ function buildCookWorkcenterPanel() {
             updateCookWorkcenterSummary();
         });
         const text = document.createElement('span');
-        text.textContent = w.name || '';
+        text.textContent = w.code ? `${w.code} ${w.name}` : (w.name || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
@@ -101,50 +125,24 @@ function buildCookSlotPanel() {
     updateCookSlotSummary();
 }
 
-function buildCookManufacturingRoutePanel() {
-    const container = document.getElementById('cookManufacturingRouteOptions');
-    if (!container) return;
-    container.innerHTML = '';
-    cookManufacturingRouteList.forEach(s => {
-        const label = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = s.code || '';
-        if (cookSelectedManufacturingRoutes.has(cb.value)) cb.checked = true;
-        cb.addEventListener('change', () => {
-            if (cb.checked) cookSelectedManufacturingRoutes.add(cb.value);
-            else cookSelectedManufacturingRoutes.delete(cb.value);
-            updateCookManufacturingRouteSummary();
-        });
-        const text = document.createElement('span');
-        text.textContent = s.name || s.code || '';
-        label.appendChild(cb);
-        label.appendChild(text);
-        container.appendChild(label);
-    });
-    updateCookManufacturingRouteSummary();
-}
-
-async function refreshCookManufacturingRoutesFromNeedDate() {
-    const needDateInput = document.getElementById('cookNeedDate');
-    const needDate = needDateInput?.value || '';
-    cookSelectedManufacturingRoutes = new Set();
-    cookManufacturingRouteList = [];
-    const container = document.getElementById('cookManufacturingRouteOptions');
+async function loadCookSlots(needDate) {
+    cookSelectedSlots = new Set();
+    cookSlotList = [];
+    const container = document.getElementById('cookSlotOptions');
     if (container) container.innerHTML = '';
 
     if (!needDate) {
-        updateCookManufacturingRouteSummary();
+        updateCookSlotSummary();
         return;
     }
 
     try {
-        cookManufacturingRouteList = await fetchCookingManufacturingRoutes(needDate) || [];
-        buildCookManufacturingRoutePanel();
+        cookSlotList = await fetchCookingSlots(needDate) || [];
+        buildCookSlotPanel();
     } catch (e) {
-        console.error('調理指示書 製造便取得エラー:', e);
-        cookManufacturingRouteList = [];
-        updateCookManufacturingRouteSummary();
+        console.error('調理指示書 便取得エラー:', e);
+        cookSlotList = [];
+        updateCookSlotSummary();
     }
 }
 
@@ -171,6 +169,7 @@ function displayCookingResults(rows) {
         const dateDisplay = row.needDate || '-';
         tr.innerHTML = `
             <td><input type="checkbox" class="cook-item-checkbox" data-index="${index}"></td>
+            <td>${row.itemCode || '-'}</td>
             <td>${row.itemName || '-'}</td>
             <td>${dateDisplay || '-'}</td>
             <td>${row.slotDisplay || '-'}</td>
@@ -210,8 +209,8 @@ function getSelectedSlotCodes() {
     return Array.from(cookSelectedSlots.values()).filter(c => c && String(c).trim());
 }
 
-function getSelectedManufacturingRouteCodes() {
-    return Array.from(cookSelectedManufacturingRoutes.values()).filter(c => c && String(c).trim());
+function getSelectedClassification3Codes() {
+    return Array.from(cookSelectedClassification3s.values()).filter(c => c && String(c).trim());
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -221,25 +220,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const deselectAllBtn = document.getElementById('cookDeselectAllBtn');
     const workcenterDisplay = document.getElementById('cookWorkcenterDisplay');
     const slotDisplay = document.getElementById('cookSlotDisplay');
-    const manufacturingRouteDisplay = document.getElementById('cookManufacturingRouteDisplay');
+    const classification3Display = document.getElementById('cookClassification3Display');
     const needDateInput = document.getElementById('cookNeedDate');
 
     if (!searchBtn) return;
 
     needDateInput?.addEventListener('change', () => {
-        refreshCookManufacturingRoutesFromNeedDate();
+        loadCookSlots(needDateInput.value);
     });
 
     (async () => {
         try {
-            const [wcs, slots] = await Promise.all([
+            const [wcs, c3s] = await Promise.all([
                 fetchCookingWorkcenters(),
-                fetchCookingSlots()
+                fetchCookingClassification3s()
             ]);
             cookWorkcenterList = wcs || [];
-            cookSlotList = slots || [];
+            // 「11011」をデフォルト選択
+            const defaultWc = cookWorkcenterList.find(w => w.code === '11011');
+            if (defaultWc) cookSelectedWorkcenters.add(String(defaultWc.id));
             buildCookWorkcenterPanel();
-            buildCookSlotPanel();
+
+            cookClassification3List = c3s || [];
+            buildCookClassification3Panel();
         } catch (e) {
             console.error('調理指示書 マスタ取得エラー:', e);
         }
@@ -248,10 +251,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeAllCookPanels() {
         const w = document.getElementById('cookWorkcenterOptions');
         const s = document.getElementById('cookSlotOptions');
-        const m = document.getElementById('cookManufacturingRouteOptions');
+        const c = document.getElementById('cookClassification3Options');
         if (w) w.style.display = 'none';
         if (s) s.style.display = 'none';
-        if (m) m.style.display = 'none';
+        if (c) c.style.display = 'none';
     }
 
     if (workcenterDisplay) {
@@ -276,16 +279,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (manufacturingRouteDisplay) {
-        manufacturingRouteDisplay.addEventListener('click', (e) => {
+    if (classification3Display) {
+        classification3Display.addEventListener('click', (e) => {
             e.stopPropagation();
-            const panel = document.getElementById('cookManufacturingRouteOptions');
+            const panel = document.getElementById('cookClassification3Options');
             if (!panel) return;
-            const nd = document.getElementById('cookNeedDate')?.value;
-            if (!nd) {
-                alert('先に納期を選択してください');
-                return;
-            }
             const isHidden = panel.style.display === 'none' || panel.style.display === '';
             closeAllCookPanels();
             panel.style.display = isHidden ? 'block' : 'none';
@@ -311,14 +309,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const workcenterIds = getSelectedWorkcenterIds();
         const slotCodes = getSelectedSlotCodes();
-        const manufacturingRouteCodes = getSelectedManufacturingRouteCodes();
+        const classification3Codes = getSelectedClassification3Codes();
 
         try {
-            const res = await searchCookingInstruction(needDate, workcenterIds, slotCodes, manufacturingRouteCodes);
+            const res = await searchCookingInstruction(needDate, workcenterIds, slotCodes, classification3Codes);
             cookRows = res.rows || [];
             displayCookingResults(cookRows);
         } catch (e) {
             alert('検索に失敗しました: ' + e.message);
+            console.error(e);
+        }
+    });
+
+    document.getElementById('cookExcelBtn')?.addEventListener('click', async () => {
+        const needDate = document.getElementById('cookNeedDate').value;
+        if (!needDate) {
+            alert('納期を入力してください');
+            return;
+        }
+        try {
+            const blob = await exportCookingInstructionExcel(
+                needDate,
+                getSelectedWorkcenterIds(),
+                getSelectedSlotCodes(),
+                getSelectedClassification3Codes()
+            );
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '調理指示書.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert('Excel出力に失敗しました: ' + e.message);
             console.error(e);
         }
     });

@@ -582,7 +582,8 @@ public class JuicePdfService
             double minFontSize = item.ShrinkToFitMinFontSizePts ?? DefaultShrinkToFitMinFontSizePts;
 
             // 縮小して表示: 枠に収まるまでフォントサイズを小さくする（RozecCrPrintClass と同様）
-            if (item.ShrinkToFit)
+            // AutoLineFeed が true の場合は折り返し後に縮小するため、ここでは事前縮小をスキップする。
+            if (item.ShrinkToFit && !item.AutoLineFeed)
             {
                 double widthLimit = textRect.Width;
                 double heightLimit = textRect.Height;

@@ -8,7 +8,7 @@ namespace BaggingInstructions.Api.Services;
 public static class BaggingEatingTimeLabel
 {
     /// <summary>
-    /// addinfo05: 1=朝, 2=昼, 3=夜（01 や全角 １２３ も可）。それ以外・空は空文字。
+    /// addinfo05: 1=朝, 2=昼, 3=夕（01 や全角 １２３ も可）。それ以外・空は空文字。
     /// </summary>
     public static string MapFromAddinfo05(string? addinfo05)
     {
@@ -28,7 +28,7 @@ public static class BaggingEatingTimeLabel
         {
             1 => "朝",
             2 => "昼",
-            3 => "夜",
+            3 => "夕",
             _ => ""
         };
     }

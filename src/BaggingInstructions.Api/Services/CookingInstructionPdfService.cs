@@ -28,10 +28,12 @@ public sealed class CookingInstructionPdfService
 
         var orderedGroups = lines
             .GroupBy(l => new PagingKey(
-                l.WorkplaceNames ?? string.Empty,
-                l.NeedDateDisplay ?? string.Empty))
-            .OrderBy(g => g.Key.WorkplaceNames, StringComparer.Ordinal)
-            .ThenBy(g => g.Key.NeedDateDisplay, StringComparer.Ordinal);
+                l.WorkName ?? string.Empty,
+                l.NeedDateDisplay ?? string.Empty,
+                l.SlotDisplay ?? string.Empty))
+            .OrderBy(g => g.Key.WorkName, StringComparer.Ordinal)
+            .ThenBy(g => g.Key.NeedDateDisplay, StringComparer.Ordinal)
+            .ThenBy(g => g.Key.SlotDisplay, StringComparer.Ordinal);
 
         var allChunks = orderedGroups
             .SelectMany(grp => SplitIntoPageChunks(grp.ToList())
@@ -46,8 +48,9 @@ public sealed class CookingInstructionPdfService
             pageNum++;
             var tags = BuildPageTagValues(
                 chunk,
-                chunk.FirstOrDefault()?.SlotDisplay ?? string.Empty,
-                key.NeedDateDisplay);
+                key.SlotDisplay,
+                key.NeedDateDisplay,
+                key.WorkName);
             JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
             tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
             pages.Add(tags);
@@ -92,13 +95,13 @@ public sealed class CookingInstructionPdfService
     internal static Dictionary<string, string> BuildPageTagValues(
         IReadOnlyList<CookingInstructionPdfLineModel> chunk,
         string slotDisplay,
-        string needDateDisplay)
+        string needDateDisplay,
+        string workName = "")
     {
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        var header = chunk.FirstOrDefault();
         // Header fields
-        tags["GENRE01"] = header?.WorkplaceNames ?? string.Empty;      // 作業区名：
+        tags["GENRE01"] = workName ?? string.Empty;                    // 作業名（classfication3name）：
         tags["DATE01"] = needDateDisplay ?? string.Empty;              // 日付：
         tags["ITEMTYPE01"] = slotDisplay ?? string.Empty;              // 製造便：
 
@@ -176,6 +179,6 @@ public sealed class CookingInstructionPdfService
             _ => dataRowIndex
         };
 
-    private sealed record PagingKey(string WorkplaceNames, string NeedDateDisplay);
+    private sealed record PagingKey(string WorkName, string NeedDateDisplay, string SlotDisplay);
 }
 

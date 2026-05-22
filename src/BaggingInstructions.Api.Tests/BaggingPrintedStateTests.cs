@@ -64,7 +64,7 @@ public class BaggingPrintedStateTests
         await otherDb.SaveChangesAsync();
 
         var service = new BaggingInputService(appDb, otherDb);
-        await service.MarkPrintedAsync("20260512", "P1");
+        await service.MarkPrintedAsync("20260512", "P1", null);
 
         var p1Rows = await otherDb.BaggedQuantities
             .Where(r => r.ParentItemCode == "P1")
