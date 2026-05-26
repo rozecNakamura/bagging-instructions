@@ -24,13 +24,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const journalBtn = document.getElementById('siExportJournalBtn');
 
     shiwakeBtn?.addEventListener('click', async () => {
-        const { delvedt, slotCodes } = getSortingInquiryExportParams();
+        const { delvedt, slotCodes, mealTime } = getSortingInquiryExportParams();
         if (!delvedt || delvedt.length !== 8) {
             alert('先に喫食日を入力し、検索してください');
             return;
         }
         try {
-            const blob = await exportSortingInquiryShiwakeBlob(delvedt, slotCodes);
+            const blob = await exportSortingInquiryShiwakeBlob(delvedt, slotCodes, mealTime);
             triggerDownload(blob, `2_仕分け照会_${delvedt}.xlsx`);
         } catch (e) {
             alert('Excel 出力に失敗しました: ' + e.message);
@@ -39,13 +39,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     journalBtn?.addEventListener('click', async () => {
-        const { delvedt, slotCodes } = getSortingInquiryExportParams();
+        const { delvedt, slotCodes, mealTime } = getSortingInquiryExportParams();
         if (!delvedt || delvedt.length !== 8) {
             alert('先に喫食日を入力し、検索してください');
             return;
         }
         try {
-            const blob = await exportSortingInquiryJournalBlob(delvedt, slotCodes);
+            const blob = await exportSortingInquiryJournalBlob(delvedt, slotCodes, mealTime);
             triggerDownload(blob, `仕訳表自動調整_${delvedt}.xlsx`);
         } catch (e) {
             alert('Excel 出力に失敗しました: ' + e.message);

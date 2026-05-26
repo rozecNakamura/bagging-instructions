@@ -94,11 +94,12 @@ public class SearchController : ControllerBase
     public async Task<ActionResult<JuiceSearchGroupResponseDto>> SearchJuice(
         [FromQuery] string delvedt,
         [FromQuery] string? itemcd,
+        [FromQuery(Name = "meal_time")] string? mealTime,
         CancellationToken ct)
     {
         try
         {
-            var groups = await _searchService.SearchByDeliveryDateGroupedAsync(delvedt, itemcd, ct);
+            var groups = await _searchService.SearchByDeliveryDateGroupedAsync(delvedt, itemcd, mealTime, ct);
             return Ok(new JuiceSearchGroupResponseDto { Total = groups.Count, Groups = groups });
         }
         catch (ArgumentException ex)
@@ -116,11 +117,12 @@ public class SearchController : ControllerBase
     public async Task<ActionResult<BentoSearchGroupResponseDto>> SearchBento(
         [FromQuery] string delvedt,
         [FromQuery] string? itemcd,
+        [FromQuery(Name = "addinfo08_type")] string? addinfo08Type,
         CancellationToken ct)
     {
         try
         {
-            var groups = await _searchService.SearchByDeliveryDateForBentoGroupedAsync(delvedt, itemcd, ct);
+            var groups = await _searchService.SearchByDeliveryDateForBentoGroupedAsync(delvedt, itemcd, addinfo08Type, ct);
             return Ok(new BentoSearchGroupResponseDto { Total = groups.Count, Groups = groups });
         }
         catch (ArgumentException ex)

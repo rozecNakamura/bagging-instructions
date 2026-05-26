@@ -37,12 +37,38 @@ public class JuiceController : ControllerBase
             Jobordmernm = r.Jobordmernm,
             Shpctrnm = r.Shpctrnm,
             Jobordqun = r.Jobordqun,
-            Addinfo01 = r.Addinfo01
+            Addinfo01 = r.Addinfo01,
+            Addinfo05 = r.Addinfo05
         }).ToList();
 
-        var pdfBytes = _juicePdfService.GeneratePdfFromRows(fullPath, rows);
+        // 喫食時間ごとにページを分割
+        var groups = rows
+            .GroupBy(r => r.ShptmDisplay ?? "")
+            .OrderBy(g => g.Key)
+            .Select(g => g.ToList())
+            .ToList();
 
-        await Task.CompletedTask; // 同期処理のため
+        var printNow = DateTime.Now;
+        int totalPages = groups.Sum(g => (g.Count + JuicePdfService.RowsPerPage - 1) / JuicePdfService.RowsPerPage);
+        if (totalPages < 1) totalPages = 1;
+
+        var allPageTagValues = new List<Dictionary<string, string>>();
+        int pageIndex = 0;
+        foreach (var group in groups)
+        {
+            for (int offset = 0; offset < group.Count; offset += JuicePdfService.RowsPerPage)
+            {
+                var chunk = group.Skip(offset).Take(JuicePdfService.RowsPerPage).ToList();
+                var tagValues = JuicePdfService.BuildTagValues(chunk);
+                JuicePdfService.AddPrintTags(tagValues, printNow, pageIndex + 1, totalPages);
+                allPageTagValues.Add(tagValues);
+                pageIndex++;
+            }
+        }
+
+        var pdfBytes = _juicePdfService.GeneratePdfMultiPage(fullPath, allPageTagValues, "汁仕分表");
+
+        await Task.CompletedTask;
         return File(pdfBytes, "application/pdf", "汁仕分表.pdf");
     }
 }
@@ -66,4 +92,6 @@ public class JuicePrintRowRequest
     public decimal Jobordqun { get; set; }
     [JsonPropertyName("addinfo01")]
     public string? Addinfo01 { get; set; }
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
 }

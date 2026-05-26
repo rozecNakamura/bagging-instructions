@@ -163,9 +163,12 @@ SELECT
     NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
     NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
     ''
-  ) AS ""SlotDisplay""
+  ) AS ""SlotDisplay"",
+  COALESCE(ot.qty, 0) AS ""Qty"",
+  COALESCE(u0.unitname, '') AS ""UnitName""
 FROM ordertable ot
 INNER JOIN item i ON i.itemcode = ot.itemcode
+LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
 LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
@@ -197,8 +200,10 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
             AND wc_d.workcenterid = ANY ({wcIds})
         )
       ))
+  AND TRIM(COALESCE(i.classfication3code, '')) <> ''
   AND ({class3Codes.Length} = 0 OR TRIM(COALESCE(i.classfication3code, '')) = ANY ({class3Codes}))
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
+  AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '55'
 ORDER BY i.itemname, COALESCE(
     NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
     NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
@@ -214,7 +219,9 @@ ORDER BY i.itemname, COALESCE(
             ItemCode = r.ItemCode ?? "",
             ItemName = r.ItemName ?? "",
             NeedDate = FormatDateDisplay(r.NeedDate),
-            SlotDisplay = r.SlotDisplay ?? ""
+            SlotDisplay = r.SlotDisplay ?? "",
+            QuantityDisplay = r.Qty == 0 ? "" : r.Qty.ToString("0.###", CultureInfo.InvariantCulture),
+            UnitName = r.UnitName ?? ""
         }).ToList();
     }
 
@@ -278,10 +285,12 @@ ORDER BY i.itemname, COALESCE(
                     ParentItemName = h.ParentItemname,
                     PlannedQuantityDisplay = parentQtyDisplay,
                     PlanUnitName = parentUnitName,
+                    PlannedQtyRaw = dispQty,
                     ChildItemCode = "",
                     ChildItemName = "",
                     Standard = "",
                     ChildRequiredQtyDisplay = "",
+                    ChildRequiredQtyRaw = 0m,
                     ChildUnitName = "",
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay,
@@ -303,10 +312,12 @@ ORDER BY i.itemname, COALESCE(
                     ParentItemName = h.ParentItemname,
                     PlannedQuantityDisplay = parentQtyDisplay,
                     PlanUnitName = parentUnitName,
+                    PlannedQtyRaw = dispQty,
                     ChildItemCode = b.ChildItemcode,
                     ChildItemName = (b.ChildItemname ?? "").Trim(),
                     Standard = (b.ChildStd ?? "").Trim(),
                     ChildRequiredQtyDisplay = qtyDisplay,
+                    ChildRequiredQtyRaw = childReqQty,
                     ChildUnitName = (b.ChildUnitname ?? "").Trim(),
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay,
@@ -315,7 +326,49 @@ ORDER BY i.itemname, COALESCE(
             }
         }
 
-        return lines;
+        // 同じ作業名・便・日付・親品目・子品目は1行に集約（数量合算）
+        var aggregated = lines
+            .GroupBy(l => (
+                l.WorkName,
+                l.SlotDisplay,
+                l.NeedDateDisplay,
+                l.ParentItemCode,
+                l.ChildItemCode))
+            .Select(g =>
+            {
+                var first = g.First();
+                var parentQty = g.Sum(r => r.PlannedQtyRaw);
+                var childQty = g.Sum(r => r.ChildRequiredQtyRaw);
+                return new CookingInstructionPdfLineModel
+                {
+                    OrderNo = first.OrderNo,
+                    ParentItemCode = first.ParentItemCode,
+                    ParentItemName = first.ParentItemName,
+                    PlannedQuantityDisplay = ReportQuantityFormatter.FormatCeilingQuantity(parentQty),
+                    PlanUnitName = first.PlanUnitName,
+                    PlannedQtyRaw = parentQty,
+                    ChildItemCode = first.ChildItemCode,
+                    ChildItemName = first.ChildItemName,
+                    Standard = first.Standard,
+                    ChildRequiredQtyDisplay = first.ChildItemCode.Length > 0
+                        ? ReportQuantityFormatter.FormatCeilingQuantity(childQty)
+                        : "",
+                    ChildRequiredQtyRaw = childQty,
+                    ChildUnitName = first.ChildUnitName,
+                    NeedDateDisplay = first.NeedDateDisplay,
+                    SlotDisplay = first.SlotDisplay,
+                    WorkName = first.WorkName
+                };
+            })
+            .OrderBy(l => l.WorkName, StringComparer.Ordinal)
+            .ThenBy(l => l.NeedDateDisplay, StringComparer.Ordinal)
+            .ThenBy(l => l.SlotDisplay, StringComparer.Ordinal)
+            .ThenBy(l => l.ParentItemName, StringComparer.Ordinal)
+            .ThenBy(l => l.ParentItemCode, StringComparer.Ordinal)
+            .ThenBy(l => l.ChildItemCode, StringComparer.Ordinal)
+            .ToList();
+
+        return aggregated;
     }
 
     /// <summary>
@@ -576,6 +629,8 @@ internal sealed class CookingInstructionSearchSqlRow
     public string ItemName { get; set; } = "";
     public string NeedDate { get; set; } = "";
     public string SlotDisplay { get; set; } = "";
+    public decimal Qty { get; set; }
+    public string UnitName { get; set; } = "";
 }
 
 internal sealed class CookingInstructionLineHeaderRow

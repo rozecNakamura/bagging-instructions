@@ -137,24 +137,7 @@ export async function generateLabelPDF(data) {
 export async function generateJuicePDF(rows) {
     if (!rows || rows.length === 0) return;
     const blob = await generateJuicePdfBlob(rows);
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
-    iframe.title = '汁仕分表 PDF 印刷';
-    iframe.onload = () => {
-        try {
-            if (iframe.contentWindow) iframe.contentWindow.print();
-        } catch (_) {
-            // 同一オリジンでない場合は新しいタブで開く
-            window.open(url, '_blank', 'noopener');
-        }
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(url);
-        }, 60000);
-    };
-    iframe.src = url;
-    document.body.appendChild(iframe);
+    openPdfInIframe(blob, '汁仕分表 PDF 印刷');
 }
 
 /**
@@ -165,23 +148,7 @@ export async function generateJuicePDF(rows) {
 export async function generateBentoPDF(rows) {
     if (!rows || rows.length === 0) return;
     const blob = await generateBentoPdfBlob(rows);
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
-    iframe.title = '弁当箱盛り付け指示書（ご飯） PDF 印刷';
-    iframe.onload = () => {
-        try {
-            if (iframe.contentWindow) iframe.contentWindow.print();
-        } catch (_) {
-            window.open(url, '_blank', 'noopener');
-        }
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(url);
-        }, 60000);
-    };
-    iframe.src = url;
-    document.body.appendChild(iframe);
+    openPdfInIframe(blob, '弁当箱盛り付け指示書（ご飯） PDF 印刷');
 }
 
 /**
@@ -192,23 +159,7 @@ export async function generateBentoPDF(rows) {
 export async function generateDeliveryNotePDF(rows) {
     if (!rows || rows.length === 0) return;
     const blob = await generateDeliveryNotePdfBlob(rows);
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
-    iframe.title = '納品書 PDF 印刷';
-    iframe.onload = () => {
-        try {
-            if (iframe.contentWindow) iframe.contentWindow.print();
-        } catch (_) {
-            window.open(url, '_blank', 'noopener');
-        }
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(url);
-        }, 60000);
-    };
-    iframe.src = url;
-    document.body.appendChild(iframe);
+    openPdfInIframe(blob, '納品書 PDF 印刷');
 }
 
 /**

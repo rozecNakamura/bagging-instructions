@@ -143,7 +143,11 @@ function displaySortingInquiryResults(data) {
     exportSection.style.display = 'flex';
 }
 
-/** @returns {{ delvedt: string, slotCodes: string[] }} */
+function getSiMealTime() {
+    return document.querySelector('input[name="siMealTime"]:checked')?.value ?? '';
+}
+
+/** @returns {{ delvedt: string, slotCodes: string[], mealTime: string }} */
 export function getSortingInquiryExportParams() {
     const eatingDate = document.getElementById('siEatingDate')?.value || '';
     let delvedt = eatingDate;
@@ -152,7 +156,8 @@ export function getSortingInquiryExportParams() {
     }
     return {
         delvedt,
-        slotCodes: Array.from(siSelectedSlotCodes).filter(s => s)
+        slotCodes: Array.from(siSelectedSlotCodes).filter(s => s),
+        mealTime: getSiMealTime()
     };
 }
 
@@ -201,8 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const slotCodes = Array.from(siSelectedSlotCodes);
+        const mealTime = getSiMealTime();
         try {
-            const res = await searchSortingInquiry(eatingDate, slotCodes);
+            const res = await searchSortingInquiry(eatingDate, slotCodes, mealTime);
             displaySortingInquiryResults(res);
         } catch (e) {
             alert('検索に失敗しました: ' + e.message);

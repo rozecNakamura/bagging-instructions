@@ -48,9 +48,17 @@ public class JobordItemDto
     [JsonPropertyName("addinfo01")]
     public string? Addinfo01 { get; set; }
 
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1=朝 2=昼 3=夕。汁仕分表テンプレート用。</summary>
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
     /// <summary>品目付加情報 addinfo01（ご飯量等）。弁当箱盛り付け指示書（ご飯）の GRAM 用。</summary>
     [JsonPropertyName("addinfo01_item")]
     public string? Addinfo01Item { get; set; }
+
+    /// <summary>納入場所付加情報 addinfo08（customerdeliverylocationaddinfo.addinfo08）。ご飯盛り付け指示書のページ分割キー。</summary>
+    [JsonPropertyName("addinfo08")]
+    public string? Addinfo08 { get; set; }
 }
 
 public class SearchResponseDto
@@ -663,6 +671,10 @@ public class JuiceSearchGroupDto
     [JsonPropertyName("jobordmernm")]
     public string? Jobordmernm { get; set; }
 
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1=朝 2=昼 3=夕。</summary>
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
     [JsonPropertyName("locations")]
     public List<JuiceSearchLocationDto> Locations { get; set; } = new();
 }
@@ -691,6 +703,10 @@ public class BentoSearchLocationDto
 
     [JsonPropertyName("addinfo01")]
     public string? Addinfo01 { get; set; }
+
+    /// <summary>納入場所付加情報 addinfo08（ページ分割キー）。先頭が "0" か "1" かでページを分ける。</summary>
+    [JsonPropertyName("addinfo08")]
+    public string? Addinfo08 { get; set; }
 }
 
 /// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・配送便・品目でまとめた1グループ</summary>

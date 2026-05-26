@@ -30,21 +30,22 @@ public sealed class YoteiShokusuService
         _cstmeatDb = cstmeatDb;
     }
 
-    /// <summary>喫食日 delvedt は YYYYMMDD。slotCodes が空なら便で絞り込まない。</summary>
+    /// <summary>喫食日 delvedt は YYYYMMDD。mealTime は "1"=朝/"2"=昼/"3"=夕（null なら絞り込まない）。customerGroups が空なら全得意先。</summary>
     public async Task<YoteiShokusuResponseDto> SearchAsync(
         string delvedt,
-        IReadOnlyList<string>? slotCodes,
+        string? mealTime,
+        IReadOnlyList<string>? customerGroups = null,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(delvedt);
         if (!date.HasValue)
             throw new ArgumentException("喫食日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
 
-        var slots = (slotCodes ?? Array.Empty<string>())
-            .Select(s => (s ?? "").Trim())
-            .Where(s => s.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToHashSet(StringComparer.Ordinal);
+        var normalizedMealTime = (mealTime ?? "").Trim();
+        if (normalizedMealTime.Length > 0 && normalizedMealTime != "1" && normalizedMealTime != "2" && normalizedMealTime != "3")
+            throw new ArgumentException("時間帯は 1（朝）・2（昼）・3（夕）のいずれかを指定してください。", nameof(mealTime));
+
+        var effectiveCodes = ComputeEffectiveCodes(customerGroups);
 
         IReadOnlyList<YoteiLineMaterial> lines;
         IReadOnlyDictionary<string, (string SumName, int SortOrder)> shokushuMap;
@@ -54,13 +55,13 @@ public sealed class YoteiShokusuService
 
         if (_db.Database.IsRelational())
         {
-            lines = await LoadLinesRelationalAsync(date.Value, slots, ct);
-            locationNames = await LoadLocationNamesRelationalAsync(date.Value, slots, ct);
+            lines = await LoadLinesRelationalAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
+            locationNames = await LoadLocationNamesRelationalAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
         }
         else
         {
-            lines = await LoadLinesInMemoryAsync(date.Value, slots, ct);
-            locationNames = await LoadLocationNamesInMemoryAsync(date.Value, slots, ct);
+            lines = await LoadLinesInMemoryAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
+            locationNames = await LoadLocationNamesInMemoryAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
         }
 
         if (_cstmeatDb.Database.IsRelational())
@@ -80,11 +81,10 @@ public sealed class YoteiShokusuService
     // ─── SQL ロード ──────────────────────────────────────────────
 
     private async Task<IReadOnlyList<YoteiLineMaterial>> LoadLinesRelationalAsync(
-        DateOnly plannedDate, HashSet<string> slots, CancellationToken ct)
+        DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
     {
         var dateStr = plannedDate.ToString("yyyyMMdd");
-        var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
-        var custCodes = AllTargetCustomerCodes;
+        var custCodes = effectiveCodes;
         var rows = await _cstmeatDb.Database
             .SqlQuery<YoteiLineSqlRow>($@"
 SELECT
@@ -97,7 +97,7 @@ SELECT
   COALESCE(info06, '') AS ""MajorClassCode""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND ({slotArr.Length} = 0 OR info04 = ANY ({slotArr}))
+  AND ({mealTime.Length} = 0 OR info04 = {mealTime})
   AND info01 = ANY ({custCodes})
 ")
             .ToListAsync(ct);
@@ -113,18 +113,17 @@ WHERE info03 = {dateStr}
     }
 
     private async Task<IReadOnlyDictionary<string, string>> LoadLocationNamesRelationalAsync(
-        DateOnly plannedDate, HashSet<string> slots, CancellationToken ct)
+        DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
     {
         var dateStr = plannedDate.ToString("yyyyMMdd");
-        var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
-        var custCodes = AllTargetCustomerCodes;
+        var custCodes = effectiveCodes;
 
         var locCodeRows = await _cstmeatDb.Database
             .SqlQuery<YoteiLocationCodeSqlRow>($@"
 SELECT DISTINCT TRIM(COALESCE(info02, '')) AS ""LocationCode""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND ({slotArr.Length} = 0 OR info04 = ANY ({slotArr}))
+  AND ({mealTime.Length} = 0 OR info04 = {mealTime})
   AND info01 = ANY ({custCodes})
   AND info02 IS NOT NULL AND TRIM(info02) <> ''
 ")
@@ -199,16 +198,16 @@ WHERE c.customercode = ANY ({custCodes})
     // ─── InMemory ロード ─────────────────────────────────────────
 
     private async Task<IReadOnlyList<YoteiLineMaterial>> LoadLinesInMemoryAsync(
-        DateOnly plannedDate, HashSet<string> slots, CancellationToken ct)
+        DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
     {
         var dateStr = plannedDate.ToString("yyyyMMdd");
         var query = _cstmeatDb.Cstmeats
             .AsNoTracking()
             .Where(c => c.Info03 == dateStr)
-            .Where(c => AllTargetCustomerCodes.Contains(c.Info01 ?? ""));
+            .Where(c => effectiveCodes.Contains(c.Info01 ?? ""));
 
-        if (slots.Count > 0)
-            query = query.Where(c => slots.Contains(c.Info04 ?? ""));
+        if (mealTime.Length > 0)
+            query = query.Where(c => (c.Info04 ?? "").Trim() == mealTime);
 
         var rows = await query.ToListAsync(ct);
         return rows.Select(r => new YoteiLineMaterial(
@@ -222,16 +221,16 @@ WHERE c.customercode = ANY ({custCodes})
     }
 
     private async Task<IReadOnlyDictionary<string, string>> LoadLocationNamesInMemoryAsync(
-        DateOnly plannedDate, HashSet<string> slots, CancellationToken ct)
+        DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
     {
         var dateStr = plannedDate.ToString("yyyyMMdd");
         var query = _cstmeatDb.Cstmeats
             .AsNoTracking()
             .Where(c => c.Info03 == dateStr)
-            .Where(c => AllTargetCustomerCodes.Contains(c.Info01 ?? ""));
+            .Where(c => effectiveCodes.Contains(c.Info01 ?? ""));
 
-        if (slots.Count > 0)
-            query = query.Where(c => slots.Contains(c.Info04 ?? ""));
+        if (mealTime.Length > 0)
+            query = query.Where(c => (c.Info04 ?? "").Trim() == mealTime);
 
         var rows = await query.ToListAsync(ct);
         var locCodes = rows
@@ -302,8 +301,15 @@ WHERE c.customercode = ANY ({custCodes})
         IReadOnlyDictionary<(string, string), ShisetsuMasterRow> shisetsuMap,
         IReadOnlyDictionary<string, string> locationNames)
     {
-        var group1Lines = lines.Where(l => Group1CustomerCodes.Contains(l.CustomerCode)).ToList();
-        var group2Lines = lines.Where(l => Group2CustomerCodes.Contains(l.CustomerCode)).ToList();
+        // コード300（在宅個人）は食種コード5AA→宅配B、それ以外→宅配Aに集約
+        var processedLines = lines.Select(line =>
+            line.CustomerCode == "300"
+                ? line with { LocationCode = ((line.Addinfo02 ?? "").Trim() == "5AA") ? "宅配B" : "宅配A" }
+                : line
+        ).ToList();
+
+        var group1Lines = processedLines.Where(l => Group1CustomerCodes.Contains(l.CustomerCode)).ToList();
+        var group2Lines = processedLines.Where(l => Group2CustomerCodes.Contains(l.CustomerCode)).ToList();
 
         // ── グループ1 集計 ──
         // キー: (locationCode, sectionLabel, sumShokushu)
@@ -430,6 +436,8 @@ WHERE c.customercode = ANY ({custCodes})
 
         int StoreOrder(string loc)
         {
+            if (loc == "宅配A") return 9990;
+            if (loc == "宅配B") return 9991;
             var cust = customerByLoc.TryGetValue(loc, out var c) ? c : "";
             return shisetsuMap.TryGetValue((cust, loc), out var m) && m.SortOrder.HasValue
                 ? m.SortOrder.Value
@@ -442,7 +450,9 @@ WHERE c.customercode = ANY ({custCodes})
             .Select(loc =>
             {
                 var cust = customerByLoc.TryGetValue(loc, out var c) ? c : "";
-                shisetsuMap.TryGetValue((cust, loc), out var master);
+                var master = (loc == "宅配A" || loc == "宅配B")
+                    ? new ShisetsuMasterRow(null, "基本", "")
+                    : (shisetsuMap.TryGetValue((cust, loc), out var m2) ? m2 : default);
                 var qty = new Dictionary<string, decimal>(StringComparer.Ordinal);
                 foreach (var col in columns)
                     qty[col] = agg.GetValueOrDefault((loc, col));
@@ -451,7 +461,7 @@ WHERE c.customercode = ANY ({custCodes})
                 {
                     CustomerCode = cust,
                     LocationCode = loc,
-                    LocationName = locationNames.TryGetValue(loc, out var n) ? n : loc,
+                    LocationName = (loc == "宅配A" || loc == "宅配B") ? loc : (locationNames.TryGetValue(loc, out var n) ? n : loc),
                     KihonShokushu = master.KihonShokushu,
                     Remarks = master.Remarks,
                     SortOrder = master.SortOrder ?? int.MaxValue,
@@ -465,6 +475,25 @@ WHERE c.customercode = ANY ({custCodes})
     }
 
     // ─── ヘルパー ─────────────────────────────────────────────────
+
+    /// <summary>選択された得意先グループを得意先コード配列に変換する。未選択時は全コード。</summary>
+    private static string[] ComputeEffectiveCodes(IReadOnlyList<string>? customerGroups)
+    {
+        if (customerGroups == null || customerGroups.Count == 0)
+            return AllTargetCustomerCodes;
+
+        var codes = new List<string>();
+        foreach (var g in customerGroups.Select(g => (g ?? "").Trim().ToLowerInvariant()).Distinct())
+        {
+            switch (g)
+            {
+                case "hospital": codes.Add("200"); break;
+                case "daycare":  codes.Add("210"); break;
+                case "home":     codes.AddRange(["240", "300", "310"]); break;
+            }
+        }
+        return codes.Count > 0 ? codes.Distinct().ToArray() : AllTargetCustomerCodes;
+    }
 
     private static string ResolveShokushu(
         string? addinfo02,

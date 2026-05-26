@@ -9,6 +9,7 @@ let bentoSearchGroups = [];
 document.getElementById('bentoSearchBtn').addEventListener('click', async () => {
     const eatingDate = document.getElementById('bentoEatingDate').value;
     const itemCode = document.getElementById('bentoItemCode').value?.trim() || '';
+    const addinfo08Type = document.getElementById('bentoAddinfo08Type').value;
 
     if (!eatingDate) {
         alert('喫食日を入力してください');
@@ -16,7 +17,7 @@ document.getElementById('bentoSearchBtn').addEventListener('click', async () => 
     }
 
     try {
-        const response = await searchBento(eatingDate, itemCode || undefined);
+        const response = await searchBento(eatingDate, itemCode || undefined, addinfo08Type || undefined);
         bentoSearchGroups = response.groups || [];
         displayBentoResults(bentoSearchGroups);
     } catch (error) {
@@ -104,7 +105,8 @@ export function getSelectedBentoRows() {
                 jobordmernm,
                 jobordqun: Number(loc.jobordqun) || 0,
                 quantity: Number(loc.quantity) || 0,
-                addinfo01: loc.addinfo01 ?? ''
+                addinfo01: loc.addinfo01 ?? '',
+                addinfo08: loc.addinfo08 ?? ''
             });
         }
     }

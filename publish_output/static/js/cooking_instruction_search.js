@@ -1,20 +1,33 @@
-import { searchCookingInstruction, fetchCookingWorkcenters, fetchCookingSlots, exportCookingInstructionExcel } from './api.js';
+import { searchCookingInstruction, fetchCookingWorkcenters, fetchCookingSlots, fetchCookingClassification3s, exportCookingInstructionExcel } from './api.js';
 
 let cookRows = [];
 let cookWorkcenterList = [];
 let cookSlotList = [];
-let cookSelectedWorkcenters = new Set();
+let cookClassification3List = [];
 let cookSelectedSlots = new Set();
+let cookSelectedClassification3s = new Set();
 
-function updateCookWorkcenterSummary() {
-    const label = document.getElementById('cookWorkcenterSelectedLabel');
-    if (!label) return;
-    if (cookSelectedWorkcenters.size === 0) {
-        label.textContent = '未選択';
-    } else if (cookSelectedWorkcenters.size === cookWorkcenterList.length && cookWorkcenterList.length > 0) {
-        label.textContent = 'すべて選択';
-    } else {
-        label.textContent = `${cookSelectedWorkcenters.size}件選択`;
+async function loadCookWorkcenters() {
+    const sel = document.getElementById('cookWorkcenter');
+    if (!sel) return;
+    try {
+        cookWorkcenterList = await fetchCookingWorkcenters() || [];
+        sel.innerHTML = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = 'すべて';
+        sel.appendChild(empty);
+        for (const w of cookWorkcenterList) {
+            const opt = document.createElement('option');
+            opt.value = String(w.id);
+            opt.textContent = w.code ? `${w.code} ${w.name}` : (w.name || '');
+            sel.appendChild(opt);
+        }
+        const defaultWc = cookWorkcenterList.find(w => w.code === '11011');
+        if (defaultWc) sel.value = String(defaultWc.id);
+    } catch (e) {
+        console.error('調理指示書 作業区取得エラー:', e);
+        if (sel) sel.innerHTML = '<option value="">取得に失敗しました</option>';
     }
 }
 
@@ -35,28 +48,44 @@ function updateCookSlotSummary() {
     }
 }
 
-function buildCookWorkcenterPanel() {
-    const container = document.getElementById('cookWorkcenterOptions');
+function updateCookClassification3Summary() {
+    const label = document.getElementById('cookClassification3SelectedLabel');
+    if (!label) return;
+    if (cookClassification3List.length === 0) {
+        label.textContent = '未選択';
+        return;
+    }
+    if (cookSelectedClassification3s.size === 0) {
+        label.textContent = '未選択';
+    } else if (cookSelectedClassification3s.size === cookClassification3List.length && cookClassification3List.length > 0) {
+        label.textContent = 'すべて選択';
+    } else {
+        label.textContent = `${cookSelectedClassification3s.size}件選択`;
+    }
+}
+
+function buildCookClassification3Panel() {
+    const container = document.getElementById('cookClassification3Options');
     if (!container) return;
     container.innerHTML = '';
-    cookWorkcenterList.forEach(w => {
+    cookClassification3List.forEach(c => {
         const label = document.createElement('label');
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.value = String(w.id);
-        if (cookSelectedWorkcenters.has(cb.value)) cb.checked = true;
+        cb.value = c.code || '';
+        if (cookSelectedClassification3s.has(cb.value)) cb.checked = true;
         cb.addEventListener('change', () => {
-            if (cb.checked) cookSelectedWorkcenters.add(cb.value);
-            else cookSelectedWorkcenters.delete(cb.value);
-            updateCookWorkcenterSummary();
+            if (cb.checked) cookSelectedClassification3s.add(cb.value);
+            else cookSelectedClassification3s.delete(cb.value);
+            updateCookClassification3Summary();
         });
         const text = document.createElement('span');
-        text.textContent = w.name || '';
+        text.textContent = c.code ? `${c.code} ${c.name}` : (c.name || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
     });
-    updateCookWorkcenterSummary();
+    updateCookClassification3Summary();
 }
 
 function buildCookSlotPanel() {
@@ -126,9 +155,11 @@ function displayCookingResults(rows) {
         const tr = tbody.insertRow();
         const dateDisplay = row.needDate || '-';
         tr.innerHTML = `
-            <td><input type="checkbox" class="cook-item-checkbox" data-index="${index}"></td>
+            <td><input type="checkbox" class="cook-item-checkbox" data-index="${index}" checked></td>
             <td>${row.itemCode || '-'}</td>
             <td>${row.itemName || '-'}</td>
+            <td>${row.quantityDisplay || '-'}</td>
+            <td>${row.unitName || '-'}</td>
             <td>${dateDisplay || '-'}</td>
             <td>${row.slotDisplay || '-'}</td>
         `;
@@ -143,7 +174,7 @@ function displayCookingResults(rows) {
     section.style.display = 'block';
     printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('cookHeaderCheckbox');
-    if (headerCheckbox) headerCheckbox.checked = false;
+    if (headerCheckbox) headerCheckbox.checked = true;
 }
 
 export function getSelectedCookingOrderTableIds() {
@@ -160,11 +191,19 @@ export function getSelectedCookingOrderTableIds() {
 }
 
 function getSelectedWorkcenterIds() {
-    return Array.from(cookSelectedWorkcenters.values()).map(v => Number(v));
+    const sel = document.getElementById('cookWorkcenter');
+    const v = sel?.value;
+    if (!v) return [];
+    const id = Number(v);
+    return Number.isFinite(id) && id > 0 ? [id] : [];
 }
 
 function getSelectedSlotCodes() {
     return Array.from(cookSelectedSlots.values()).filter(c => c && String(c).trim());
+}
+
+function getSelectedClassification3Codes() {
+    return Array.from(cookSelectedClassification3s.values()).filter(c => c && String(c).trim());
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -172,8 +211,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerCheckbox = document.getElementById('cookHeaderCheckbox');
     const selectAllBtn = document.getElementById('cookSelectAllBtn');
     const deselectAllBtn = document.getElementById('cookDeselectAllBtn');
-    const workcenterDisplay = document.getElementById('cookWorkcenterDisplay');
     const slotDisplay = document.getElementById('cookSlotDisplay');
+    const classification3Display = document.getElementById('cookClassification3Display');
     const needDateInput = document.getElementById('cookNeedDate');
 
     if (!searchBtn) return;
@@ -182,30 +221,29 @@ document.addEventListener('DOMContentLoaded', () => {
         loadCookSlots(needDateInput.value);
     });
 
+    loadCookWorkcenters();
+
     (async () => {
         try {
-            const wcs = await fetchCookingWorkcenters();
-            cookWorkcenterList = wcs || [];
-            // 「11011」をデフォルト選択
-            const defaultWc = cookWorkcenterList.find(w => w.code === '11011');
-            if (defaultWc) cookSelectedWorkcenters.add(String(defaultWc.id));
-            buildCookWorkcenterPanel();
+            const c3s = await fetchCookingClassification3s();
+            cookClassification3List = c3s || [];
+            buildCookClassification3Panel();
         } catch (e) {
-            console.error('調理指示書 マスタ取得エラー:', e);
+            console.error('調理指示書 作業名マスタ取得エラー:', e);
         }
     })();
 
     function closeAllCookPanels() {
-        const w = document.getElementById('cookWorkcenterOptions');
         const s = document.getElementById('cookSlotOptions');
-        if (w) w.style.display = 'none';
+        const c = document.getElementById('cookClassification3Options');
         if (s) s.style.display = 'none';
+        if (c) c.style.display = 'none';
     }
 
-    if (workcenterDisplay) {
-        workcenterDisplay.addEventListener('click', (e) => {
+    if (slotDisplay) {
+        slotDisplay.addEventListener('click', (e) => {
             e.stopPropagation();
-            const panel = document.getElementById('cookWorkcenterOptions');
+            const panel = document.getElementById('cookSlotOptions');
             if (!panel) return;
             const isHidden = panel.style.display === 'none' || panel.style.display === '';
             closeAllCookPanels();
@@ -213,10 +251,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (slotDisplay) {
-        slotDisplay.addEventListener('click', (e) => {
+    if (classification3Display) {
+        classification3Display.addEventListener('click', (e) => {
             e.stopPropagation();
-            const panel = document.getElementById('cookSlotOptions');
+            const panel = document.getElementById('cookClassification3Options');
             if (!panel) return;
             const isHidden = panel.style.display === 'none' || panel.style.display === '';
             closeAllCookPanels();
@@ -243,9 +281,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const workcenterIds = getSelectedWorkcenterIds();
         const slotCodes = getSelectedSlotCodes();
+        const classification3Codes = getSelectedClassification3Codes();
 
         try {
-            const res = await searchCookingInstruction(needDate, workcenterIds, slotCodes);
+            const res = await searchCookingInstruction(needDate, workcenterIds, slotCodes, classification3Codes);
             cookRows = res.rows || [];
             displayCookingResults(cookRows);
         } catch (e) {
@@ -264,7 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const blob = await exportCookingInstructionExcel(
                 needDate,
                 getSelectedWorkcenterIds(),
-                getSelectedSlotCodes()
+                getSelectedSlotCodes(),
+                getSelectedClassification3Codes()
             );
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

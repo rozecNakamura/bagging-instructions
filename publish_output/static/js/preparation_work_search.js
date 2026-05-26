@@ -46,15 +46,15 @@ async function loadPrepMajors() {
 }
 
 async function loadPrepMiddles() {
-    const majorIds = Array.from(prepSelectedMajors.values());
+    const majorIds = Array.from(prepSelectedMajors.values()).map(Number);
+    prepSelectedMiddles.clear();
     if (!majorIds.length) {
         prepMiddleList = [];
         buildPrepMiddlePanel();
         return;
     }
     try {
-        const firstId = Number(majorIds[0]);
-        const list = await fetchMiddleClassifications(firstId);
+        const list = await fetchMiddleClassifications(majorIds);
         prepMiddleList = list || [];
         buildPrepMiddlePanel();
     } catch (e) {
@@ -152,7 +152,7 @@ function buildPrepMajorPanel() {
             loadPrepMiddles();
         });
         const text = document.createElement('span');
-        text.textContent = m.name || '';
+        text.textContent = m.code ? `${m.code} ${m.name}` : (m.name || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
@@ -179,7 +179,7 @@ function buildPrepMiddlePanel() {
             updatePrepSelectedSummary();
         });
         const text = document.createElement('span');
-        text.textContent = m.name || '';
+        text.textContent = m.code ? `${m.code} ${m.name}` : (m.name || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
@@ -203,7 +203,7 @@ function buildPrepWorkcenterPanel() {
             updatePrepWorkcenterSummary();
         });
         const text = document.createElement('span');
-        text.textContent = w.name || '';
+        text.textContent = w.code ? `${w.code} ${w.name}` : (w.name || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
@@ -227,7 +227,7 @@ function buildPrepWarehousePanel() {
             updatePrepWarehouseSummary();
         });
         const text = document.createElement('span');
-        text.textContent = w.name || w.code || '';
+        text.textContent = w.code && w.name ? `${w.code} ${w.name}` : (w.name || w.code || '');
         label.appendChild(cb);
         label.appendChild(text);
         container.appendChild(label);
@@ -295,15 +295,18 @@ function getSelectedPrepManufacturingRouteCodes() {
 
 function buildPrepSearchOptions() {
     const itemcd = document.getElementById('prepItemCode')?.value?.trim() ?? '';
-    const majorIds = Array.from(prepSelectedMajors.values());
+    const majorIds = Array.from(prepSelectedMajors.values()).map(Number);
     const middleIds = Array.from(prepSelectedMiddles.values());
+    const allMiddlesSelected = prepMiddleList.length > 0 && prepSelectedMiddles.size === prepMiddleList.length;
+    const allWorkcentersSelected = prepWorkcenterList.length > 0 && prepSelectedWorkcenters.size === prepWorkcenterList.length;
+    const allWarehousesSelected = prepWarehouseList.length > 0 && prepSelectedWarehouses.size === prepWarehouseList.length;
     return {
         itemcd,
-        majorId: majorIds.length ? Number(majorIds[0]) : undefined,
-        middleId: middleIds.length ? Number(middleIds[0]) : undefined,
+        majorIds,
+        middleId: (!allMiddlesSelected && middleIds.length) ? Number(middleIds[0]) : undefined,
         manufacturingRouteCodes: getSelectedPrepManufacturingRouteCodes(),
-        workcenterIds: getSelectedPrepWorkcenterIds(),
-        warehouseIds: getSelectedPrepWarehouseIds()
+        workcenterIds: allWorkcentersSelected ? [] : getSelectedPrepWorkcenterIds(),
+        warehouseIds: allWarehousesSelected ? [] : getSelectedPrepWarehouseIds()
     };
 }
 
@@ -524,11 +527,17 @@ function displayPrepResults(groups) {
 
     groups.forEach((g, index) => {
         const tr = tbody.insertRow();
+        const majorDisplay = (g.key?.majorClassificationCode && g.majorClassificationName)
+            ? `${g.key.majorClassificationCode} ${g.majorClassificationName}`
+            : (g.majorClassificationName || g.key?.majorClassificationCode || '-');
+        const middleDisplay = (g.key?.middleClassificationCode && g.middleClassificationName)
+            ? `${g.key.middleClassificationCode} ${g.middleClassificationName}`
+            : (g.middleClassificationName || g.key?.middleClassificationCode || '-');
         tr.innerHTML = `
             <td><input type="checkbox" class="prep-item-checkbox" data-index="${index}"></td>
             <td>${formatYyyymmdd(g.delvedt) || '-'}</td>
-            <td>${g.majorClassificationName || '-'}</td>
-            <td>${g.middleClassificationName || '-'}</td>
+            <td>${majorDisplay}</td>
+            <td>${middleDisplay}</td>
             <td class="col-num">${g.lineCount ?? 0}</td>
         `;
         tr.style.cursor = 'pointer';

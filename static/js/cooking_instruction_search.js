@@ -4,19 +4,30 @@ let cookRows = [];
 let cookWorkcenterList = [];
 let cookSlotList = [];
 let cookClassification3List = [];
-let cookSelectedWorkcenters = new Set();
 let cookSelectedSlots = new Set();
 let cookSelectedClassification3s = new Set();
 
-function updateCookWorkcenterSummary() {
-    const label = document.getElementById('cookWorkcenterSelectedLabel');
-    if (!label) return;
-    if (cookSelectedWorkcenters.size === 0) {
-        label.textContent = '未選択';
-    } else if (cookSelectedWorkcenters.size === cookWorkcenterList.length && cookWorkcenterList.length > 0) {
-        label.textContent = 'すべて選択';
-    } else {
-        label.textContent = `${cookSelectedWorkcenters.size}件選択`;
+async function loadCookWorkcenters() {
+    const sel = document.getElementById('cookWorkcenter');
+    if (!sel) return;
+    try {
+        cookWorkcenterList = await fetchCookingWorkcenters() || [];
+        sel.innerHTML = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = 'すべて';
+        sel.appendChild(empty);
+        for (const w of cookWorkcenterList) {
+            const opt = document.createElement('option');
+            opt.value = String(w.id);
+            opt.textContent = w.code ? `${w.code} ${w.name}` : (w.name || '');
+            sel.appendChild(opt);
+        }
+        const defaultWc = cookWorkcenterList.find(w => w.code === '11011');
+        if (defaultWc) sel.value = String(defaultWc.id);
+    } catch (e) {
+        console.error('調理指示書 作業区取得エラー:', e);
+        if (sel) sel.innerHTML = '<option value="">取得に失敗しました</option>';
     }
 }
 
@@ -75,30 +86,6 @@ function buildCookClassification3Panel() {
         container.appendChild(label);
     });
     updateCookClassification3Summary();
-}
-
-function buildCookWorkcenterPanel() {
-    const container = document.getElementById('cookWorkcenterOptions');
-    if (!container) return;
-    container.innerHTML = '';
-    cookWorkcenterList.forEach(w => {
-        const label = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = String(w.id);
-        if (cookSelectedWorkcenters.has(cb.value)) cb.checked = true;
-        cb.addEventListener('change', () => {
-            if (cb.checked) cookSelectedWorkcenters.add(cb.value);
-            else cookSelectedWorkcenters.delete(cb.value);
-            updateCookWorkcenterSummary();
-        });
-        const text = document.createElement('span');
-        text.textContent = w.code ? `${w.code} ${w.name}` : (w.name || '');
-        label.appendChild(cb);
-        label.appendChild(text);
-        container.appendChild(label);
-    });
-    updateCookWorkcenterSummary();
 }
 
 function buildCookSlotPanel() {
@@ -168,9 +155,11 @@ function displayCookingResults(rows) {
         const tr = tbody.insertRow();
         const dateDisplay = row.needDate || '-';
         tr.innerHTML = `
-            <td><input type="checkbox" class="cook-item-checkbox" data-index="${index}"></td>
+            <td><input type="checkbox" class="cook-item-checkbox" data-index="${index}" checked></td>
             <td>${row.itemCode || '-'}</td>
             <td>${row.itemName || '-'}</td>
+            <td>${row.quantityDisplay || '-'}</td>
+            <td>${row.unitName || '-'}</td>
             <td>${dateDisplay || '-'}</td>
             <td>${row.slotDisplay || '-'}</td>
         `;
@@ -185,7 +174,7 @@ function displayCookingResults(rows) {
     section.style.display = 'block';
     printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('cookHeaderCheckbox');
-    if (headerCheckbox) headerCheckbox.checked = false;
+    if (headerCheckbox) headerCheckbox.checked = true;
 }
 
 export function getSelectedCookingOrderTableIds() {
@@ -202,7 +191,11 @@ export function getSelectedCookingOrderTableIds() {
 }
 
 function getSelectedWorkcenterIds() {
-    return Array.from(cookSelectedWorkcenters.values()).map(v => Number(v));
+    const sel = document.getElementById('cookWorkcenter');
+    const v = sel?.value;
+    if (!v) return [];
+    const id = Number(v);
+    return Number.isFinite(id) && id > 0 ? [id] : [];
 }
 
 function getSelectedSlotCodes() {
@@ -218,7 +211,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerCheckbox = document.getElementById('cookHeaderCheckbox');
     const selectAllBtn = document.getElementById('cookSelectAllBtn');
     const deselectAllBtn = document.getElementById('cookDeselectAllBtn');
-    const workcenterDisplay = document.getElementById('cookWorkcenterDisplay');
     const slotDisplay = document.getElementById('cookSlotDisplay');
     const classification3Display = document.getElementById('cookClassification3Display');
     const needDateInput = document.getElementById('cookNeedDate');
@@ -229,43 +221,23 @@ document.addEventListener('DOMContentLoaded', () => {
         loadCookSlots(needDateInput.value);
     });
 
+    loadCookWorkcenters();
+
     (async () => {
         try {
-            const [wcs, c3s] = await Promise.all([
-                fetchCookingWorkcenters(),
-                fetchCookingClassification3s()
-            ]);
-            cookWorkcenterList = wcs || [];
-            // 「11011」をデフォルト選択
-            const defaultWc = cookWorkcenterList.find(w => w.code === '11011');
-            if (defaultWc) cookSelectedWorkcenters.add(String(defaultWc.id));
-            buildCookWorkcenterPanel();
-
+            const c3s = await fetchCookingClassification3s();
             cookClassification3List = c3s || [];
             buildCookClassification3Panel();
         } catch (e) {
-            console.error('調理指示書 マスタ取得エラー:', e);
+            console.error('調理指示書 作業名マスタ取得エラー:', e);
         }
     })();
 
     function closeAllCookPanels() {
-        const w = document.getElementById('cookWorkcenterOptions');
         const s = document.getElementById('cookSlotOptions');
         const c = document.getElementById('cookClassification3Options');
-        if (w) w.style.display = 'none';
         if (s) s.style.display = 'none';
         if (c) c.style.display = 'none';
-    }
-
-    if (workcenterDisplay) {
-        workcenterDisplay.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const panel = document.getElementById('cookWorkcenterOptions');
-            if (!panel) return;
-            const isHidden = panel.style.display === 'none' || panel.style.display === '';
-            closeAllCookPanels();
-            panel.style.display = isHidden ? 'block' : 'none';
-        });
     }
 
     if (slotDisplay) {

@@ -67,4 +67,6 @@ public class BentoPrintRowDto
     public decimal Quantity { get; set; }
     /// <summary>PACK 計算用: SalesOrderLineAddinfo.Addinfo01（1人あたり分量）</summary>
     public string? Addinfo01 { get; set; }
+    /// <summary>ページ分割キー: CustomerDeliveryLocationAddinfo.Addinfo08（先頭 "0"/"1" でページを分ける）</summary>
+    public string? Addinfo08 { get; set; }
 }

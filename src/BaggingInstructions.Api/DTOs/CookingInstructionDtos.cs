@@ -22,6 +22,14 @@ public sealed class CookingInstructionSearchRowDto
     /// <summary>便表示（slot 名称またはコード）。</summary>
     [JsonPropertyName("slotDisplay")]
     public string SlotDisplay { get; set; } = "";
+
+    /// <summary>数量表示。</summary>
+    [JsonPropertyName("quantityDisplay")]
+    public string QuantityDisplay { get; set; } = "";
+
+    /// <summary>単位名称。</summary>
+    [JsonPropertyName("unitName")]
+    public string UnitName { get; set; } = "";
 }
 
 public sealed class CookingInstructionSearchResponseDto
@@ -97,4 +105,10 @@ public sealed class CookingInstructionPdfLineModel
 
     /// <summary>作業名（classfication3.classfication3name）。帳票の GENRE01 タグに設定。</summary>
     public string WorkName { get; set; } = "";
+
+    /// <summary>集約用: 予定製造数の生の数値（PlanUnitName 単位）。</summary>
+    public decimal PlannedQtyRaw { get; set; }
+
+    /// <summary>集約用: 子品目予定使用量の生の数値（ChildUnitName 単位）。</summary>
+    public decimal ChildRequiredQtyRaw { get; set; }
 }

@@ -53,34 +53,31 @@ public sealed class AggregateSummaryService
         var rows = await _db.Database
             .SqlQuery<AggregateSummarySqlRow>($@"
 SELECT
-  TO_CHAR(need_date, 'YYYYMMDD') AS ""ShipDate"",
+  TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD') AS ""ShipDate"",
   COALESCE(mc.majorclassificationcode, '') AS ""MajorCode"",
   COALESCE(mc.majorclassificationname, '') AS ""MajorName"",
   COALESCE(mid.middleclassificationcode, '') AS ""MiddleCode"",
   COALESCE(mid.middleclassificationname, '') AS ""MiddleName"",
   COUNT(DISTINCT b.childitemcode)::int AS ""ChildItemCount""
-FROM (
-  SELECT
-    sol.salesorderlineid,
-    COALESCE(
-      (SELECT ot.needdate FROM ordertable ot WHERE ot.salesorderlineid = sol.salesorderlineid ORDER BY ot.ordertableid LIMIT 1),
-      sol.planneddeliverydate
-    ) AS need_date,
-    i.itemcode AS parent_itemcode
-  FROM salesorderline sol
-  INNER JOIN item i ON i.itemcode = sol.itemcode
-) base
-INNER JOIN item i ON i.itemcode = base.parent_itemcode
+FROM salesorderline sol
+INNER JOIN item i ON i.itemcode = sol.itemcode
+LEFT JOIN LATERAL (
+  SELECT needdate
+  FROM ordertable
+  WHERE salesorderlineid = sol.salesorderlineid
+  ORDER BY ordertableid
+  LIMIT 1
+) ot_first ON TRUE
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
   AND mid.middleclassificationcode = i.middleclassficationcode
-LEFT JOIN bom b ON b.parentitemcode = base.parent_itemcode
-WHERE base.need_date BETWEEN {from.Value} AND {to}
+LEFT JOIN bom b ON b.parentitemcode = i.itemcode
+WHERE COALESCE(ot_first.needdate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ({majorList.Length} = 0 OR mc.majorclassificationcode = ANY ({majorList}))
   AND ({middleList.Length} = 0 OR mid.middleclassificationcode = ANY ({middleList}))
 GROUP BY
-  TO_CHAR(need_date, 'YYYYMMDD'),
+  TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
   mc.majorclassificationcode,
   mc.majorclassificationname,
   mid.middleclassificationcode,
@@ -146,22 +143,18 @@ ORDER BY ""ShipDate"", ""MajorCode"", ""MiddleCode""
 SELECT sol.salesorderlineid AS ""SalesOrderLineId""
 FROM salesorderline sol
 INNER JOIN item i ON i.itemcode = sol.itemcode
+LEFT JOIN LATERAL (
+  SELECT needdate
+  FROM ordertable
+  WHERE salesorderlineid = sol.salesorderlineid
+  ORDER BY ordertableid
+  LIMIT 1
+) ot_first ON TRUE
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
 LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassficationcode
   AND midt.middleclassificationcode = i.middleclassficationcode
-LEFT JOIN ordertable ot ON ot.salesorderlineid = sol.salesorderlineid
-WHERE
-  COALESCE(
-    (SELECT ot2.needdate FROM ordertable ot2 WHERE ot2.salesorderlineid = sol.salesorderlineid ORDER BY ot2.ordertableid LIMIT 1),
-    sol.planneddeliverydate
-  ) BETWEEN {from.Value} AND {to}
-  AND TO_CHAR(
-    COALESCE(
-      (SELECT ot3.needdate FROM ordertable ot3 WHERE ot3.salesorderlineid = sol.salesorderlineid ORDER BY ot3.ordertableid LIMIT 1),
-      sol.planneddeliverydate
-    ),
-    'YYYYMMDD'
-  ) = {key.ShipDate}
+WHERE COALESCE(ot_first.needdate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
+  AND TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.ShipDate}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}

@@ -6,10 +6,14 @@ import {
     fetchProductLabelWorkcenters,
     fetchProductLabelWarehouses,
     searchProductLabel,
+    fetchProductionInstructionSlots,
+    searchProductionInstruction,
 } from './api.js';
 
 
 let productLabelRows = [];
+let plSlotList = [];
+let plSelectedSlotCodes = new Set();
 
 function formatDateYyyymmdd(yyyymmdd) {
     if (!yyyymmdd || yyyymmdd.length !== 8) return yyyymmdd || '-';
@@ -39,12 +43,26 @@ async function loadSelect(selectId, fetcher, labelFn, errorText) {
 }
 
 async function loadMajorClassifications() {
-    await loadSelect(
-        'productLabelMajorClass',
-        fetchMajorClassifications,
-        (m) => `${m.code ? m.code + ' ' : ''}${m.name || ''}`.trim() || String(m.id),
-        '大分類の取得に失敗しました'
-    );
+    const sel = document.getElementById('productLabelMajorClass');
+    if (!sel) return;
+    try {
+        const list = await fetchMajorClassifications();
+        sel.innerHTML = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '指定なし（すべて）';
+        sel.appendChild(empty);
+        for (const item of list) {
+            const opt = document.createElement('option');
+            opt.value = String(item.id);
+            opt.dataset.code = item.code || '';
+            opt.textContent = (`${item.code ? item.code + ' ' : ''}${item.name || ''}`).trim() || String(item.id);
+            sel.appendChild(opt);
+        }
+    } catch (e) {
+        sel.innerHTML = `<option value="">大分類の取得に失敗しました</option>`;
+        console.error(e);
+    }
 }
 
 async function loadWorkcenters() {
@@ -65,6 +83,72 @@ async function loadWarehouses() {
     );
 }
 
+function isSeasoningSelected() {
+    const sel = document.getElementById('productLabelMajorClass');
+    if (!sel) return false;
+    const opt = sel.options[sel.selectedIndex];
+    return opt ? (opt.dataset.code || '').startsWith('55') : false;
+}
+
+function updatePlSlotLabel() {
+    const label = document.getElementById('productLabelSlotSelectedLabel');
+    if (!label) return;
+    const total = plSlotList.length;
+    const sel = plSelectedSlotCodes.size;
+    if (total === 0 || sel === 0) {
+        label.textContent = 'すべて';
+    } else if (sel === total) {
+        label.textContent = 'すべて';
+    } else {
+        label.textContent = `${sel}件選択`;
+    }
+}
+
+function buildPlSlotPanel() {
+    const container = document.getElementById('productLabelSlotOptions');
+    if (!container) return;
+    container.innerHTML = '';
+    plSlotList.forEach(s => {
+        const lbl = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = s.code || '';
+        if (plSelectedSlotCodes.has(s.code)) cb.checked = true;
+        cb.addEventListener('change', () => {
+            if (cb.checked) {
+                if (s.code) plSelectedSlotCodes.add(s.code);
+            } else {
+                plSelectedSlotCodes.delete(s.code);
+            }
+            updatePlSlotLabel();
+        });
+        const text = document.createElement('span');
+        text.textContent = s.name || s.code || '';
+        lbl.appendChild(cb);
+        lbl.appendChild(text);
+        container.appendChild(lbl);
+    });
+    updatePlSlotLabel();
+}
+
+async function loadPlSlots(needDate) {
+    plSelectedSlotCodes = new Set();
+    plSlotList = [];
+    const container = document.getElementById('productLabelSlotOptions');
+    if (container) container.innerHTML = '';
+    if (!needDate) {
+        updatePlSlotLabel();
+        return;
+    }
+    try {
+        plSlotList = await fetchProductionInstructionSlots(needDate) || [];
+        buildPlSlotPanel();
+    } catch (e) {
+        console.error('現品票 便一覧取得エラー:', e);
+        updatePlSlotLabel();
+    }
+}
+
 function setAllProductLabelCheckboxes(checked) {
     document.querySelectorAll('.product-label-row-check').forEach((el) => { el.checked = checked; });
 }
@@ -72,6 +156,26 @@ function setAllProductLabelCheckboxes(checked) {
 document.getElementById('productLabelSearchBtn').addEventListener('click', async () => {
     const needDate = document.getElementById('productLabelNeedDate').value;
     if (!needDate) { alert('納期を入力してください'); return; }
+
+    if (isSeasoningSelected()) {
+        const slotCodes = Array.from(plSelectedSlotCodes);
+        try {
+            const res = await searchProductionInstruction(needDate, [], slotCodes);
+            productLabelRows = (res.rows || []).map(r => ({
+                order_table_id: r.orderTableId,
+                release_date: r.needDate,
+                item_code: r.itemCode,
+                item_name: r.itemName,
+                child_count: null,
+                qty: r.quantityDisplay != null ? `${r.quantityDisplay}${r.unitName ? ' ' + r.unitName : ''}`.trim() : null,
+                workcenter_name: '',
+            }));
+            displayProductLabelResults(productLabelRows);
+        } catch (error) {
+            alert('検索に失敗しました: ' + error.message);
+        }
+        return;
+    }
 
     const majorId = document.getElementById('productLabelMajorClass')?.value;
     const itemCode = document.getElementById('productLabelItemCode')?.value;
@@ -157,6 +261,35 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMajorClassifications();
     loadWorkcenters();
     loadWarehouses();
+
+    const plNeedDateInput = document.getElementById('productLabelNeedDate');
+    const onPlNeedDateChanged = () => loadPlSlots(plNeedDateInput?.value || '');
+    plNeedDateInput?.addEventListener('change', onPlNeedDateChanged);
+    plNeedDateInput?.addEventListener('input', onPlNeedDateChanged);
+    if (plNeedDateInput?.value) {
+        loadPlSlots(plNeedDateInput.value);
+    }
+
+    const slotDisplay = document.getElementById('productLabelSlotDisplay');
+    if (slotDisplay) {
+        slotDisplay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('productLabelSlotOptions');
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none' || panel.style.display === '';
+            panel.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        const dropdown = (e.target instanceof HTMLElement)
+            ? e.target.closest('#screen-product-label .multi-select-dropdown')
+            : null;
+        if (!dropdown) {
+            const panel = document.getElementById('productLabelSlotOptions');
+            if (panel) panel.style.display = 'none';
+        }
+    });
 });
 
 /** 印刷用：選択された ordertableid */

@@ -6,10 +6,49 @@ import {
 import { productionInstructionMultiSelectLabel } from './production_instruction_common.js';
 
 let prodRows = [];
+let aggregatedProdRows = [];
 let prodWorkcenterList = [];
 let prodSlotList = [];
 let prodSelectedWorkcenterIds = new Set();
 let prodSelectedSlotCodes = new Set();
+
+function formatQtySum(sum) {
+    if (sum === 0) return '0';
+    const rounded = Math.round(sum * 1000) / 1000;
+    if (Number.isInteger(rounded)) return String(rounded);
+    return rounded.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function buildAggregatedRows(sortedRows) {
+    const map = new Map();
+    sortedRows.forEach((row, index) => {
+        const key = `${row.itemCode ?? ''}|${row.slotDisplay ?? ''}`;
+        if (!map.has(key)) {
+            map.set(key, {
+                itemCode: row.itemCode,
+                itemName: row.itemName,
+                needDate: row.needDate,
+                slotDisplay: row.slotDisplay,
+                unitName: row.unitName,
+                sumQty: parseFloat(row.quantityDisplay) || 0,
+                indices: [index]
+            });
+        } else {
+            const entry = map.get(key);
+            entry.sumQty += parseFloat(row.quantityDisplay) || 0;
+            entry.indices.push(index);
+        }
+    });
+    return Array.from(map.values()).map(entry => ({
+        itemCode: entry.itemCode,
+        itemName: entry.itemName,
+        needDate: entry.needDate,
+        slotDisplay: entry.slotDisplay,
+        unitName: entry.unitName,
+        quantityDisplay: formatQtySum(entry.sumQty),
+        indices: entry.indices
+    }));
+}
 
 function displayProductionResults(rows) {
     const section = document.getElementById('prodResultsSection');
@@ -26,17 +65,44 @@ function displayProductionResults(rows) {
         return;
     }
 
-    countEl.textContent = `${rows.length}件`;
+    // 製造便でグルーピングするためにソート（便→品目名→ID順）
+    const sorted = [...rows].sort((a, b) => {
+        const sc = (a.slotDisplay || '').localeCompare(b.slotDisplay || '', 'ja');
+        if (sc !== 0) return sc;
+        return (a.itemName || '').localeCompare(b.itemName || '', 'ja');
+    });
+    prodRows = sorted;
+    aggregatedProdRows = buildAggregatedRows(sorted);
+
+    countEl.textContent = `${aggregatedProdRows.length}件`;
     tbody.innerHTML = '';
 
-    rows.forEach((row, index) => {
+    let currentSlot = undefined;
+    aggregatedProdRows.forEach((row, aggIndex) => {
+        const slot = row.slotDisplay || '';
+
+        // 製造便が変わるたびにグループヘッダー行を挿入
+        if (slot !== currentSlot) {
+            currentSlot = slot;
+            const groupTr = document.createElement('tr');
+            groupTr.style.cssText = 'background:#e8eaf6; font-weight:bold; pointer-events:none;';
+            const td = document.createElement('td');
+            td.colSpan = 7;
+            td.textContent = `【${slot || '便なし'}】`;
+            groupTr.appendChild(td);
+            tbody.appendChild(groupTr);
+        }
+
         const tr = tbody.insertRow();
         const dateDisplay = row.needDate || '-';
         tr.innerHTML = `
-            <td><input type="checkbox" class="prod-item-checkbox" data-index="${index}"></td>
+            <td><input type="checkbox" class="prod-item-checkbox" data-index="${aggIndex}"></td>
+            <td>${row.itemCode || '-'}</td>
             <td>${row.itemName || '-'}</td>
+            <td>${row.quantityDisplay || '-'}</td>
+            <td>${row.unitName || '-'}</td>
             <td>${dateDisplay || '-'}</td>
-            <td>${row.slotDisplay || '-'}</td>
+            <td>${slot || '-'}</td>
         `;
         tr.style.cursor = 'pointer';
         tr.addEventListener('click', (e) => {
@@ -56,10 +122,15 @@ export function getSelectedOrderIds() {
     const checked = document.querySelectorAll('.prod-item-checkbox:checked');
     const ids = [];
     checked.forEach(cb => {
-        const index = Number(cb.dataset.index);
-        const row = prodRows[index];
-        if (row && typeof row.orderTableId === 'number') {
-            ids.push(row.orderTableId);
+        const aggIndex = Number(cb.dataset.index);
+        const aggRow = aggregatedProdRows[aggIndex];
+        if (aggRow) {
+            aggRow.indices.forEach(rawIndex => {
+                const row = prodRows[rawIndex];
+                if (row && typeof row.orderTableId === 'number') {
+                    ids.push(row.orderTableId);
+                }
+            });
         }
     });
     return ids;
@@ -244,8 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const res = await searchProductionInstruction(needDate, workcenterIds, slotCodes);
-            prodRows = res.rows || [];
-            displayProductionResults(prodRows);
+            displayProductionResults(res.rows || []);
         } catch (e) {
             alert('検索に失敗しました: ' + e.message);
             console.error(e);

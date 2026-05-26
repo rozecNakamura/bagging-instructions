@@ -1,10 +1,6 @@
 /**
  * 予定食数：検索・Excel出力
  */
-import { fetchSortingInquirySlots } from './api.js';
-
-let ysSlotList = [];
-const ysSelectedSlotCodes = new Set();
 
 function getApiBase() {
     return (typeof window !== 'undefined' && typeof window.__API_BASE__ === 'string')
@@ -12,59 +8,33 @@ function getApiBase() {
         : '/api';
 }
 
-function updateYsSlotLabel() {
-    const label = document.getElementById('ysSlotSelectedLabel');
-    if (!label) return;
-    if (ysSelectedSlotCodes.size === 0) {
-        label.textContent = '未選択';
-    } else if (ysSelectedSlotCodes.size === ysSlotList.length && ysSlotList.length > 0) {
-        label.textContent = 'すべて選択';
-    } else {
-        label.textContent = `${ysSelectedSlotCodes.size}件選択`;
-    }
-}
-
-function buildYsSlotPanel() {
-    const container = document.getElementById('ysSlotOptions');
-    if (!container) return;
-    container.innerHTML = '';
-    ysSlotList.forEach(s => {
-        const label = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = s.code || '';
-        if (ysSelectedSlotCodes.has(cb.value)) cb.checked = true;
-        cb.addEventListener('change', () => {
-            if (cb.checked) ysSelectedSlotCodes.add(cb.value);
-            else ysSelectedSlotCodes.delete(cb.value);
-            updateYsSlotLabel();
-        });
-        const text = document.createElement('span');
-        text.textContent = s.name || s.code || '';
-        label.appendChild(cb);
-        label.appendChild(text);
-        container.appendChild(label);
-    });
-    updateYsSlotLabel();
-}
-
 function getYsDelvedt() {
     const v = document.getElementById('ysEatingDate')?.value?.trim() ?? '';
     return v.includes('-') ? v.replace(/-/g, '') : v;
 }
 
-function getYsSlotCodes() {
-    return Array.from(ysSelectedSlotCodes).filter(c => c);
+/** 選択中の時間帯コード（1=朝/2=昼/3=夕）。未選択は null。 */
+function getYsMealTime() {
+    return document.querySelector('input[name="ysMealTime"]:checked')?.value ?? null;
 }
 
-function buildSlotParams(delvedt, slotCodes) {
+function getYsCustomerGroups() {
+    const groups = [];
+    if (document.getElementById('ysHospital')?.checked) groups.push('hospital');
+    if (document.getElementById('ysDaycare')?.checked) groups.push('daycare');
+    if (document.getElementById('ysHome')?.checked) groups.push('home');
+    return groups;
+}
+
+function buildSearchParams(delvedt, mealTime, customerGroups) {
     const params = new URLSearchParams({ delvedt });
-    (slotCodes || []).forEach(c => { if (c && String(c).trim()) params.append('slot_code', String(c).trim()); });
+    if (mealTime) params.append('meal_time', mealTime);
+    (customerGroups || []).forEach(g => { if (g) params.append('customer_group', g); });
     return params;
 }
 
-async function searchYoteiShokusu(delvedt, slotCodes) {
-    const params = buildSlotParams(delvedt, slotCodes);
+async function searchYoteiShokusu(delvedt, mealTime, customerGroups) {
+    const params = buildSearchParams(delvedt, mealTime, customerGroups);
     const res = await fetch(`${getApiBase()}/yotei-shokusu/search?${params}`);
     if (!res.ok) {
         const t = await res.text();
@@ -199,42 +169,15 @@ function displayYsResults(data) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    (async () => {
-        try {
-            const slots = await fetchSortingInquirySlots();
-            ysSlotList = slots || [];
-            buildYsSlotPanel();
-        } catch (e) {
-            console.error('予定食数 便マスタ取得エラー:', e);
-        }
-    })();
-
-    const slotDisplay = document.getElementById('ysSlotDisplay');
-    if (slotDisplay) {
-        slotDisplay.addEventListener('click', e => {
-            e.stopPropagation();
-            const panel = document.getElementById('ysSlotOptions');
-            if (!panel) return;
-            const hidden = panel.style.display === 'none' || panel.style.display === '';
-            panel.style.display = hidden ? 'block' : 'none';
-        });
-    }
-
-    document.addEventListener('click', e => {
-        const inDropdown = (e.target instanceof HTMLElement)
-            ? e.target.closest('#screen-yotei-shokusu .multi-select-dropdown')
-            : null;
-        if (!inDropdown) {
-            const panel = document.getElementById('ysSlotOptions');
-            if (panel) panel.style.display = 'none';
-        }
-    });
-
     document.getElementById('ysSearchBtn')?.addEventListener('click', async () => {
         const delvedt = getYsDelvedt();
         if (!delvedt) { alert('喫食日を入力してください'); return; }
+        const mealTime = getYsMealTime();
+        if (!mealTime) { alert('時間帯を選択してください'); return; }
+        const groups = getYsCustomerGroups();
+        if (groups.length === 0) { alert('得意先を1つ以上選択してください'); return; }
         try {
-            const data = await searchYoteiShokusu(delvedt, getYsSlotCodes());
+            const data = await searchYoteiShokusu(delvedt, mealTime, groups);
             displayYsResults(data);
         } catch (e) {
             alert('検索に失敗しました: ' + e.message);
@@ -245,11 +188,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ysExcelBtn')?.addEventListener('click', () => {
         const delvedt = getYsDelvedt();
         if (!delvedt) { alert('喫食日を入力してください'); return; }
-        const params = buildSlotParams(delvedt, getYsSlotCodes());
+        const mealTime = getYsMealTime();
+        if (!mealTime) { alert('時間帯を選択してください'); return; }
+        const params = buildSearchParams(delvedt, mealTime, getYsCustomerGroups());
         const url = `${getApiBase()}/yotei-shokusu/export?${params}`;
+        const mealLabels = { '1': '朝', '2': '昼', '3': '夕' };
+        const timeLabel = mealTime ? `_${mealLabels[mealTime] ?? mealTime}` : '';
         const a = document.createElement('a');
         a.href = url;
-        a.download = `5_予定食数_${delvedt}.xlsx`;
+        a.download = `5_予定食数_${delvedt}${timeLabel}.xlsx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

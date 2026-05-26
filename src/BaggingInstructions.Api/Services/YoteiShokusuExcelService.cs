@@ -13,22 +13,23 @@ namespace BaggingInstructions.Api.Services;
 /// </summary>
 public sealed class YoteiShokusuExcelService
 {
-    public byte[] BuildWorkbook(YoteiShokusuResponseDto data, string delvedtYyyymmdd)
+    public byte[] BuildWorkbook(YoteiShokusuResponseDto data, string delvedtYyyymmdd, string mealTimeLabel = "")
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("予定食数");
-        FillWorksheet(ws, data, delvedtYyyymmdd);
+        FillWorksheet(ws, data, delvedtYyyymmdd, mealTimeLabel);
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return ms.ToArray();
     }
 
-    private static void FillWorksheet(IXLWorksheet ws, YoteiShokusuResponseDto data, string delvedt)
+    private static void FillWorksheet(IXLWorksheet ws, YoteiShokusuResponseDto data, string delvedt, string mealTimeLabel)
     {
         var row = 1;
 
         // ─── 日付タイトル ───────────────────────────────────────────
-        ws.Cell(row, 1).Value = $"予定食数　{FormatDate(delvedt)}";
+        var timeSuffix = string.IsNullOrEmpty(mealTimeLabel) ? "" : $"　{mealTimeLabel}";
+        ws.Cell(row, 1).Value = $"予定食数　{FormatDate(delvedt)}{timeSuffix}";
         ws.Cell(row, 1).Style.Font.Bold = true;
         row += 2;
 

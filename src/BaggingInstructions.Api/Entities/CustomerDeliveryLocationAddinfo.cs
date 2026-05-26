@@ -22,6 +22,9 @@ public class CustomerDeliveryLocationAddinfo
     [Column("addinfo01")]
     public string? Addinfo01 { get; set; }
 
+    [Column("addinfo08")]
+    public string? Addinfo08 { get; set; }
+
     [Column("addinfo12")]
     public string? Addinfo12 { get; set; }
 

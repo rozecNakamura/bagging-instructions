@@ -185,7 +185,8 @@ export async function generateJuicePdfBlob(rows) {
                 jobordmernm: r.jobordmernm,
                 shpctrnm: r.shpctrnm,
                 jobordqun: r.jobordqun,
-                addinfo01: r.addinfo01
+                addinfo01: r.addinfo01,
+                addinfo05: r.addinfo05
             }))
         })
     });
@@ -218,7 +219,8 @@ export async function generateBentoPdfBlob(rows) {
                 jobordmernm: r.jobordmernm,
                 jobordqun: r.jobordqun,
                 quantity: r.quantity ?? 0,
-                addinfo01: r.addinfo01 ?? ''
+                addinfo01: r.addinfo01 ?? '',
+                addinfo08: r.addinfo08 ?? ''
             }))
         })
     });
@@ -237,7 +239,7 @@ export async function generateBentoPdfBlob(rows) {
 /**
  * 汁仕分表用：喫食日・品目コードで検索
  */
-export async function searchJuice(delvedt, itemcd) {
+export async function searchJuice(delvedt, itemcd, mealTime) {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
@@ -247,6 +249,7 @@ export async function searchJuice(delvedt, itemcd) {
             delvedt: delvedtStr,
             itemcd: itemcd || ''
         });
+        if (mealTime) params.set('meal_time', mealTime);
         const response = await fetch(`${API_BASE_URL}/search/juice?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -321,8 +324,13 @@ export async function generateDeliveryNotePdfBlob(rows) {
 /**
  * 作業前準備書：中分類マスタ一覧（大分類ID指定）
  */
-export async function fetchMiddleClassifications(majorId) {
-    const params = new URLSearchParams({ majorclassificationid: String(majorId) });
+export async function fetchMiddleClassifications(majorIds) {
+    const ids = Array.isArray(majorIds) ? majorIds : [majorIds];
+    const params = new URLSearchParams();
+    ids.forEach(id => {
+        if (id != null && !Number.isNaN(Number(id)) && Number(id) > 0)
+            params.append('majorclassificationid', String(id));
+    });
     const res = await fetch(`${API_BASE_URL}/preparation-work/middle-classifications?${params}`);
     if (!res.ok) {
         throw new Error(`中分類取得エラー: ${res.status}`);
@@ -396,7 +404,7 @@ export async function searchPreparationWork(delvedt, options = {}) {
     }
     const params = new URLSearchParams({ delvedt: delvedtStr });
     const itemcd = options.itemcd;
-    const majorId = options.majorId;
+    const majorIds = options.majorIds || [];
     const middleId = options.middleId;
     const manufacturingRouteCodes = options.manufacturingRouteCodes || [];
     const workcenterIds = options.workcenterIds || [];
@@ -417,7 +425,11 @@ export async function searchPreparationWork(delvedt, options = {}) {
         }
     });
     if (itemcd && itemcd.trim()) params.set('itemcd', itemcd.trim());
-    if (majorId) params.set('majorclassificationid', String(majorId));
+    (majorIds || []).forEach(id => {
+        if (id != null && !Number.isNaN(Number(id)) && Number(id) > 0) {
+            params.append('majorclassificationid', String(id));
+        }
+    });
     if (middleId) params.set('middleclassificationid', String(middleId));
 
     const res = await fetch(`${API_BASE_URL}/preparation-work/search?${params}`);
@@ -513,9 +525,9 @@ export async function exportPreparationPdf(filter, groupKeys) {
 }
 
 /**
- * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。itemadditionalinformation.addinfo01 が存在する品目のみ。
+ * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。
  */
-export async function searchBento(delvedt, itemcd) {
+export async function searchBento(delvedt, itemcd, addinfo08Type) {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
@@ -525,6 +537,7 @@ export async function searchBento(delvedt, itemcd) {
             delvedt: delvedtStr,
             itemcd: itemcd || ''
         });
+        if (addinfo08Type) params.set('addinfo08_type', addinfo08Type);
         const response = await fetch(`${API_BASE_URL}/search/bento?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -874,6 +887,23 @@ export async function calculateBagging(jobordPrkeys, printType, useSavedInput = 
 }
 
 /**
+ * 調理指示書：作業名マスタ（classfication3）
+ * @returns {Promise<{ code: string, name: string }[]>}
+ */
+export async function fetchCookingClassification3s() {
+    const res = await fetch(`${API_BASE_URL}/cooking-instruction/classification3`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`作業名マスタ取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
  * 調理指示書：作業区マスタ
  * @returns {Promise<{ id: number, name: string }[]>}
  */
@@ -915,12 +945,13 @@ export async function fetchCookingSlots(needDate) {
 }
 
 /**
- * 調理指示書：検索（納期・作業区 ID 複数・便コード複数）
+ * 調理指示書：検索（納期・作業区 ID 複数・便コード複数・作業名コード複数）
  * @param {string} needDate
  * @param {number[]} workcenterIds
  * @param {string[]} slotCodes
+ * @param {string[]} [classification3Codes]
  */
-export async function searchCookingInstruction(needDate, workcenterIds, slotCodes) {
+export async function searchCookingInstruction(needDate, workcenterIds, slotCodes, classification3Codes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
@@ -934,6 +965,10 @@ export async function searchCookingInstruction(needDate, workcenterIds, slotCode
     (slotCodes || []).forEach(code => {
         const c = code != null ? String(code).trim() : '';
         if (c) params.append('slot_code', c);
+    });
+    (classification3Codes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('classification3_code', c);
     });
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/search?${params}`);
@@ -953,9 +988,10 @@ export async function searchCookingInstruction(needDate, workcenterIds, slotCode
  * @param {string} needDate
  * @param {number[]} workcenterIds
  * @param {string[]} slotCodes
+ * @param {string[]} [classification3Codes]
  * @returns {Promise<Blob>}
  */
-export async function exportCookingInstructionExcel(needDate, workcenterIds, slotCodes) {
+export async function exportCookingInstructionExcel(needDate, workcenterIds, slotCodes, classification3Codes) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) {
         needdateStr = needDate.replace(/-/g, '');
@@ -969,6 +1005,10 @@ export async function exportCookingInstructionExcel(needDate, workcenterIds, slo
     (slotCodes || []).forEach(code => {
         const c = code != null ? String(code).trim() : '';
         if (c) params.append('slot_code', c);
+    });
+    (classification3Codes || []).forEach(code => {
+        const c = code != null ? String(code).trim() : '';
+        if (c) params.append('classification3_code', c);
     });
 
     const res = await fetch(`${API_BASE_URL}/cooking-instruction/export-excel?${params}`);
@@ -1054,7 +1094,7 @@ export async function fetchSortingInquirySlots() {
  * @param {string} delvedt
  * @param {string[]} slotCodes
  */
-export async function searchSortingInquiry(delvedt, slotCodes) {
+export async function searchSortingInquiry(delvedt, slotCodes, mealTime) {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -1064,6 +1104,8 @@ export async function searchSortingInquiry(delvedt, slotCodes) {
     codes.forEach(c => {
         if (c && String(c).trim()) params.append('slot_code', String(c).trim());
     });
+    const mt = mealTime != null ? String(mealTime).trim() : '';
+    if (mt) params.set('meal_time', mt);
     const res = await fetch(`${API_BASE_URL}/sorting-inquiry/search?${params}`);
     if (!res.ok) {
         let detail = '';
@@ -1079,7 +1121,7 @@ export async function searchSortingInquiry(delvedt, slotCodes) {
 /**
  * 仕分け照会 Excel（仕分け照会様式）
  */
-export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
+export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes, mealTime) {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -1088,6 +1130,8 @@ export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
     (Array.isArray(slotCodes) ? slotCodes : []).forEach(c => {
         if (c && String(c).trim()) params.append('slot_code', String(c).trim());
     });
+    const mt = mealTime != null ? String(mealTime).trim() : '';
+    if (mt) params.set('meal_time', mt);
     const res = await fetch(`${API_BASE_URL}/sorting-inquiry/export/shiwake-inquiry?${params}`);
     if (!res.ok) {
         const t = await res.text();
@@ -1104,7 +1148,7 @@ export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
 /**
  * 仕分け照会 Excel（仕訳表自動調整様式）
  */
-export async function exportSortingInquiryJournalBlob(delvedt, slotCodes) {
+export async function exportSortingInquiryJournalBlob(delvedt, slotCodes, mealTime) {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -1113,6 +1157,8 @@ export async function exportSortingInquiryJournalBlob(delvedt, slotCodes) {
     (Array.isArray(slotCodes) ? slotCodes : []).forEach(c => {
         if (c && String(c).trim()) params.append('slot_code', String(c).trim());
     });
+    const mt = mealTime != null ? String(mealTime).trim() : '';
+    if (mt) params.set('meal_time', mt);
     const res = await fetch(`${API_BASE_URL}/sorting-inquiry/export/journal-adjustment?${params}`);
     if (!res.ok) {
         const t = await res.text();

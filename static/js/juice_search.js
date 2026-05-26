@@ -6,9 +6,15 @@ import { searchJuice } from './api.js';
 /** 検索結果グループ一覧（喫食日・喫食時間・品目でまとめた単位） */
 let juiceSearchGroups = [];
 
+function getJuiceMealTime() {
+    const checked = document.querySelector('input[name="juiceMealTime"]:checked');
+    return checked ? checked.value : '';
+}
+
 document.getElementById('juiceSearchBtn').addEventListener('click', async () => {
     const eatingDate = document.getElementById('juiceEatingDate').value;
     const itemCode = document.getElementById('juiceItemCode').value?.trim() || '';
+    const mealTime = getJuiceMealTime();
 
     if (!eatingDate) {
         alert('喫食日を入力してください');
@@ -16,7 +22,7 @@ document.getElementById('juiceSearchBtn').addEventListener('click', async () => 
     }
 
     try {
-        const response = await searchJuice(eatingDate, itemCode || undefined);
+        const response = await searchJuice(eatingDate, itemCode || undefined, mealTime || undefined);
         juiceSearchGroups = response.groups || [];
         displayJuiceResults(juiceSearchGroups);
     } catch (error) {
@@ -98,6 +104,7 @@ export function getSelectedJuiceRows() {
         const delvedt = formatDate(group.delvedt) || '-';
         const shptmDisplay = group.shptm_display || '-';
         const jobordmernm = group.jobordmernm || '-';
+        const addinfo05 = group.addinfo05 || '';
         for (const loc of group.locations) {
             rows.push({
                 delvedt,
@@ -105,7 +112,8 @@ export function getSelectedJuiceRows() {
                 jobordmernm,
                 shpctrnm: loc.shpctrnm || '-',
                 jobordqun: Number(loc.jobordqun) || 0,
-                addinfo01: loc.addinfo01 || ''
+                addinfo01: loc.addinfo01 || '',
+                addinfo05
             });
         }
     }

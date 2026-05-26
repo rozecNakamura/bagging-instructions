@@ -27,7 +27,7 @@ public class JuicePdfService
     private const double QuantityUnitFitHeightSlackPts = 0.5;
 
     /// <summary>1ページあたりの最大表示行数。これを超える行は2ページ目以降に出力する。</summary>
-    private const int RowsPerPage = 23;
+    public const int RowsPerPage = 23;
 
     /// <summary>rxz の Data（TextField）／Text 1要素を表す。CoReportsXMLText / RozecCrPrintClass に合わせて Margin を保持。</summary>
     private class RxzTextItem
@@ -97,7 +97,7 @@ public class JuicePdfService
         if (rows == null || rows.Count == 0) return tagValues;
 
         tagValues["Date"] = rows[0].Delvedt ?? "";
-        tagValues["Time"] = rows[0].ShptmDisplay ?? "";
+        tagValues["Time"] = BaggingEatingTimeLabel.MapFromAddinfo05(rows[0].Addinfo05);
 
         decimal totalGram = 0;
         decimal totalPack = 0;
@@ -871,4 +871,6 @@ public class JuicePrintRowDto
     public decimal Jobordqun { get; set; }
     /// <summary>1人あたり分量（salesorderlineaddinfo.addinfo01）。PACK＝jobordqun÷本値。</summary>
     public string? Addinfo01 { get; set; }
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1=朝 2=昼 3=夕。Time タグ表示用。</summary>
+    public string? Addinfo05 { get; set; }
 }

@@ -185,7 +185,8 @@ export async function generateJuicePdfBlob(rows) {
                 jobordmernm: r.jobordmernm,
                 shpctrnm: r.shpctrnm,
                 jobordqun: r.jobordqun,
-                addinfo01: r.addinfo01
+                addinfo01: r.addinfo01,
+                addinfo05: r.addinfo05
             }))
         })
     });
@@ -218,7 +219,8 @@ export async function generateBentoPdfBlob(rows) {
                 jobordmernm: r.jobordmernm,
                 jobordqun: r.jobordqun,
                 quantity: r.quantity ?? 0,
-                addinfo01: r.addinfo01 ?? ''
+                addinfo01: r.addinfo01 ?? '',
+                addinfo08: r.addinfo08 ?? ''
             }))
         })
     });
@@ -237,7 +239,7 @@ export async function generateBentoPdfBlob(rows) {
 /**
  * 汁仕分表用：喫食日・品目コードで検索
  */
-export async function searchJuice(delvedt, itemcd) {
+export async function searchJuice(delvedt, itemcd, mealTime) {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
@@ -247,6 +249,7 @@ export async function searchJuice(delvedt, itemcd) {
             delvedt: delvedtStr,
             itemcd: itemcd || ''
         });
+        if (mealTime) params.set('meal_time', mealTime);
         const response = await fetch(`${API_BASE_URL}/search/juice?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -522,9 +525,9 @@ export async function exportPreparationPdf(filter, groupKeys) {
 }
 
 /**
- * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。itemadditionalinformation.addinfo01 が存在する品目のみ。
+ * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。
  */
-export async function searchBento(delvedt, itemcd) {
+export async function searchBento(delvedt, itemcd, addinfo08Type) {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
@@ -534,6 +537,7 @@ export async function searchBento(delvedt, itemcd) {
             delvedt: delvedtStr,
             itemcd: itemcd || ''
         });
+        if (addinfo08Type) params.set('addinfo08_type', addinfo08Type);
         const response = await fetch(`${API_BASE_URL}/search/bento?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -1090,7 +1094,7 @@ export async function fetchSortingInquirySlots() {
  * @param {string} delvedt
  * @param {string[]} slotCodes
  */
-export async function searchSortingInquiry(delvedt, slotCodes) {
+export async function searchSortingInquiry(delvedt, slotCodes, mealTime) {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -1100,6 +1104,8 @@ export async function searchSortingInquiry(delvedt, slotCodes) {
     codes.forEach(c => {
         if (c && String(c).trim()) params.append('slot_code', String(c).trim());
     });
+    const mt = mealTime != null ? String(mealTime).trim() : '';
+    if (mt) params.set('meal_time', mt);
     const res = await fetch(`${API_BASE_URL}/sorting-inquiry/search?${params}`);
     if (!res.ok) {
         let detail = '';
@@ -1115,7 +1121,7 @@ export async function searchSortingInquiry(delvedt, slotCodes) {
 /**
  * 仕分け照会 Excel（仕分け照会様式）
  */
-export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
+export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes, mealTime) {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -1124,6 +1130,8 @@ export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
     (Array.isArray(slotCodes) ? slotCodes : []).forEach(c => {
         if (c && String(c).trim()) params.append('slot_code', String(c).trim());
     });
+    const mt = mealTime != null ? String(mealTime).trim() : '';
+    if (mt) params.set('meal_time', mt);
     const res = await fetch(`${API_BASE_URL}/sorting-inquiry/export/shiwake-inquiry?${params}`);
     if (!res.ok) {
         const t = await res.text();
@@ -1140,7 +1148,7 @@ export async function exportSortingInquiryShiwakeBlob(delvedt, slotCodes) {
 /**
  * 仕分け照会 Excel（仕訳表自動調整様式）
  */
-export async function exportSortingInquiryJournalBlob(delvedt, slotCodes) {
+export async function exportSortingInquiryJournalBlob(delvedt, slotCodes, mealTime) {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -1149,6 +1157,8 @@ export async function exportSortingInquiryJournalBlob(delvedt, slotCodes) {
     (Array.isArray(slotCodes) ? slotCodes : []).forEach(c => {
         if (c && String(c).trim()) params.append('slot_code', String(c).trim());
     });
+    const mt = mealTime != null ? String(mealTime).trim() : '';
+    if (mt) params.set('meal_time', mt);
     const res = await fetch(`${API_BASE_URL}/sorting-inquiry/export/journal-adjustment?${params}`);
     if (!res.ok) {
         const t = await res.text();

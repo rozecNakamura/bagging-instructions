@@ -59,10 +59,11 @@ ORDER BY slotcode
             .ToList();
     }
 
-    /// <summary>喫食日 delvedt は YYYYMMDD。slotCodes が空なら便で絞り込まない。</summary>
+    /// <summary>喫食日 delvedt は YYYYMMDD。slotCodes が空なら便で絞り込まない。mealTime は addinfo05 の値（1=朝/2=昼/3=夕）、空なら絞り込まない。</summary>
     public async Task<SortingInquirySearchResponseDto> SearchAsync(
         string delvedt,
         IReadOnlyList<string>? slotCodes,
+        string? mealTime = null,
         CancellationToken ct = default)
     {
         var date = ParseYyyymmdd(delvedt);
@@ -75,19 +76,21 @@ ORDER BY slotcode
             .Distinct(StringComparer.Ordinal)
             .ToHashSet(StringComparer.Ordinal);
 
+        var mealTimeStr = (mealTime ?? "").Trim();
+
         IReadOnlyDictionary<string, string> customersOnDate;
         IReadOnlyList<SortingInquiryLineMaterial> materials;
         IReadOnlyDictionary<string, int> shokushuPriorities;
 
         if (_db.Database.IsRelational())
         {
-            customersOnDate = await LoadCustomerHeadersRelationalAsync(date.Value, slots, ct);
-            materials = await LoadLinesForSearchRelationalAsync(date.Value, slots, ct);
+            customersOnDate = await LoadCustomerHeadersRelationalAsync(date.Value, slots, mealTimeStr, ct);
+            materials = await LoadLinesForSearchRelationalAsync(date.Value, slots, mealTimeStr, ct);
         }
         else
         {
-            customersOnDate = await LoadCustomerHeadersInMemoryAsync(date.Value, slots, ct);
-            materials = await LoadLinesForSearchInMemoryAsync(date.Value, slots, ct);
+            customersOnDate = await LoadCustomerHeadersInMemoryAsync(date.Value, slots, mealTimeStr, ct);
+            materials = await LoadLinesForSearchInMemoryAsync(date.Value, slots, mealTimeStr, ct);
         }
 
         if (_cstmeatDb.Database.IsRelational())
@@ -104,6 +107,7 @@ ORDER BY slotcode
     private async Task<Dictionary<string, string>> LoadCustomerHeadersRelationalAsync(
         DateOnly plannedDate,
         HashSet<string> slots,
+        string mealTimeStr,
         CancellationToken ct)
     {
         var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
@@ -122,11 +126,13 @@ FROM (
   FROM salesorderline s
   INNER JOIN salesorder s0 ON s.salesorderid = s0.salesorderid
   LEFT JOIN customer cu ON s0.customercode = cu.customercode
+  LEFT JOIN salesorderlineaddinfo s1 ON s.salesorderlineid = s1.salesorderlineid
   WHERE s.planneddeliverydate = {plannedDate}
     AND ({slotArr.Length} = 0
          OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
          OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
     AND s0.customercode = ANY ({customerCodes})
+    AND ({mealTimeStr.Length} = 0 OR COALESCE(s1.addinfo05, '') = {mealTimeStr})
 ) x
 WHERE x.custcode <> ''
 GROUP BY x.custcode
@@ -145,18 +151,23 @@ GROUP BY x.custcode
     private async Task<Dictionary<string, string>> LoadCustomerHeadersInMemoryAsync(
         DateOnly plannedDate,
         HashSet<string> slots,
+        string mealTimeStr,
         CancellationToken ct)
     {
         var query = _db.SalesOrderLines
             .AsNoTracking()
             .Include(l => l.SalesOrder!)
                 .ThenInclude(so => so!.Customer)
+            .Include(l => l.Addinfo)
             .Where(l => l.PlannedDeliveryDate == plannedDate)
             .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)
             query = query.Where(l =>
                 string.IsNullOrWhiteSpace(l.SlotCode) || slots.Contains(l.SlotCode!.Trim()));
+
+        if (mealTimeStr.Length > 0)
+            query = query.Where(l => (l.Addinfo != null ? l.Addinfo.Addinfo05 : null) == mealTimeStr);
 
         var lines = await query.ToListAsync(ct);
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -183,6 +194,7 @@ GROUP BY x.custcode
     private async Task<IReadOnlyList<SortingInquiryLineMaterial>> LoadLinesForSearchRelationalAsync(
         DateOnly plannedDate,
         HashSet<string> slots,
+        string mealTimeStr,
         CancellationToken ct)
     {
         var slotArr = slots.Count > 0 ? slots.ToArray() : Array.Empty<string>();
@@ -225,6 +237,7 @@ WHERE s.planneddeliverydate = {plannedDate}
        OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
        OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
   AND s0.customercode = ANY ({customerCodes})
+  AND ({mealTimeStr.Length} = 0 OR COALESCE(s1.addinfo05, '') = {mealTimeStr})
 ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 ")
             .ToListAsync(ct);
@@ -255,6 +268,7 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
     private async Task<IReadOnlyList<SortingInquiryLineMaterial>> LoadLinesForSearchInMemoryAsync(
         DateOnly plannedDate,
         HashSet<string> slots,
+        string mealTimeStr,
         CancellationToken ct)
     {
         var query = _db.SalesOrderLines
@@ -270,6 +284,9 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
         if (slots.Count > 0)
             query = query.Where(l =>
                 string.IsNullOrWhiteSpace(l.SlotCode) || slots.Contains(l.SlotCode!.Trim()));
+
+        if (mealTimeStr.Length > 0)
+            query = query.Where(l => (l.Addinfo != null ? l.Addinfo.Addinfo05 : null) == mealTimeStr);
 
         var lines = await query
             .OrderBy(l => l.Item!.ItemCd ?? "")

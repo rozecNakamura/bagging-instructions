@@ -35,11 +35,12 @@ public class SortingInquiryController : ControllerBase
     public async Task<ActionResult<SortingInquirySearchResponseDto>> Search(
         [FromQuery(Name = "delvedt")] string delvedt,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "meal_time")] string? mealTime,
         CancellationToken ct)
     {
         try
         {
-            var data = await _service.SearchAsync(delvedt, slotCode, ct);
+            var data = await _service.SearchAsync(delvedt, slotCode, mealTime, ct);
             return Ok(data);
         }
         catch (ArgumentException ex)
@@ -56,11 +57,12 @@ public class SortingInquiryController : ControllerBase
     public async Task<IActionResult> ExportShiwakeInquiry(
         [FromQuery(Name = "delvedt")] string delvedt,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "meal_time")] string? mealTime,
         CancellationToken ct)
     {
         try
         {
-            var data = await _service.SearchAsync(delvedt, slotCode, ct);
+            var data = await _service.SearchAsync(delvedt, slotCode, mealTime, ct);
             var bytes = _excelService.BuildShiwakeInquiryWorkbook(data, delvedt);
             var fileName = $"2_仕分け照会_{delvedt}.xlsx";
             return File(bytes,
@@ -81,11 +83,12 @@ public class SortingInquiryController : ControllerBase
     public async Task<IActionResult> ExportJournalAdjustment(
         [FromQuery(Name = "delvedt")] string delvedt,
         [FromQuery(Name = "slot_code")] string[]? slotCode,
+        [FromQuery(Name = "meal_time")] string? mealTime,
         CancellationToken ct)
     {
         try
         {
-            var data = await _service.SearchAsync(delvedt, slotCode, ct);
+            var data = await _service.SearchAsync(delvedt, slotCode, mealTime, ct);
             var bytes = _excelService.BuildJournalAdjustmentWorkbook(data, delvedt);
             var fileName = $"仕訳表自動調整_{delvedt}.xlsx";
             return File(bytes,
