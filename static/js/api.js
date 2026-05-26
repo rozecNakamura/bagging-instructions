@@ -203,24 +203,67 @@ export async function generateJuicePdfBlob(rows) {
 }
 
 /**
- * 弁当箱盛り付け指示書（ご飯）PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
- * GRAM=jobordqun, PACK=quantity/addinfo01（1人あたり分量）, LOCATIONNM=なし
- * @param {Array<{ delvedt: string, shptmDisplay: string, jobordmernm: string, jobordqun: number, quantity: number, addinfo01: string }>} rows
+ * ご飯盛り付け指示書 PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
+ * @param {Array<{ delvedt: string, jobordmernm: string, itemcd: string, cuscd: string, shpctrcd: string, jobordqun: number, quantity: number, addinfo01: string, addinfo08: string, addinfo05: string, shpctrnm: string }>} rows
  * @returns {Promise<Blob>}
  */
-export async function generateBentoPdfBlob(rows) {
-    const response = await fetch(`${API_BASE_URL}/bento/pdf`, {
+export async function generateGohanPdfBlob(rows) {
+    const response = await fetch(`${API_BASE_URL}/gohan/pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             rows: rows.map(r => ({
                 delvedt: r.delvedt,
-                shptmDisplay: r.shptmDisplay,
                 jobordmernm: r.jobordmernm,
+                itemcd: r.itemcd ?? '',
+                cuscd: r.cuscd ?? '',
+                shpctrcd: r.shpctrcd ?? '',
                 jobordqun: r.jobordqun,
                 quantity: r.quantity ?? 0,
                 addinfo01: r.addinfo01 ?? '',
-                addinfo08: r.addinfo08 ?? ''
+                addinfo08: r.addinfo08 ?? '',
+                addinfo05: r.addinfo05 ?? '',
+                shpctrnm: r.shpctrnm ?? ''
+            }))
+        })
+    });
+    if (!response.ok) {
+        const t = await response.text();
+        let msg = `PDF生成エラー: ${response.status}`;
+        try {
+            const j = JSON.parse(t);
+            if (j.detail) msg += ' - ' + j.detail;
+        } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await response.blob();
+}
+
+/**
+ * 弁当箱盛り付け指示書 PDF 生成（rxz テンプレート使用・サーバー側で PDF 生成）
+ * @param {Array} rows
+ * @param {string} bentoType okazu | gohan
+ * @returns {Promise<Blob>}
+ */
+export async function generateBentoPdfBlob(rows, bentoType = 'okazu') {
+    const response = await fetch(`${API_BASE_URL}/bento/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            bentoType: bentoType || 'okazu',
+            rows: rows.map(r => ({
+                delvedt: r.delvedt,
+                shptmDisplay: r.shptmDisplay,
+                jobordmernm: r.jobordmernm,
+                itemcd: r.itemcd ?? '',
+                shpctrcd: r.shpctrcd ?? '',
+                shpctrnm: r.shpctrnm ?? '',
+                jobordqun: r.jobordqun,
+                quantity: r.quantity ?? 0,
+                addinfo01: r.addinfo01 ?? '',
+                addinfo05: r.addinfo05 ?? '',
+                info17: r.info17 ?? '',
+                foodTypeName: r.foodTypeName ?? ''
             }))
         })
     });
@@ -525,9 +568,9 @@ export async function exportPreparationPdf(filter, groupKeys) {
 }
 
 /**
- * 弁当箱盛り付け指示書（ご飯）用：喫食日・品目コードで検索。
+ * 弁当箱盛り付け指示書用：喫食日・品目コードで検索。bentoType=okazu|gohan。
  */
-export async function searchBento(delvedt, itemcd, addinfo08Type) {
+export async function searchBento(delvedt, itemcd, bentoType) {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
@@ -535,9 +578,9 @@ export async function searchBento(delvedt, itemcd, addinfo08Type) {
         }
         const params = new URLSearchParams({
             delvedt: delvedtStr,
-            itemcd: itemcd || ''
+            itemcd: itemcd || '',
+            bento_type: bentoType || 'okazu'
         });
-        if (addinfo08Type) params.set('addinfo08_type', addinfo08Type);
         const response = await fetch(`${API_BASE_URL}/search/bento?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -550,6 +593,36 @@ export async function searchBento(delvedt, itemcd, addinfo08Type) {
         return await response.json();
     } catch (error) {
         console.error('弁当箱盛り付け指示書検索APIエラー:', error);
+        throw error;
+    }
+}
+
+/**
+ * ご飯盛り付け指示書用：喫食日・品目コードで検索。
+ */
+export async function searchGohan(delvedt, itemcd, addinfo08Type) {
+    try {
+        let delvedtStr = delvedt;
+        if (delvedt && delvedt.includes('-')) {
+            delvedtStr = delvedt.replace(/-/g, '');
+        }
+        const params = new URLSearchParams({
+            delvedt: delvedtStr,
+            itemcd: itemcd || ''
+        });
+        if (addinfo08Type) params.set('addinfo08_type', addinfo08Type);
+        const response = await fetch(`${API_BASE_URL}/search/gohan?${params}`);
+        if (!response.ok) {
+            let detail = '';
+            try {
+                const body = await response.json();
+                detail = body.detail ? ` - ${body.detail}` : '';
+            } catch (_) { /* ignore */ }
+            throw new Error(`検索エラー: ${response.status}${detail}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('ご飯盛り付け指示書検索APIエラー:', error);
         throw error;
     }
 }
@@ -1365,6 +1438,23 @@ export async function exportInspectionRecordPdf(filter, lineIds) {
 }
 
 /**
+ * 検収の記録簿：得意先マスタ（プルダウン用）
+ * @returns {Promise<Array<{ customerCode: string, displayLabel: string }>>}
+ */
+export async function fetchAcceptanceCustomers() {
+    const res = await fetch(`${API_BASE_URL}/acceptance-record/customers`);
+    if (!res.ok) {
+        let detail = '';
+        try {
+            const body = await res.json();
+            detail = body.detail ? ` - ${body.detail}` : '';
+        } catch (_) { /* ignore */ }
+        throw new Error(`得意先一覧取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
  * 検収の記録簿：納入場所マスタ（マルチセレクト用）
  * @returns {Promise<Array<{ customerCode: string, locationCode: string, displayLabel: string }>>}
  */
@@ -1382,19 +1472,17 @@ export async function fetchAcceptanceDeliveryLocations() {
 }
 
 /**
- * 検収の記録簿：検索（納品日必須、出荷日・店舗は任意）
+ * 検収の記録簿：検索（出荷日必須、納品日・店舗は任意）
  * @param {string[]} storePairs customerCode と locationCode をタブで連結した文字列。空配列のとき店舗で絞り込まない
  */
-export async function searchAcceptanceRecord(deliveryDate, shipDate, storePairs) {
-    let delvStr = deliveryDate;
-    if (deliveryDate && deliveryDate.includes('-')) {
-        delvStr = deliveryDate.replace(/-/g, '');
+export async function searchAcceptanceRecord(shipDate, deliveryDate, storePairs, customerCode) {
+    const shipStr = shipDate && shipDate.includes('-') ? shipDate.replace(/-/g, '') : (shipDate || '').trim();
+    const params = new URLSearchParams({ shipdate: shipStr });
+    if (deliveryDate && deliveryDate.trim()) {
+        const s = deliveryDate.includes('-') ? deliveryDate.replace(/-/g, '') : deliveryDate.trim();
+        if (s.length === 8) params.set('deliverydate', s);
     }
-    const params = new URLSearchParams({ deliverydate: delvStr });
-    if (shipDate && shipDate.trim()) {
-        const s = shipDate.includes('-') ? shipDate.replace(/-/g, '') : shipDate.trim();
-        if (s.length === 8) params.set('shipdate', s);
-    }
+    if (customerCode && customerCode.trim()) params.set('customerCode', customerCode.trim());
     (storePairs || []).forEach((pair) => {
         const v = (pair || '').trim();
         if (v) params.append('storePair', v);

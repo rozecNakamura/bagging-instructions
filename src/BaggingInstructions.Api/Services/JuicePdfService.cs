@@ -792,7 +792,8 @@ public class JuicePdfService
         IReadOnlySet<string>? shrinkToFitOverrides = null,
         double? shrinkToFitGlobalMinFontSizePts = null,
         double extraOffsetXPts = 0,
-        bool scaleContentToFillPage = false)
+        bool scaleContentToFillPage = false,
+        Func<string, bool>? textLayoutFieldFilter = null)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
@@ -812,6 +813,17 @@ public class JuicePdfService
             {
                 if (shrinkToFitOverrides.Contains(item.Name))
                     item.ShrinkToFit = true;
+            }
+        }
+
+        if (textLayoutFieldFilter != null)
+        {
+            foreach (var item in items)
+            {
+                if (item.IsBox || item.IsVectorLine) continue;
+                if (!textLayoutFieldFilter(item.Name)) continue;
+                item.AutoLineFeed = true;
+                item.ShrinkToFit = true;
             }
         }
 

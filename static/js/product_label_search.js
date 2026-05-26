@@ -162,7 +162,7 @@ document.getElementById('productLabelSearchBtn').addEventListener('click', async
         try {
             const res = await searchProductionInstruction(needDate, [], slotCodes);
             productLabelRows = (res.rows || []).map(r => ({
-                order_table_id: r.orderTableId,
+                order_table_ids: [r.orderTableId],
                 release_date: r.needDate,
                 item_code: r.itemCode,
                 item_name: r.itemName,
@@ -222,16 +222,20 @@ function displayProductLabelResults(rows) {
 
     rows.forEach((row) => {
         const tr = tbody.insertRow();
+        const rowIds = row.order_table_ids || [];
+        const firstId = rowIds[0] || 0;
 
         const tdCb = tr.insertCell();
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.className = 'product-label-row-check';
         cb.checked = true;
-        cb.dataset.orderTableId = String(row.order_table_id);
+        cb.dataset.orderTableIds = JSON.stringify(rowIds);
+        cb.dataset.orderTableId = String(firstId);
         tdCb.appendChild(cb);
 
-        tr.insertCell().textContent = row.order_table_id != null ? String(row.order_table_id) : '-';
+        const idDisplay = rowIds.length <= 1 ? (firstId > 0 ? String(firstId) : '-') : `合算(${rowIds.length}件)`;
+        tr.insertCell().textContent = idDisplay;
         tr.insertCell().textContent = formatDateYyyymmdd(row.release_date) || '-';
         tr.insertCell().textContent = row.item_code || '-';
         tr.insertCell().textContent = row.item_name || '-';
@@ -247,7 +251,7 @@ function displayProductLabelResults(rows) {
         countInput.value = '1';
         countInput.style.cssText = 'width:55px;padding:2px 4px;';
         countInput.className = 'product-label-row-count';
-        countInput.dataset.orderTableId = String(row.order_table_id);
+        countInput.dataset.orderTableId = String(firstId);
         tdCount.appendChild(countInput);
     });
 
@@ -292,25 +296,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-/** 印刷用：選択された ordertableid */
+/** 印刷用：選択された ordertableid の全リスト（合算行は複数 ID を展開）。*/
 export function getSelectedProductLabelOrderTableIds() {
     const ids = [];
     document.querySelectorAll('.product-label-row-check:checked').forEach((el) => {
-        const id = Number(el.dataset.orderTableId, 10);
-        if (Number.isFinite(id) && id > 0) ids.push(id);
+        let rowIds;
+        try { rowIds = JSON.parse(el.dataset.orderTableIds || '[]'); } catch { rowIds = []; }
+        rowIds.forEach(id => { if (id > 0) ids.push(id); });
     });
     return ids;
 }
 
-/** 印刷用：選択された {id, count} の配列（行ごとの枚数を含む）。*/
+/** 印刷用：選択された {ids, count} の配列（行ごとの枚数を含む）。ids は合算元の全 ordertableid。*/
 export function getSelectedProductLabelItems() {
     const items = [];
     document.querySelectorAll('.product-label-row-check:checked').forEach((el) => {
-        const id = Number(el.dataset.orderTableId, 10);
-        if (!Number.isFinite(id) || id <= 0) return;
-        const countEl = document.querySelector(`.product-label-row-count[data-order-table-id="${id}"]`);
+        let rowIds;
+        try { rowIds = JSON.parse(el.dataset.orderTableIds || '[]').filter(id => id > 0); } catch { rowIds = []; }
+        if (!rowIds.length) return;
+        const firstId = rowIds[0];
+        const countEl = document.querySelector(`.product-label-row-count[data-order-table-id="${firstId}"]`);
         const count = countEl ? Math.max(1, parseInt(countEl.value, 10) || 1) : 1;
-        items.push({ id, count });
+        items.push({ ids: rowIds, count });
     });
     return items;
 }

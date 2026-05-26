@@ -3,7 +3,7 @@
  */
 
 import { loadTemplate, injectData, prepareBaggingInstructionData, prepareLabelData, injectLabelData } from './template_loader.js';
-import { generateJuicePdfBlob, generateBentoPdfBlob, generateDeliveryNotePdfBlob, generatePersonalDeliveryPdfBlob, generateBaggingLabelPdfBlob } from './api.js';
+import { generateJuicePdfBlob, generateBentoPdfBlob, generateGohanPdfBlob, generateDeliveryNotePdfBlob, generatePersonalDeliveryPdfBlob, generateBaggingLabelPdfBlob } from './api.js';
 
 function baggingTemplateUrl(fileName) {
     const base =
@@ -141,14 +141,26 @@ export async function generateJuicePDF(rows) {
 }
 
 /**
- * 弁当箱盛り付け指示書（ご飯）の PDF を表示し、ブラウザの印刷プレビューを開く。
- * 汁仕分表と同様に rxz テンプレート（弁当箱盛り付け指示書（ご飯）.rxz）でサーバー側 PDF 生成。
- * @param {{ delvedt: string, shptmDisplay: string, jobordmernm: string, shpctrnm: string, jobordqun: number, addinfo01: string }[]} rows - 選択された行データ
+ * 弁当箱盛り付け指示書の PDF を表示し、ブラウザの印刷プレビューを開く。
+ * @param {Array} rows
+ * @param {string} bentoType okazu | gohan
  */
-export async function generateBentoPDF(rows) {
+export async function generateBentoPDF(rows, bentoType = 'okazu') {
     if (!rows || rows.length === 0) return;
-    const blob = await generateBentoPdfBlob(rows);
-    openPdfInIframe(blob, '弁当箱盛り付け指示書（ご飯） PDF 印刷');
+    const blob = await generateBentoPdfBlob(rows, bentoType);
+    const title = bentoType === 'gohan'
+        ? '弁当箱盛り付け指示書（ご飯） PDF 印刷'
+        : '弁当箱盛り付け指示書（おかず） PDF 印刷';
+    openPdfInIframe(blob, title);
+}
+
+/**
+ * ご飯盛り付け指示書の PDF を表示し、ブラウザの印刷プレビューを開く。
+ */
+export async function generateGohanPDF(rows) {
+    if (!rows || rows.length === 0) return;
+    const blob = await generateGohanPdfBlob(rows);
+    openPdfInIframe(blob, 'ご飯盛り付け指示書 PDF 印刷');
 }
 
 /**

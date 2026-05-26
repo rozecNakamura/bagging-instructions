@@ -6,45 +6,42 @@ using BaggingInstructions.Api.Services;
 namespace BaggingInstructions.Api.Controllers;
 
 [ApiController]
-[Route("api/bento")]
-public class BentoController : ControllerBase
+[Route("api/gohan")]
+public class GohanController : ControllerBase
 {
     private readonly JuicePdfService _juicePdfService;
     private readonly IWebHostEnvironment _env;
 
-    public BentoController(JuicePdfService juicePdfService, IWebHostEnvironment env)
+    public GohanController(JuicePdfService juicePdfService, IWebHostEnvironment env)
     {
         _juicePdfService = juicePdfService;
         _env = env;
     }
 
-    /// <summary>弁当箱盛り付け指示書を rxz テンプレートで PDF 生成し返す。</summary>
+    /// <summary>ご飯盛り付け指示書を rxz テンプレートで PDF 生成し返す。</summary>
     [HttpPost("pdf")]
-    public async Task<IActionResult> GeneratePdf([FromBody] BentoPrintRequest request, CancellationToken ct)
+    public async Task<IActionResult> GeneratePdf([FromBody] GohanPrintRequest request, CancellationToken ct)
     {
         if (request?.Rows == null || request.Rows.Count == 0)
             return BadRequest(new { detail = "印刷する行を選択してください" });
 
-        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "弁当箱盛り付け指示書（ご飯）.rxz");
+        var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "ご飯盛り付け指示書.rxz");
         var fullPath = Path.GetFullPath(templatePath);
         if (!System.IO.File.Exists(fullPath))
-            return NotFound(new { detail = "弁当箱盛り付け指示書テンプレートが見つかりません" });
+            return NotFound(new { detail = "ご飯盛り付け指示書テンプレートが見つかりません" });
 
-        var bentoType = request.BentoType;
-        var rows = request.Rows.Select(r => new BentoPrintRowDto
+        var rows = request.Rows.Select(r => new GohanPrintRowDto
         {
             Delvedt = r.Delvedt,
-            ShptmDisplay = r.ShptmDisplay,
             Jobordmernm = r.Jobordmernm,
             Itemcd = r.Itemcd,
+            Cuscd = r.Cuscd,
             Shpctrcd = r.Shpctrcd,
-            Shpctrnm = r.Shpctrnm,
-            Jobordqun = r.Jobordqun,
             Quantity = r.Quantity,
             Addinfo01 = r.Addinfo01,
+            Addinfo08 = r.Addinfo08,
             Addinfo05 = r.Addinfo05,
-            Info17 = r.Info17,
-            FoodTypeName = r.FoodTypeName
+            Shpctrnm = r.Shpctrnm
         }).ToList();
 
         // 喫食日・喫食時間（addinfo05）ごとにページを分割
@@ -57,73 +54,64 @@ public class BentoController : ControllerBase
 
         var pagesTagValues = new List<Dictionary<string, string>>();
         var aggregatedGroups = groups
-            .Select(g => BentoPdfService.PreparePrintRows(g, bentoType))
+            .Select(g => GohanPdfService.PreparePrintRows(g))
             .ToList();
         var totalPages = aggregatedGroups.Sum(g =>
-            (g.Count + BentoPdfService.RowsPerPage - 1) / BentoPdfService.RowsPerPage);
+            (g.Count + GohanPdfService.RowsPerPage - 1) / GohanPdfService.RowsPerPage);
         if (totalPages < 1) totalPages = 1;
         var printNow = DateTime.Now;
         int pageIndex = 0;
 
         foreach (var aggregated in aggregatedGroups)
         {
-            for (int offset = 0; offset < aggregated.Count; offset += BentoPdfService.RowsPerPage)
+            for (int offset = 0; offset < aggregated.Count; offset += GohanPdfService.RowsPerPage)
             {
-                var chunk = aggregated.Skip(offset).Take(BentoPdfService.RowsPerPage).ToList();
-                var tagValues = BentoPdfService.BuildTagValues(chunk, bentoType);
+                var chunk = aggregated.Skip(offset).Take(GohanPdfService.RowsPerPage).ToList();
+                var tagValues = GohanPdfService.BuildTagValues(chunk);
                 JuicePdfService.AddPrintTags(tagValues, printNow, pageIndex + 1, totalPages);
                 pagesTagValues.Add(tagValues);
                 pageIndex++;
             }
         }
-
-        var pdfTitle = BentoSearchFilter.IsGohan(bentoType)
-            ? "弁当箱盛り付け指示書（ご飯）"
-            : "弁当箱盛り付け指示書（おかず）";
         var pdfBytes = _juicePdfService.GeneratePdfMultiPage(
             fullPath,
             pagesTagValues,
-            pdfTitle,
-            textLayoutFieldFilter: BentoPdfService.ShouldApplyTextLayout);
+            "ご飯盛り付け指示書",
+            textLayoutFieldFilter: GohanPdfService.ShouldApplyTextLayout);
 
         await Task.CompletedTask;
-        return File(pdfBytes, "application/pdf", $"{pdfTitle}.pdf");
+        return File(pdfBytes, "application/pdf", "ご飯盛り付け指示書.pdf");
     }
 }
 
-public class BentoPrintRequest
+public class GohanPrintRequest
 {
-    [JsonPropertyName("bentoType")]
-    public string? BentoType { get; set; }
-
     [JsonPropertyName("rows")]
-    public List<BentoPrintRowRequest> Rows { get; set; } = new();
+    public List<GohanPrintRowRequest> Rows { get; set; } = new();
 }
 
-public class BentoPrintRowRequest
+public class GohanPrintRowRequest
 {
     [JsonPropertyName("delvedt")]
     public string? Delvedt { get; set; }
-    [JsonPropertyName("shptmDisplay")]
-    public string? ShptmDisplay { get; set; }
     [JsonPropertyName("jobordmernm")]
     public string? Jobordmernm { get; set; }
-    [JsonPropertyName("itemcd")]
-    public string? Itemcd { get; set; }
-    [JsonPropertyName("shpctrcd")]
-    public string? Shpctrcd { get; set; }
-    [JsonPropertyName("shpctrnm")]
-    public string? Shpctrnm { get; set; }
     [JsonPropertyName("jobordqun")]
     public decimal Jobordqun { get; set; }
     [JsonPropertyName("quantity")]
     public decimal Quantity { get; set; }
     [JsonPropertyName("addinfo01")]
     public string? Addinfo01 { get; set; }
+    [JsonPropertyName("addinfo08")]
+    public string? Addinfo08 { get; set; }
     [JsonPropertyName("addinfo05")]
     public string? Addinfo05 { get; set; }
-    [JsonPropertyName("info17")]
-    public string? Info17 { get; set; }
-    [JsonPropertyName("foodTypeName")]
-    public string? FoodTypeName { get; set; }
+    [JsonPropertyName("shpctrnm")]
+    public string? Shpctrnm { get; set; }
+    [JsonPropertyName("itemcd")]
+    public string? Itemcd { get; set; }
+    [JsonPropertyName("cuscd")]
+    public string? Cuscd { get; set; }
+    [JsonPropertyName("shpctrcd")]
+    public string? Shpctrcd { get; set; }
 }

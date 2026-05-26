@@ -111,4 +111,7 @@ public sealed class CookingInstructionPdfLineModel
 
     /// <summary>集約用: 子品目予定使用量の生の数値（ChildUnitName 単位）。</summary>
     public decimal ChildRequiredQtyRaw { get; set; }
+
+    /// <summary>並び順用: bom.productionorder（NULL は末尾）。</summary>
+    public int? ProductionOrder { get; set; }
 }

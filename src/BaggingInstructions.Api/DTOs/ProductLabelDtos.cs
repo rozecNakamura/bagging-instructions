@@ -16,8 +16,9 @@ public class MajorClassificationOptionDto
 
 public class ProductLabelRowDto
 {
-    [JsonPropertyName("order_table_id")]
-    public long OrderTableId { get; set; }
+    /// <summary>合算元の ordertableid 一覧（同一品目コードで複数あれば複数）。</summary>
+    [JsonPropertyName("order_table_ids")]
+    public List<long> OrderTableIds { get; set; } = new();
 
     /// <summary>製造日（YYYYMMDD）</summary>
     [JsonPropertyName("release_date")]

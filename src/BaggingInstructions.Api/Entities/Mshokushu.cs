@@ -14,6 +14,9 @@ public class Mshokushu
     [Column("shokushu_code")]
     public string? ShokushuCode { get; set; }
 
+    [Column("shokushu_name")]
+    public string? ShokushuName { get; set; }
+
     [Column("priority_order")]
     public decimal? PriorityOrder { get; set; }
 }

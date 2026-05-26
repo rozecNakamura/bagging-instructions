@@ -321,7 +321,8 @@ ORDER BY i.itemname, COALESCE(
                     ChildUnitName = (b.ChildUnitname ?? "").Trim(),
                     NeedDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = h.SlotDisplay,
-                    WorkName = h.WorkName
+                    WorkName = h.WorkName,
+                    ProductionOrder = b.ProductionOrder
                 });
             }
         }
@@ -357,7 +358,8 @@ ORDER BY i.itemname, COALESCE(
                     ChildUnitName = first.ChildUnitName,
                     NeedDateDisplay = first.NeedDateDisplay,
                     SlotDisplay = first.SlotDisplay,
-                    WorkName = first.WorkName
+                    WorkName = first.WorkName,
+                    ProductionOrder = first.ProductionOrder
                 };
             })
             .OrderBy(l => l.WorkName, StringComparer.Ordinal)
@@ -365,6 +367,8 @@ ORDER BY i.itemname, COALESCE(
             .ThenBy(l => l.SlotDisplay, StringComparer.Ordinal)
             .ThenBy(l => l.ParentItemName, StringComparer.Ordinal)
             .ThenBy(l => l.ParentItemCode, StringComparer.Ordinal)
+            .ThenBy(l => l.ProductionOrder.HasValue ? 0 : 1)
+            .ThenBy(l => l.ProductionOrder)
             .ThenBy(l => l.ChildItemCode, StringComparer.Ordinal)
             .ToList();
 
@@ -533,7 +537,8 @@ ORDER BY i.itemname, COALESCE(
                   b.yieldpercent,
                   COALESCE(ci.itemname, '') AS child_itemname,
                   COALESCE(u.unitname, '') AS child_unitname,
-                  COALESCE(BTRIM(COALESCE(ia.std::text, '')), '') AS child_std
+                  COALESCE(BTRIM(COALESCE(ia.std::text, '')), '') AS child_std,
+                  b.productionorder
                 FROM bom b
                 LEFT JOIN item ci ON TRIM(ci.itemcode) = TRIM(b.childitemcode)
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
@@ -559,7 +564,8 @@ ORDER BY i.itemname, COALESCE(
                     YieldPercent = reader.GetDecimal(3),
                     ChildItemname = reader.GetString(4),
                     ChildUnitname = reader.GetString(5),
-                    ChildStd = reader.GetString(6)
+                    ChildStd = reader.GetString(6),
+                    ProductionOrder = reader.IsDBNull(7) ? null : reader.GetInt32(7)
                 });
             }
 
@@ -670,4 +676,5 @@ internal sealed class CookingInstructionBomSqlRow
     public string? ChildUnitname { get; set; }
     /// <summary>子品目の規格（<c>itemadditionalinformation.std</c>）。</summary>
     public string? ChildStd { get; set; }
+    public int? ProductionOrder { get; set; }
 }

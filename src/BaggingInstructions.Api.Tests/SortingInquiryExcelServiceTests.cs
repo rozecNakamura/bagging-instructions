@@ -51,7 +51,7 @@ public class SortingInquiryExcelServiceTests
     }
 
     [Fact]
-    public void BuildJournalAdjustmentWorkbook_uses_delivery_stack_capacity_and_ratio_cells()
+    public void BuildJournalAdjustmentWorkbook_uses_cstmeat_quantities()
     {
         const string k = "CUSTX\u001eWH01";
         var data = new SortingInquirySearchResponseDto
@@ -60,7 +60,6 @@ public class SortingInquiryExcelServiceTests
             StoreHeaders = new Dictionary<string, string> { [k] = "第1配送先" },
             StoreHeaderCodes = new Dictionary<string, string> { [k] = "WH01" },
             StoreHeaderDeliveryCodes = new Dictionary<string, string> { [k] = "CUSTX" },
-            StoreHeaderCapacities = new Dictionary<string, decimal> { [k] = 1.25m },
             Rows = new List<SortingInquirySearchRowDto>
             {
                 new()
@@ -69,7 +68,6 @@ public class SortingInquiryExcelServiceTests
                     ItemName = "品目1",
                     FoodType = "食種A",
                     QuantitiesByStore = new Dictionary<string, decimal> { [k] = 3 },
-                    RatioQuantitiesByStore = new Dictionary<string, decimal> { [k] = 1.25m }
                 }
             }
         };
@@ -83,12 +81,12 @@ public class SortingInquiryExcelServiceTests
         Assert.Equal("品目コード", ws.Cell(3, 1).GetString());
         Assert.Equal("品目名称", ws.Cell(3, 2).GetString());
         Assert.Equal("適用", ws.Cell(3, 3).GetString());
-        Assert.Equal(1.25, ws.Cell(3, 4).GetDouble());
+        Assert.Equal(3, ws.Cell(3, 4).GetDouble());
         Assert.Equal("合計", ws.Cell(3, 5).GetString());
         Assert.Equal("I1", ws.Cell(4, 1).GetString());
         Assert.Equal("品目1", ws.Cell(4, 2).GetString());
         Assert.Equal("食種A", ws.Cell(4, 3).GetString());
-        Assert.Equal(1.25, ws.Cell(4, 4).GetDouble());
+        Assert.Equal(3, ws.Cell(4, 4).GetDouble());
     }
 
     [Fact]
@@ -99,7 +97,6 @@ public class SortingInquiryExcelServiceTests
             StoreKeys = new List<string> { "A" },
             StoreHeaders = new Dictionary<string, string> { ["A"] = "納入" },
             StoreHeaderCodes = new Dictionary<string, string> { ["A"] = "WH" },
-            StoreHeaderCapacities = new Dictionary<string, decimal> { ["A"] = 10m },
             Rows = new List<SortingInquirySearchRowDto>
             {
                 new()
@@ -107,14 +104,14 @@ public class SortingInquiryExcelServiceTests
                     ItemCode = "X",
                     ItemName = "x",
                     FoodType = "昼",
-                    RatioQuantitiesByStore = new Dictionary<string, decimal> { ["A"] = 3m }
+                    QuantitiesByStore = new Dictionary<string, decimal> { ["A"] = 3m }
                 },
                 new()
                 {
                     ItemCode = "Y",
                     ItemName = "y",
                     FoodType = "夜",
-                    RatioQuantitiesByStore = new Dictionary<string, decimal> { ["A"] = 4m }
+                    QuantitiesByStore = new Dictionary<string, decimal> { ["A"] = 4m }
                 }
             }
         };
@@ -130,14 +127,13 @@ public class SortingInquiryExcelServiceTests
     }
 
     [Fact]
-    public void BuildJournalAdjustmentWorkbook_row3_is_zero_when_no_ratio_cells()
+    public void BuildJournalAdjustmentWorkbook_row3_is_zero_when_no_quantities()
     {
         var data = new SortingInquirySearchResponseDto
         {
             StoreKeys = new List<string> { "A" },
             StoreHeaders = new Dictionary<string, string> { ["A"] = "納入" },
             StoreHeaderCodes = new Dictionary<string, string> { ["A"] = "WH" },
-            StoreHeaderCapacities = new Dictionary<string, decimal> { ["A"] = 9m },
             Rows = new List<SortingInquirySearchRowDto>
             {
                 new()
@@ -145,8 +141,7 @@ public class SortingInquiryExcelServiceTests
                     ItemCode = "X",
                     ItemName = "x",
                     FoodType = "昼",
-                    QuantitiesByStore = new Dictionary<string, decimal> { ["A"] = 100m },
-                    RatioQuantitiesByStore = new Dictionary<string, decimal>()
+                    QuantitiesByStore = new Dictionary<string, decimal> (),
                 }
             }
         };

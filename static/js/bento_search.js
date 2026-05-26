@@ -1,15 +1,17 @@
 /**
- * 弁当箱盛り付け指示書（ご飯）：検索・結果表示・選択（喫食日・喫食時間・品目でグループ化表示）
+ * 弁当箱盛り付け指示書：検索・結果表示・選択
  */
 import { searchBento } from './api.js';
 
-/** 検索結果グループ一覧（喫食日・喫食時間・品目でまとめた単位） */
+/** 検索結果グループ一覧 */
 let bentoSearchGroups = [];
+/** 現在の検索区分: okazu | gohan */
+let currentBentoType = 'okazu';
 
 document.getElementById('bentoSearchBtn').addEventListener('click', async () => {
     const eatingDate = document.getElementById('bentoEatingDate').value;
     const itemCode = document.getElementById('bentoItemCode').value?.trim() || '';
-    const addinfo08Type = document.getElementById('bentoAddinfo08Type').value;
+    currentBentoType = document.querySelector('input[name="bentoType"]:checked')?.value ?? 'okazu';
 
     if (!eatingDate) {
         alert('喫食日を入力してください');
@@ -17,7 +19,7 @@ document.getElementById('bentoSearchBtn').addEventListener('click', async () => 
     }
 
     try {
-        const response = await searchBento(eatingDate, itemCode || undefined, addinfo08Type || undefined);
+        const response = await searchBento(eatingDate, itemCode || undefined, currentBentoType);
         bentoSearchGroups = response.groups || [];
         displayBentoResults(bentoSearchGroups);
     } catch (error) {
@@ -30,6 +32,14 @@ function displayBentoResults(groups) {
     const printSection = document.getElementById('bentoPrintSection');
     const countEl = document.getElementById('bentoResultCount');
     const tbody = document.getElementById('bentoResultsBody');
+    const isGohan = currentBentoType === 'gohan';
+
+    const itemCodeHeader = document.getElementById('bentoItemCodeHeader');
+    const itemNameHeader = document.getElementById('bentoItemNameHeader');
+    const detailCountHeader = document.getElementById('bentoDetailCountHeader');
+    if (itemCodeHeader) itemCodeHeader.style.display = isGohan ? '' : 'none';
+    if (itemNameHeader) itemNameHeader.style.display = isGohan ? '' : 'none';
+    if (detailCountHeader) detailCountHeader.textContent = isGohan ? '施設数' : '明細数';
 
     if (groups.length === 0) {
         alert('該当するデータが見つかりませんでした');
@@ -44,12 +54,14 @@ function displayBentoResults(groups) {
     groups.forEach((group, index) => {
         const row = tbody.insertRow();
         const locationCount = group.locations ? group.locations.length : 0;
+        const itemcdCell = isGohan
+            ? `<td>${group.itemcd || '-'}</td><td>${group.jobordmernm || '-'}</td>`
+            : '';
         row.innerHTML = `
             <td><input type="checkbox" class="bento-item-checkbox" data-group-index="${index}"></td>
             <td>${formatDate(group.delvedt) || '-'}</td>
             <td>${group.shptm_display || '-'}</td>
-            <td>${group.itemcd || '-'}</td>
-            <td>${group.jobordmernm || '-'}</td>
+            ${itemcdCell}
             <td>${locationCount}</td>
         `;
         row.style.cursor = 'pointer';
@@ -85,30 +97,43 @@ document.getElementById('bentoDeselectAllBtn').addEventListener('click', () => {
 });
 
 /**
- * 選択されたグループを、PDF用に「納入場所ごと1行」に展開して返す
- * @returns {{ delvedt: string, shptmDisplay: string, jobordmernm: string, jobordqun: number, quantity: number, addinfo01: string }[]}
+ * 選択されたグループを PDF 用に展開して返す
  */
 export function getSelectedBentoRows() {
     const checked = document.querySelectorAll('.bento-item-checkbox:checked');
     const indices = new Set(Array.from(checked).map(cb => parseInt(cb.dataset.groupIndex, 10)));
     const rows = [];
+    const isGohan = currentBentoType === 'gohan';
+
     for (const i of indices) {
         const group = bentoSearchGroups[i];
         if (!group || !group.locations || group.locations.length === 0) continue;
         const delvedt = formatDate(group.delvedt) || '-';
         const shptmDisplay = group.shptm_display || '-';
+        const addinfo05 = group.addinfo05 ?? '';
         const jobordmernm = group.jobordmernm || '-';
+        const itemcd = group.itemcd ?? '';
+
         for (const loc of group.locations) {
             rows.push({
                 delvedt,
                 shptmDisplay,
+                addinfo05,
                 jobordmernm,
+                itemcd,
+                shpctrcd: loc.shpctrcd ?? '',
+                shpctrnm: loc.shpctrnm ?? '',
                 jobordqun: Number(loc.jobordqun) || 0,
                 quantity: Number(loc.quantity) || 0,
                 addinfo01: loc.addinfo01 ?? '',
-                addinfo08: loc.addinfo08 ?? ''
+                info17: loc.info17 ?? '',
+                foodTypeName: loc.food_type_name ?? ''
             });
         }
     }
-    return rows;
+    return { rows, bentoType: currentBentoType, isGohan };
+}
+
+export function getCurrentBentoType() {
+    return currentBentoType;
 }
