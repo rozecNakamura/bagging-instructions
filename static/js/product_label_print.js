@@ -2,7 +2,7 @@
  * 現品票（調理）：サーバー PDF（現品票（調理）.rxz）→ブラウザ印刷
  */
 import { generateProductLabelPdfBlob } from './api.js';
-import { openPdfInIframe } from './pdf_generator.js';
+import { openLabelPdfForPrint } from './pdf_generator.js';
 import { getSelectedProductLabelItems } from './product_label_search.js';
 
 document.getElementById('productLabelPrintBtn').addEventListener('click', async () => {
@@ -21,13 +21,17 @@ document.getElementById('productLabelPrintBtn').addEventListener('click', async 
     const cutModeEl = document.querySelector('input[name="productLabelCutMode"]:checked');
     const cutMode = cutModeEl ? cutModeEl.value : 'no_cut';
 
-    const ids = items.map(({ id }) => id);
+    const allIds = items.flatMap(({ ids }) => ids);
     const perRowCounts = {};
-    items.forEach(({ id, count }) => { perRowCounts[String(id)] = count; });
+    // 合算行の代表ID（先頭）をキーとして枚数を登録する（バックエンドで集約後の OrderTableId に対応）
+    items.forEach(({ ids, count }) => { perRowCounts[String(ids[0])] = count; });
 
     try {
-        const blob = await generateProductLabelPdfBlob(ids, 1, cutMode, instructionType, perRowCounts);
-        openPdfInIframe(blob, '現品票（調理） PDF 印刷');
+        const blob = await generateProductLabelPdfBlob(allIds, 1, cutMode, instructionType, perRowCounts);
+        // ラベル専用: 60×60mm ページを正しいサイズで印刷するため、
+        // 新しいウィンドウで PDF を開いて印刷ダイアログを起動する。
+        // 印刷ダイアログで用紙サイズを「60×60mm」に、倍率を「実際のサイズ」に設定してください。
+        openLabelPdfForPrint(blob, '現品票（調理） PDF 印刷');
     } catch (e) {
         alert(e instanceof Error ? e.message : String(e));
     }

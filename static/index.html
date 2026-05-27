@@ -87,7 +87,8 @@
             <ul class="sidebar-menu">
                 <li><button type="button" class="menu-btn active" data-screen="bagging">袋詰指示書・ラベル管理</button></li>
                 <li><button type="button" class="menu-btn" data-screen="juice">汁仕分表</button></li>
-                <li><button type="button" class="menu-btn" data-screen="bento">弁当箱盛り付け指示書（ご飯）</button></li>
+                <li><button type="button" class="menu-btn" data-screen="bento">弁当箱盛り付け指示書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="gohan">ご飯盛り付け指示書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="delivery-note">納品書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="personal-delivery">個人配送指示書・個人配送指示書（集計）</button></li>
                 <li><button type="button" class="menu-btn" data-screen="product-label">現品票印刷</button></li>
@@ -275,11 +276,11 @@
                 </div>
             </div>
 
-            <!-- 弁当箱盛り付け指示書（ご飯）画面 -->
+            <!-- 弁当箱盛り付け指示書画面 -->
             <div id="screen-bento" class="screen">
                 <div class="container">
                     <header>
-                        <h1>弁当箱盛り付け指示書（ご飯）</h1>
+                        <h1>弁当箱盛り付け指示書</h1>
                     </header>
                     <section class="search-section">
                         <h2>検索条件</h2>
@@ -293,12 +294,11 @@
                                 <input type="text" id="bentoItemCode" placeholder="品目コードを入力">
                             </div>
                             <div class="form-group">
-                                <label for="bentoAddinfo08Type">区分:</label>
-                                <select id="bentoAddinfo08Type">
-                                    <option value="">全て</option>
-                                    <option value="0">BOX</option>
-                                    <option value="1">個別</option>
-                                </select>
+                                <label>区分:</label>
+                                <div class="radio-group">
+                                    <label><input type="radio" name="bentoType" value="okazu" checked> おかず</label>
+                                    <label><input type="radio" name="bentoType" value="gohan"> ご飯</label>
+                                </div>
                             </div>
                             <button type="button" id="bentoSearchBtn" class="btn btn-primary">検索</button>
                             <div id="bentoPrintSection" class="search-form-inline-actions print-section" style="display: none;">
@@ -322,12 +322,72 @@
                                         <th><input type="checkbox" id="bentoHeaderCheckbox"></th>
                                         <th>喫食日</th>
                                         <th>配送便</th>
+                                        <th id="bentoItemCodeHeader">品目コード</th>
+                                        <th id="bentoItemNameHeader">品目名</th>
+                                        <th id="bentoDetailCountHeader">明細数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bentoResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- ご飯盛り付け指示書画面 -->
+            <div id="screen-gohan" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>ご飯盛り付け指示書</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="gohanEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="gohanEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="gohanItemCode">品目コード:</label>
+                                <input type="text" id="gohanItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label>区分:</label>
+                                <div class="radio-group">
+                                    <label><input type="radio" name="gohanAddinfo08Type" value="" checked> すべて</label>
+                                    <label><input type="radio" name="gohanAddinfo08Type" value="0"> BOX</label>
+                                    <label><input type="radio" name="gohanAddinfo08Type" value="1"> 個人</label>
+                                </div>
+                            </div>
+                            <button type="button" id="gohanSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="gohanPrintSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="gohanPrintBtn" class="btn btn-success">PDF印刷</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="gohanResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="gohanResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="gohanSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="gohanDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="gohanResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="gohanHeaderCheckbox"></th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
                                         <th>品目コード</th>
                                         <th>品目名</th>
                                         <th>施設数</th>
                                     </tr>
                                 </thead>
-                                <tbody id="bentoResultsBody">
+                                <tbody id="gohanResultsBody">
                                 </tbody>
                             </table>
                         </div>
@@ -345,8 +405,31 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="deliveryNoteEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <label for="deliveryNoteEatingDate">出荷日<span class="field-required-mark" aria-label="必須">*</span>:</label>
                                 <input type="date" id="deliveryNoteEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>区分<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+                                    <label style="font-weight:normal;"><input type="radio" name="deliveryNoteCustomerType" value="catering" checked> ケータリング</label>
+                                    <label style="font-weight:normal;"><input type="radio" name="deliveryNoteCustomerType" value="personal"> 個人配食</label>
+                                    <label style="font-weight:normal;"><input type="radio" name="deliveryNoteCustomerType" value="hospital"> 病院向（個人配食）</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="deliveryNoteDeliveryRoute">納品便:</label>
+                                <select id="deliveryNoteDeliveryRoute" style="width:10rem;">
+                                    <option value="">（全て）</option>
+                                    <option value="1">出荷朝便</option>
+                                    <option value="2">出荷昼便</option>
+                                    <option value="3">出荷夜便</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="deliveryNoteLocationFilter">納入場所:</label>
+                                <select id="deliveryNoteLocationFilter" style="width:16rem;" disabled>
+                                    <option value="">（全て）</option>
+                                </select>
                             </div>
                             <button type="button" id="deliveryNoteSearchBtn" class="btn btn-primary">検索</button>
                             <div id="deliveryNotePrintSection" class="search-form-inline-actions print-section" style="display: none;">
@@ -450,12 +533,18 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="acceptanceDelvDate">納品日<span class="field-required-mark" aria-label="必須">*</span>:</label>
-                                <input type="date" id="acceptanceDelvDate" required aria-required="true">
+                                <label for="acceptanceShipDate">出荷日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="acceptanceShipDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label for="acceptanceShipDate">出荷日:</label>
-                                <input type="date" id="acceptanceShipDate">
+                                <label for="acceptanceDelvDate">納品日:</label>
+                                <input type="date" id="acceptanceDelvDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="acceptanceCustomerCode">得意先:</label>
+                                <select id="acceptanceCustomerCode">
+                                    <option value="">すべて</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label>店舗（納入場所）:</label>
@@ -513,8 +602,15 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="personalDeliveryDate">配送日<span class="field-required-mark" aria-label="必須">*</span>:</label>
-                                <input type="date" id="personalDeliveryDate" required aria-required="true">
+                                <label for="personalDeliveryEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="personalDeliveryEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="personalDeliveryVariant">帳票<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <select id="personalDeliveryVariant" required aria-required="true">
+                                    <option value="detail">個人配送指示書</option>
+                                    <option value="summary">個人配送指示書（集計）</option>
+                                </select>
                             </div>
                             <button type="button" id="personalDeliverySearchBtn" class="btn btn-primary">検索</button>
                             <div id="personalDeliveryPrintSection" class="search-form-inline-actions print-section" style="display: none;">
@@ -537,9 +633,9 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="personalDeliveryHeaderCheckbox"></th>
-                                        <th>配送日</th>
-                                        <th>配送便名称</th>
-                                        <th>配送エリア</th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
+                                        <th>コース</th>
                                     </tr>
                                 </thead>
                                 <tbody id="personalDeliveryResultsBody">
@@ -803,14 +899,10 @@
                                 <input type="date" id="prodNeedDate" required aria-required="true">
                             </div>
                             <div class="form-group">
-                                <label>作業区:</label>
-                                <div class="multi-select-dropdown" id="prodWorkcenterDropdown">
-                                    <div class="multi-select-display" id="prodWorkcenterDisplay">
-                                        <span id="prodWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
-                                        <span class="multi-select-caret">▼</span>
-                                    </div>
-                                    <div id="prodWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
-                                </div>
+                                <label for="prodWorkcenter">作業区:</label>
+                                <select id="prodWorkcenter">
+                                    <option value="">すべて</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label>便:</label>
@@ -1363,6 +1455,8 @@
     <script type="module" src="js/juice_print.js"></script>
     <script type="module" src="js/bento_search.js"></script>
     <script type="module" src="js/bento_print.js"></script>
+    <script type="module" src="js/gohan_search.js"></script>
+    <script type="module" src="js/gohan_print.js"></script>
     <script type="module" src="js/delivery_note_search.js"></script>
     <script type="module" src="js/delivery_note_print.js"></script>
     <script type="module" src="js/personal_delivery_search.js"></script>

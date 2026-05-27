@@ -137,11 +137,11 @@ public sealed class SortingInquiryExcelService
         ws.Cell(headerRow, ColItemName).Value = "品目名称";
         ws.Cell(headerRow, ColTekiyo).Value = TekiyoColumnTitle;
 
-        var columnRatioMaxes = MaxRatioQuantitiesByStoreColumn(data);
+        var columnQtyMaxes = MaxQuantitiesByStoreColumn(data);
         for (var i = 0; i < n; i++)
         {
             var key = data.StoreKeys[i];
-            columnRatioMaxes.TryGetValue(key, out var colMax);
+            columnQtyMaxes.TryGetValue(key, out var colMax);
             var cell = ws.Cell(headerRow, FirstCustomerCol + i);
             cell.Value = Math.Round(colMax, 2, MidpointRounding.AwayFromZero);
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
@@ -150,7 +150,7 @@ public sealed class SortingInquiryExcelService
         ws.Cell(headerRow, totalCol).Value = "合計";
 
         row++;
-        WriteDataRows(ws, data, ref row, totalCol, n, useRatioQuantities: true);
+        WriteDataRows(ws, data, ref row, totalCol, n, useRatioQuantities: false);
 
         ws.Columns().AdjustToContents(1, 80);
         EnsureMinColumnWidth(ws.Column(ColItemCode), MinWidthItemCode);
@@ -161,8 +161,8 @@ public sealed class SortingInquiryExcelService
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
     }
 
-    /// <summary>仕訳表 3 行目: 各店舗列について、行 4 以降に出力する比の最大値。</summary>
-    private static Dictionary<string, decimal> MaxRatioQuantitiesByStoreColumn(SortingInquirySearchResponseDto data)
+    /// <summary>仕訳表 3 行目: 各店舗列について、行 4 以降に出力する食数の最大値。</summary>
+    private static Dictionary<string, decimal> MaxQuantitiesByStoreColumn(SortingInquirySearchResponseDto data)
     {
         var maxes = data.StoreKeys.ToDictionary(k => k, _ => 0m, StringComparer.Ordinal);
         var seen = data.StoreKeys.ToDictionary(k => k, _ => false, StringComparer.Ordinal);
@@ -170,7 +170,7 @@ public sealed class SortingInquiryExcelService
         {
             foreach (var key in data.StoreKeys)
             {
-                if (!line.RatioQuantitiesByStore.TryGetValue(key, out var q))
+                if (!line.QuantitiesByStore.TryGetValue(key, out var q))
                     continue;
                 if (!seen[key])
                 {
@@ -191,7 +191,7 @@ public sealed class SortingInquiryExcelService
         ref int row,
         int totalCol,
         int n,
-        bool useRatioQuantities)
+        bool useRatioQuantities = false)
     {
         var r = row;
         var lastStoreCol = n > 0 ? FirstCustomerCol + n - 1 : FirstCustomerCol;
@@ -206,17 +206,8 @@ public sealed class SortingInquiryExcelService
             {
                 var key = data.StoreKeys[i];
                 var c = FirstCustomerCol + i;
-                decimal q;
-                if (useRatioQuantities)
-                {
-                    if (!line.RatioQuantitiesByStore.TryGetValue(key, out q) || q == 0)
-                        continue;
-                }
-                else
-                {
-                    if (!line.QuantitiesByStore.TryGetValue(key, out q) || q == 0)
-                        continue;
-                }
+                if (!line.QuantitiesByStore.TryGetValue(key, out var q) || q == 0)
+                    continue;
 
                 ws.Cell(r, c).Value = Math.Round(q, 2, MidpointRounding.AwayFromZero);
             }

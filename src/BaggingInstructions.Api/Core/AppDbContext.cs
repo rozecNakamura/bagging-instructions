@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<ItemWorkCenterMapping> ItemWorkCenterMappings => Set<ItemWorkCenterMapping>();
     public DbSet<MajorClassification> MajorClassifications => Set<MajorClassification>();
     public DbSet<MiddleClassification> MiddleClassifications => Set<MiddleClassification>();
+    public DbSet<MinorClassification> MinorClassifications => Set<MinorClassification>();
     public DbSet<Classification1> Classification1s => Set<Classification1>();
     public DbSet<BaggingInputRegistration> BaggingInputRegistrations => Set<BaggingInputRegistration>();
 
@@ -221,6 +222,9 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<MiddleClassification>()
             .HasKey(m => m.MiddleClassificationId);
+
+        modelBuilder.Entity<MinorClassification>()
+            .HasKey(m => m.MinorClassificationId);
 
         modelBuilder.Entity<Classification1>()
             .HasKey(c => c.Classification1Id);

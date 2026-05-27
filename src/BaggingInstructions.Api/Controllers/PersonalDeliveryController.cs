@@ -24,16 +24,17 @@ public class PersonalDeliveryController : ControllerBase
         _env = env;
     }
 
-    /// <summary>配送日で個人配送指示書検索（配送日・喫食時間・配送エリア）</summary>
+    /// <summary>喫食日で個人配送指示書検索（cstmeat 基準・喫食日・喫食時間・コース）</summary>
     [HttpGet("search")]
     public async Task<ActionResult<PersonalDeliverySearchResponseDto>> Search(
         [FromQuery] string delvedt,
+        [FromQuery] string? variant,
         CancellationToken ct)
     {
         try
         {
             var normalized = delvedt?.Replace("-", "") ?? "";
-            var items = await _searchService.SearchByDeliveryDateAsync(normalized, ct);
+            var items = await _searchService.SearchByEatingDateAsync(normalized, variant, ct);
             return Ok(new PersonalDeliverySearchResponseDto { Total = items.Count, Items = items });
         }
         catch (ArgumentException ex)
@@ -69,10 +70,10 @@ public class PersonalDeliveryController : ControllerBase
 
         var rows = request.Rows
             .Select(r => (
-                DeliveryDate: r.DeliveryDate ?? "",
-                TimeName: r.TimeName ?? "",
-                Area: r.Area ?? ""))
-            .Where(t => !string.IsNullOrEmpty(t.DeliveryDate))
+                EatingDate: r.EatingDate ?? r.DeliveryDate ?? "",
+                MealTime: r.MealTime ?? r.TimeName ?? "",
+                Course: r.Course ?? r.Area ?? ""))
+            .Where(t => !string.IsNullOrEmpty(t.EatingDate))
             .ToList();
 
         if (rows.Count == 0)
@@ -96,6 +97,15 @@ public class PersonalDeliveryPrintRequest
 
 public class PersonalDeliveryPrintRowRequest
 {
+    [JsonPropertyName("eating_date")]
+    public string? EatingDate { get; set; }
+
+    [JsonPropertyName("meal_time")]
+    public string? MealTime { get; set; }
+
+    [JsonPropertyName("course")]
+    public string? Course { get; set; }
+
     [JsonPropertyName("delivery_date")]
     public string? DeliveryDate { get; set; }
 

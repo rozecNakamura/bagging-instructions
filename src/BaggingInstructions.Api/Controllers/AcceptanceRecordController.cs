@@ -24,6 +24,21 @@ public class AcceptanceRecordController : ControllerBase
         _env = env;
     }
 
+    /// <summary>得意先プルダウン用マスタ。</summary>
+    [HttpGet("customers")]
+    public async Task<ActionResult<List<AcceptanceRecordCustomerOptionDto>>> Customers(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _service.ListCustomerOptionsAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"得意先一覧取得エラー: {ex.Message}" });
+        }
+    }
+
     /// <summary>店舗（納入場所）マルチセレクト用マスタ。</summary>
     [HttpGet("delivery-locations")]
     public async Task<ActionResult<List<AcceptanceRecordDeliveryLocationOptionDto>>> DeliveryLocations(CancellationToken ct)
@@ -41,14 +56,15 @@ public class AcceptanceRecordController : ControllerBase
 
     [HttpGet("search")]
     public async Task<ActionResult<AcceptanceRecordSearchResponseDto>> Search(
-        [FromQuery(Name = "deliverydate")] string deliveryDate,
-        [FromQuery(Name = "shipdate")] string? shipDate,
+        [FromQuery(Name = "shipdate")] string shipDate,
+        [FromQuery(Name = "deliverydate")] string? deliveryDate,
         [FromQuery(Name = "storePair")] List<string>? storePairs,
+        [FromQuery(Name = "customerCode")] string? customerCode,
         CancellationToken ct)
     {
         try
         {
-            var rows = await _service.SearchAsync(deliveryDate, shipDate, storePairs, ct);
+            var rows = await _service.SearchAsync(shipDate, deliveryDate, storePairs, customerCode, ct);
             return Ok(new AcceptanceRecordSearchResponseDto
             {
                 Total = rows.Count,
@@ -68,7 +84,7 @@ public class AcceptanceRecordController : ControllerBase
     public sealed class AcceptanceRecordReportRequestDto
     {
         [JsonPropertyName("deliverydate")]
-        public string DeliveryDate { get; set; } = "";
+        public string? DeliveryDate { get; set; }
 
         [JsonPropertyName("shipdate")]
         public string? ShipDate { get; set; }
@@ -92,7 +108,7 @@ public class AcceptanceRecordController : ControllerBase
         if (body == null || body.LineIds == null || body.LineIds.Count == 0)
             return BadRequest(new { detail = "印刷するデータを選択してください" });
 
-        if (string.IsNullOrEmpty(body.DeliveryDate) || body.DeliveryDate.Length != 8)
+        if (!string.IsNullOrEmpty(body.DeliveryDate) && body.DeliveryDate.Length != 8)
             return BadRequest(new { detail = "納品日はYYYYMMDD形式（8桁）で指定してください。" });
 
         var templatePath = Path.Combine(AppContentPaths.TemplatesDirectory(_env), "検収の記録簿.rxz");

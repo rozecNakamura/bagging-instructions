@@ -56,6 +56,10 @@ public class JobordItemDto
     [JsonPropertyName("addinfo01_item")]
     public string? Addinfo01Item { get; set; }
 
+    /// <summary>cstmeat.info17。弁当箱おかず用。</summary>
+    [JsonPropertyName("cstmeat_info17")]
+    public string? CstmeatInfo17 { get; set; }
+
     /// <summary>納入場所付加情報 addinfo08（customerdeliverylocationaddinfo.addinfo08）。ご飯盛り付け指示書のページ分割キー。</summary>
     [JsonPropertyName("addinfo08")]
     public string? Addinfo08 { get; set; }
@@ -620,17 +624,20 @@ public class DeliveryNoteSearchResponseDto
     public List<DeliveryNoteSearchResultDto> Items { get; set; } = new();
 }
 
-/// <summary>個人配送指示書検索結果1件（配送日・配送便名称・配送エリア）</summary>
+/// <summary>個人配送指示書検索結果1件（喫食日・喫食時間・コース）</summary>
 public class PersonalDeliverySearchResultDto
 {
-    [JsonPropertyName("delivery_date")]
-    public string? DeliveryDate { get; set; }
+    [JsonPropertyName("eating_date")]
+    public string? EatingDate { get; set; }
 
-    [JsonPropertyName("time_name")]
-    public string? TimeName { get; set; }
+    [JsonPropertyName("meal_time")]
+    public string? MealTime { get; set; }
 
-    [JsonPropertyName("area")]
-    public string? Area { get; set; }
+    [JsonPropertyName("meal_time_name")]
+    public string? MealTimeName { get; set; }
+
+    [JsonPropertyName("course")]
+    public string? Course { get; set; }
 }
 
 /// <summary>個人配送指示書検索APIレスポンス</summary>
@@ -707,6 +714,26 @@ public class BentoSearchLocationDto
     /// <summary>納入場所付加情報 addinfo08（ページ分割キー）。先頭が "0" か "1" かでページを分ける。</summary>
     [JsonPropertyName("addinfo08")]
     public string? Addinfo08 { get; set; }
+
+    /// <summary>得意先コード。ご飯盛り付け指示書の個人向け集計で使用。</summary>
+    [JsonPropertyName("cuscd")]
+    public string? Cuscd { get; set; }
+
+    /// <summary>納入場所コード。ご飯盛り付け指示書の個人240向け集計で使用。</summary>
+    [JsonPropertyName("shpctrcd")]
+    public string? Shpctrcd { get; set; }
+
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。</summary>
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
+    /// <summary>cstmeat.info17。弁当箱おかず用。</summary>
+    [JsonPropertyName("info17")]
+    public string? Info17 { get; set; }
+
+    /// <summary>食種名称（m_shokushu.shokushu_name）。弁当箱おかず用。</summary>
+    [JsonPropertyName("food_type_name")]
+    public string? FoodTypeName { get; set; }
 }
 
 /// <summary>弁当箱盛り付け指示書（ご飯）用：喫食日・配送便・品目でまとめた1グループ</summary>
@@ -717,6 +744,10 @@ public class BentoSearchGroupDto
 
     [JsonPropertyName("shptm_display")]
     public string? ShptmDisplay { get; set; }
+
+    /// <summary>喫食時間コード（salesorderlineaddinfo.addinfo05）。1=朝 2=昼 3=夕。ご飯盛り付け指示書で使用。</summary>
+    [JsonPropertyName("addinfo05")]
+    public string? Addinfo05 { get; set; }
 
     [JsonPropertyName("itemcd")]
     public string? Itemcd { get; set; }

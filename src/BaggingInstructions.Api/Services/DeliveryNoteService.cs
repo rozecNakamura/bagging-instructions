@@ -19,16 +19,30 @@ public class DeliveryNoteService
         _appDb = appDb;
     }
 
-    /// <summary>喫食日（info03: YYYYMMDD）で cstmeat を検索し、喫食日・納入場所名を返す。納入場所名は customerdeliverylocation と info02=locationcode で結合。</summary>
-    public async Task<List<DeliveryNoteSearchResultDto>> SearchByEatingDateAsync(string delvedt, CancellationToken ct = default)
+    /// <summary>出荷日（info18: YYYYMMDD）で cstmeat を検索し、出荷日・納入場所名を返す。納入場所名は customerdeliverylocation と info02=locationcode で結合。</summary>
+    public async Task<List<DeliveryNoteSearchResultDto>> SearchByEatingDateAsync(
+        string delvedt,
+        string? customerType = null,
+        string? deliveryRoute = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(delvedt) || delvedt.Length != 8)
-            throw new ArgumentException("喫食日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
+            throw new ArgumentException("出荷日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
 
-        var rows = await _cstmeatDb.Cstmeats
+        var customerCodes = GetCustomerCodes(customerType);
+
+        var query = _cstmeatDb.Cstmeats
             .AsNoTracking()
-            .Where(c => c.Info03 == delvedt)
-            .Select(c => new { c.Info01, c.Info02, c.Info03 })
+            .Where(c => c.Info18 == delvedt);
+
+        if (customerCodes.Count > 0)
+            query = query.Where(c => c.Info01 != null && customerCodes.Contains(c.Info01));
+
+        if (!string.IsNullOrEmpty(deliveryRoute))
+            query = query.Where(c => c.Info19 == deliveryRoute);
+
+        var rows = await query
+            .Select(c => new { c.Info01, c.Info02, c.Info18 })
             .Distinct()
             .ToListAsync(ct);
 
@@ -73,7 +87,7 @@ public class DeliveryNoteService
         return rows
             .Select(r => new DeliveryNoteSearchResultDto
             {
-                EatingDate = r.Info03,
+                EatingDate = r.Info18,
                 LocationCode = r.Info02,
                 CustomerCode = r.Info01,
                 LocationName = GetLocationName(r.Info01, r.Info02, locationNameByKey, locationNameByLocCodeOnly)
@@ -83,6 +97,15 @@ public class DeliveryNoteService
             .ThenBy(x => x.LocationCode)
             .ToList();
     }
+
+    private static HashSet<string> GetCustomerCodes(string? customerType) =>
+        customerType switch
+        {
+            "catering" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "200", "210", "220", "230", "240" },
+            "personal" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "300" },
+            "hospital" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "310" },
+            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        };
 
     /// <summary>先頭ゼロを除いたコード（空の場合は "0"）</summary>
     private static string NormalizeCode(string? s)

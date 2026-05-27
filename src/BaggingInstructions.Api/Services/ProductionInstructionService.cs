@@ -52,25 +52,25 @@ public sealed class ProductionInstructionService
             .SqlQuery<ProductionInstructionSlotSqlRow>($@"
 SELECT DISTINCT
   COALESCE(
-    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   ) AS ""Code"",
   COALESCE(
     NULLIF(TRIM(ds.slotname), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   ) AS ""Name""
 FROM ordertable ot
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
 LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
-    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
@@ -78,9 +78,9 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
   AND COALESCE(
-    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   ) <> ''
 ORDER BY 1
@@ -139,9 +139,9 @@ ORDER BY 1
                   TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD'),
                   COALESCE(
                     NULLIF(TRIM(ds.slotname), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   ),
                   COALESCE(ot.qty, 0),
@@ -166,17 +166,17 @@ ORDER BY 1
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
                 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
                 LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   )
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                   AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = @needdate
                   AND (@slot_count = 0 OR COALESCE(
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   ) = ANY(@slots))
                   AND (@wc_count = 0 OR (
@@ -199,9 +199,9 @@ ORDER BY 1
                   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
                 ORDER BY i.itemname, COALESCE(
                   NULLIF(TRIM(ds.slotname), ''),
-                  NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                  NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-                  NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                  NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                  NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+                  NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                   ''
                 ), ot.ordertableid
                 """,
@@ -400,9 +400,9 @@ ORDER BY 1
                   i.conversionvalue3 AS cv3,
                   COALESCE(
                     NULLIF(TRIM(ds.slotname), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   ) AS slot_display,
                   COALESCE(wc.workcentername, '') AS workcenter_name,
@@ -432,9 +432,9 @@ ORDER BY 1
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
                 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
                 LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
+                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   )
                 LEFT JOIN workcenter wc ON wc.workcentercode = ot.workcentercode

@@ -98,7 +98,16 @@ ORDER BY slotcode
         else
             shokushuPriorities = await LoadShokushuPrioritiesInMemoryAsync(ct);
 
-        return BuildSearchResponse(materials, customersOnDate, shokushuPriorities);
+        var cstmeatMap = await LoadCstmeatQuantityMapAsync(date.Value, ct);
+        var materialsWithCstmeat = materials.Select(m =>
+        {
+            var key = (m.CustomerCode, m.LocationCode, (m.MealTime ?? "").Trim(), (m.Addinfo02 ?? "").Trim());
+            return cstmeatMap.TryGetValue(key, out var cstQty)
+                ? m with { CstmeatFoodCount = cstQty }
+                : m;
+        }).ToList();
+
+        return BuildSearchResponse(materialsWithCstmeat, customersOnDate, shokushuPriorities);
     }
 
     /// <summary>
@@ -218,6 +227,7 @@ SELECT
   s1.addinfo01 AS ""Addinfo01"",
   s1.addinfo02 AS ""Addinfo02"",
   s1.addinfo02name AS ""Addinfo02Name"",
+  s1.addinfo05 AS ""Addinfo05"",
   i.conversionvalue1 AS ""ConversionValue1"",
   i.conversionvalue2 AS ""ConversionValue2"",
   i.conversionvalue3 AS ""ConversionValue3"",
@@ -262,7 +272,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             (r.ItemName ?? "").Trim(),
             r.Addinfo01,
             r.Addinfo02,
-            r.Addinfo02Name)).ToList();
+            r.Addinfo02Name,
+            r.Addinfo05)).ToList();
     }
 
     private async Task<IReadOnlyList<SortingInquiryLineMaterial>> LoadLinesForSearchInMemoryAsync(
@@ -313,7 +324,61 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             (l.Item?.ItemName ?? "").Trim(),
             l.Addinfo?.Addinfo01,
             l.Addinfo?.Addinfo02,
-            l.Addinfo?.Addinfo02Name)).ToList();
+            l.Addinfo?.Addinfo02Name,
+            l.Addinfo?.Addinfo05)).ToList();
+    }
+
+    /// <summary>
+    /// craftlineaxother.cstmeat から喫食日の食数マップを取得する。
+    /// キー: (得意先コード, 納入場所コード, 喫食時間, 食種コード) → 食数。
+    /// </summary>
+    private async Task<IReadOnlyDictionary<(string CustCode, string LocCode, string MealTime, string FoodType), decimal>>
+        LoadCstmeatQuantityMapAsync(DateOnly date, CancellationToken ct)
+    {
+        var dateStr = date.ToString("yyyyMMdd");
+
+        if (_cstmeatDb.Database.IsRelational())
+        {
+            var rows = await _cstmeatDb.Database
+                .SqlQuery<SortingCstmeatQuantitySqlRow>($@"
+SELECT
+  TRIM(COALESCE(info01, '')) AS ""CustCode"",
+  TRIM(COALESCE(info02, '')) AS ""LocCode"",
+  TRIM(COALESCE(info04, '')) AS ""MealTime"",
+  TRIM(COALESCE(info05, '')) AS ""FoodType"",
+  COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
+FROM cstmeat
+WHERE info03 = {dateStr}
+")
+                .ToListAsync(ct);
+
+            return rows
+                .GroupBy(r => (StripLeadingZeros(r.CustCode), r.LocCode ?? "", r.MealTime ?? "", r.FoodType ?? ""))
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.Qty));
+        }
+        else
+        {
+            var entities = await _cstmeatDb.Cstmeats.AsNoTracking()
+                .Where(c => c.Info03 == dateStr)
+                .ToListAsync(ct);
+
+            return entities
+                .GroupBy(c => (
+                    StripLeadingZeros((c.Info01 ?? "").Trim()),
+                    (c.Info02 ?? "").Trim(),
+                    (c.Info04 ?? "").Trim(),
+                    (c.Info05 ?? "").Trim()))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Sum(c => decimal.TryParse((c.Info07 ?? "").Trim(), out var q) ? q : 0));
+        }
+    }
+
+    private static string StripLeadingZeros(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.TrimStart('0');
+        return t.Length == 0 ? "0" : t;
     }
 
     private async Task<IReadOnlyDictionary<string, int>> LoadShokushuPrioritiesRelationalAsync(CancellationToken ct)
@@ -437,7 +502,6 @@ WHERE priority_order IS NOT NULL
 
         var itemNameByCode = new Dictionary<string, string>(StringComparer.Ordinal);
         var aggregates = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
-        var ratioAggregates = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -460,37 +524,8 @@ WHERE priority_order IS NOT NULL
                 aggregates[itemCode] = byColumn;
             }
 
-            var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
-            var displayQty = div.HasValue ? line.Quantity / div.Value : line.Quantity;
+            var displayQty = line.CstmeatFoodCount ?? line.Quantity;
             byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + displayQty;
-
-            if (div.HasValue)
-            {
-                if (!ratioAggregates.TryGetValue(itemCode, out var byRatio))
-                {
-                    byRatio = new Dictionary<string, decimal>(StringComparer.Ordinal);
-                    ratioAggregates[itemCode] = byRatio;
-                }
-
-                byRatio[colKey] = byRatio.GetValueOrDefault(colKey) + line.QtyInUnit0 / div.Value;
-            }
-        }
-
-        var capacityByColumn = columnCustomer.Keys.ToDictionary(k => k, _ => 0m, StringComparer.Ordinal);
-        foreach (var line in lines)
-        {
-            var cust = (line.CustomerCode ?? "").Trim();
-            if (cust.Length == 0)
-                continue;
-
-            var colKey = SortingInquiryDeliveryColumnKey(cust, (line.LocationCode ?? "").Trim());
-            if (!capacityByColumn.ContainsKey(colKey))
-                continue;
-
-            var div = ParseSortingInquiryAddinfoDivisor(line.Addinfo01);
-            if (!div.HasValue)
-                continue;
-            capacityByColumn[colKey] += line.QtyInUnit0 / div.Value;
         }
 
         var rows = aggregates
@@ -500,10 +535,7 @@ WHERE priority_order IS NOT NULL
                 ItemCode = a.Key,
                 ItemName = itemNameByCode.GetValueOrDefault(a.Key) ?? "",
                 FoodType = representativeFoodType.GetValueOrDefault(a.Key) ?? "",
-                QuantitiesByStore = a.Value.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal),
-                RatioQuantitiesByStore = ratioAggregates.TryGetValue(a.Key, out var ratios)
-                    ? ratios.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
-                    : new Dictionary<string, decimal>(StringComparer.Ordinal)
+                QuantitiesByStore = a.Value.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
             })
             .ToList();
 
@@ -514,7 +546,6 @@ WHERE priority_order IS NOT NULL
             StoreHeaderCodes = storeHeaderCodes,
             StoreHeaderDeliveryCodes = storeHeaderDeliveryCodes,
             StoreHeaderDeliveryNames = storeHeaderDeliveryNames,
-            StoreHeaderCapacities = capacityByColumn,
             Rows = rows
         };
     }
@@ -588,21 +619,6 @@ WHERE priority_order IS NOT NULL
         return (salesOrder?.CustomerDeliveryLocationCode ?? "").Trim();
     }
 
-    /// <summary>
-    /// 仕訳表収容用: <c>salesorderlineaddinfo.addinfo01</c>（1人あたり分量）を正の数値として解釈する（Excel 収容行の除数）。
-    /// </summary>
-    private static decimal? ParseSortingInquiryAddinfoDivisor(string? perCapitaPortionText)
-    {
-        if (string.IsNullOrWhiteSpace(perCapitaPortionText))
-            return null;
-        var t = perCapitaPortionText.Trim().Replace(" ", "", StringComparison.Ordinal);
-        const NumberStyles styles = NumberStyles.Number;
-        if (decimal.TryParse(t, styles, CultureInfo.InvariantCulture, out var inv) && inv > 0)
-            return inv;
-        if (decimal.TryParse(t, styles, CultureInfo.GetCultureInfo("ja-JP"), out var ja) && ja > 0)
-            return ja;
-        return null;
-    }
 
     private static SortingInquiryLineMaterial ToLineMaterial(
         decimal quantity,
@@ -624,7 +640,8 @@ WHERE priority_order IS NOT NULL
         string itemName,
         string? addinfo01,
         string? addinfo02,
-        string? addinfo02Name)
+        string? addinfo02Name,
+        string? addinfo05)
     {
         var qty0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
             quantity,
@@ -650,7 +667,9 @@ WHERE priority_order IS NOT NULL
             addinfo02,
             addinfo02Name,
             addinfo01,
-            qty0);
+            qty0,
+            addinfo05,
+            null);
     }
 
     private static string ResolveFoodTypeFromStrings(string? addinfo02, string? addinfo02Name)
@@ -695,6 +714,7 @@ internal sealed class SortingInquiryLineSqlRow
     public string? Addinfo01 { get; set; }
     public string? Addinfo02 { get; set; }
     public string? Addinfo02Name { get; set; }
+    public string? Addinfo05 { get; set; }
     public decimal? ConversionValue1 { get; set; }
     public decimal? ConversionValue2 { get; set; }
     public decimal? ConversionValue3 { get; set; }
@@ -711,6 +731,15 @@ internal sealed class ShokushuPrioritySqlRow
     public int? PriorityOrder { get; set; }
 }
 
+internal sealed class SortingCstmeatQuantitySqlRow
+{
+    public string? CustCode { get; set; }
+    public string? LocCode { get; set; }
+    public string? MealTime { get; set; }
+    public string? FoodType { get; set; }
+    public decimal Qty { get; set; }
+}
+
 internal readonly record struct SortingInquiryLineMaterial(
     decimal Quantity,
     string CustomerCode,
@@ -721,4 +750,6 @@ internal readonly record struct SortingInquiryLineMaterial(
     string? Addinfo02,
     string? Addinfo02Name,
     string? Addinfo01,
-    decimal QtyInUnit0);
+    decimal QtyInUnit0,
+    string? MealTime,
+    decimal? CstmeatFoodCount);

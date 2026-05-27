@@ -792,7 +792,8 @@ public class JuicePdfService
         IReadOnlySet<string>? shrinkToFitOverrides = null,
         double? shrinkToFitGlobalMinFontSizePts = null,
         double extraOffsetXPts = 0,
-        bool scaleContentToFillPage = false)
+        bool scaleContentToFillPage = false,
+        Func<string, bool>? textLayoutFieldFilter = null)
     {
         if (pagesTagValues == null || pagesTagValues.Count == 0)
             return Array.Empty<byte>();
@@ -815,6 +816,19 @@ public class JuicePdfService
             }
         }
 
+        if (textLayoutFieldFilter != null)
+        {
+            foreach (var item in items)
+            {
+                if (item.IsBox || item.IsVectorLine) continue;
+                if (!textLayoutFieldFilter(item.Name)) continue;
+                // テンプレートで AutoLineFeed / ShrinkToFit が有効な場合はその設定を尊重する。
+                if (item.AutoLineFeed || item.ShrinkToFit) continue;
+                item.AutoLineFeed = true;
+                item.ShrinkToFit = true;
+            }
+        }
+
         if (shrinkToFitGlobalMinFontSizePts is { } globalMinShrinkPts)
         {
             foreach (var item in items)
@@ -831,10 +845,17 @@ public class JuicePdfService
         var doc = new PdfDocument();
         doc.Info.Title = documentTitle ?? "弁当箱盛り付け指示書";
 
+        // ラベルサイズ（A4未満）の場合、PDF ビューワーに "実際のサイズで印刷" を指示する。
+        // Chrome はこのヒントを受けて印刷時にスケーリングを行わず、60×60mm のまま送出する。
+        double pagePts = pageWidth / Twip;
+        if (pagePts < 500) // A4 幅(595pt) より小さければラベルとみなす
+            doc.ViewerPreferences.Elements["/PrintScaling"] = new PdfName("/None");
+
         foreach (var tagValues in pagesTagValues)
         {
-            ApplyTagValuesToItems(items, tagValues);
-            AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop, extraOffsetXPts, scaleContentToFillPage);
+            var pageItems = items.Select(CloneItem).ToList();
+            ApplyTagValuesToItems(pageItems, tagValues);
+            AddPageAndDraw(doc, pageItems, pageWidth, pageHeight, marginLeft, marginTop, extraOffsetXPts, scaleContentToFillPage);
         }
 
         using var ms = new MemoryStream();
@@ -842,23 +863,43 @@ public class JuicePdfService
         return ms.ToArray();
     }
 
+    private static RxzTextItem CloneItem(RxzTextItem item) => new()
+    {
+        Name = item.Name,
+        StartX = item.StartX,
+        StartY = item.StartY,
+        SizeWidth = item.SizeWidth,
+        SizeHeight = item.SizeHeight,
+        TextData = item.TextData,
+        Alignment = item.Alignment,
+        FontHeight = item.FontHeight,
+        FontName = item.FontName,
+        DrawSeq = item.DrawSeq,
+        Visible = item.Visible,
+        Frame = item.Frame,
+        LineWidth = item.LineWidth,
+        LineColor = item.LineColor,
+        MarginLeft = item.MarginLeft,
+        MarginTop = item.MarginTop,
+        MarginRight = item.MarginRight,
+        MarginBottom = item.MarginBottom,
+        ShrinkToFit = item.ShrinkToFit,
+        ShrinkToFitMinFontSizePts = item.ShrinkToFitMinFontSizePts,
+        AlignVertical = item.AlignVertical,
+        AutoLineFeed = item.AutoLineFeed,
+        IsBox = item.IsBox,
+        FillPattern = item.FillPattern,
+        BoxFillColor = item.BoxFillColor,
+        IsVectorLine = item.IsVectorLine,
+        EndX = item.EndX,
+        EndY = item.EndY,
+    };
+
     /// <summary>
     /// rxz テンプレートとタグ値から 1 ページ分の PDF を生成してバイト配列で返す。
     /// </summary>
-    public byte[] GeneratePdf(string rxzTemplatePath, Dictionary<string, string> tagValues)
-    {
-        var items = ParseRxzDataElements(rxzTemplatePath);
-        ApplyTagValuesToItems(items, tagValues);
-
-        var doc = new PdfDocument();
-        doc.Info.Title = "汁仕分表";
-        var (pageWidth, pageHeight, marginLeft, marginTop, _, _) = GetPageInfoFromRxz(rxzTemplatePath);
-        AddPageAndDraw(doc, items, pageWidth, pageHeight, marginLeft, marginTop);
-
-        using var ms = new MemoryStream();
-        doc.Save(ms, false);
-        return ms.ToArray();
-    }
+    public byte[] GeneratePdf(string rxzTemplatePath, Dictionary<string, string> tagValues) =>
+        GeneratePdfMultiPage(rxzTemplatePath, new[] { tagValues });
 }
 
 /// <summary>汁仕分表 PDF 印刷用の1行データ</summary>

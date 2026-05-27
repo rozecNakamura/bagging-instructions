@@ -2,6 +2,16 @@ using System.Text.Json.Serialization;
 
 namespace BaggingInstructions.Api.DTOs;
 
+/// <summary>検収の記録簿 得意先プルダウン用。</summary>
+public sealed class AcceptanceRecordCustomerOptionDto
+{
+    [JsonPropertyName("customerCode")]
+    public string CustomerCode { get; set; } = "";
+
+    [JsonPropertyName("displayLabel")]
+    public string DisplayLabel { get; set; } = "";
+}
+
 /// <summary>検収の記録簿 店舗（納入場所）マルチセレクト用。</summary>
 public sealed class AcceptanceRecordDeliveryLocationOptionDto
 {
@@ -78,11 +88,23 @@ public sealed class AcceptanceRecordPdfLineModel
     /// <summary>受注明細の納品日（ページングキー・ヘッダー）。</summary>
     public DateOnly? PlannedDeliveryDate { get; set; }
 
-    /// <summary>集計用数量（salesorderline.quantity の合算前）。</summary>
+    /// <summary>集計用数量（cstmeat.食数 優先。未取得時は salesorderline.quantity 合算値）。</summary>
     public decimal LineQuantity { get; set; }
 
-    /// <summary><c>salesorderlineaddinfo.addinfo01</c>（1人あたり分量・食数表示計算用）。</summary>
+    /// <summary><c>salesorderlineaddinfo.addinfo01</c>（1人あたり分量・総量計算用）。</summary>
     public string Addinfo01 { get; set; } = "";
+
+    /// <summary>cstmeat 結合キー用：得意先コード（salesorder.customercode）。</summary>
+    public string CustomerCode { get; set; } = "";
+
+    /// <summary>cstmeat 結合キー用：納入場所コード（salesorder.customerdeliverylocationcode）。</summary>
+    public string LocationCode { get; set; } = "";
+
+    /// <summary>cstmeat 結合キー用：喫食時間（salesorderlineaddinfo.addinfo05 = cstmeat.info04）。</summary>
+    public string Addinfo05 { get; set; } = "";
+
+    /// <summary>cstmeat 結合キー用：食種（salesorderlineaddinfo.addinfo02 = cstmeat.info05）。</summary>
+    public string Addinfo02 { get; set; } = "";
 
     public string EatDateDisplay { get; set; } = "";
     public string SlotDisplay { get; set; } = "";

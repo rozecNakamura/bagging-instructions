@@ -9,15 +9,41 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。数量は salesorderline.quantity。ordertable は使用しない。
+/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。食数は cstmeat から取得、総量は 食数×addinfo01 で算出。
 /// </summary>
 public sealed class AcceptanceRecordService
 {
     private readonly AppDbContext _db;
+    private readonly CstmeatDbContext _otherDb;
 
-    public AcceptanceRecordService(AppDbContext db)
+    public AcceptanceRecordService(AppDbContext db, CstmeatDbContext otherDb)
     {
         _db = db;
+        _otherDb = otherDb;
+    }
+
+    /// <summary>得意先プルダウン用。<c>customer</c> テーブルを customercode 昇順で返す。</summary>
+    public async Task<List<AcceptanceRecordCustomerOptionDto>> ListCustomerOptionsAsync(
+        CancellationToken ct = default)
+    {
+        var customers = await _db.Customers.AsNoTracking()
+            .OrderBy(c => c.CustomerCode)
+            .ToListAsync(ct);
+        return customers.Select(c => new AcceptanceRecordCustomerOptionDto
+        {
+            CustomerCode = c.CustomerCode ?? "",
+            DisplayLabel = BuildCustomerLabel(c.CustomerCode, c.CustomerShortName ?? c.CustomerName)
+        }).ToList();
+    }
+
+    private static string BuildCustomerLabel(string? customerCode, string? name)
+    {
+        var cd = (customerCode ?? "").Trim();
+        var nm = (name ?? "").Trim();
+        if (string.IsNullOrEmpty(cd) && string.IsNullOrEmpty(nm)) return "";
+        if (string.IsNullOrEmpty(nm)) return cd;
+        if (string.IsNullOrEmpty(cd)) return nm;
+        return $"{cd}：{nm}";
     }
 
     /// <summary>
@@ -51,26 +77,31 @@ public sealed class AcceptanceRecordService
     }
 
     /// <summary>
-    /// 納品日必須。出荷日・店舗（納入場所）は任意。1 行 = 1 salesorderline。ordertable は参照しない。
+    /// 出荷日必須。納品日・店舗（納入場所）は任意。1 行 = 1 salesorderline。ordertable は参照しない。
     /// storePairs は「customerCode + TAB + locationCode」。空のときは店舗で絞り込まない。
     /// </summary>
     public async Task<List<AcceptanceRecordSearchRowDto>> SearchAsync(
-        string deliveryDate,
-        string? shipDate,
+        string shipDate,
+        string? deliveryDate,
         IReadOnlyList<string>? storePairs,
+        string? customerCode = null,
         CancellationToken ct = default)
     {
-        var deliveryD = ParseYyyymmdd(deliveryDate);
-        if (!deliveryD.HasValue)
-            throw new ArgumentException("納品日はYYYYMMDD形式（8桁）で指定してください。", nameof(deliveryDate));
+        var shipD = ParseYyyymmdd(shipDate);
+        if (!shipD.HasValue)
+            throw new ArgumentException("出荷日はYYYYMMDD形式（8桁）で指定してください。", nameof(shipDate));
 
-        var shipStr = NormalizeOptionalYyyymmdd(shipDate);
+        var deliveryStr = NormalizeOptionalYyyymmdd(deliveryDate);
         var (storeCust, storeLoc) = ParseStorePairs(storePairs);
         var filterByStore = storeCust.Length > 0;
+        var customerStr = (customerCode ?? "").Trim();
 
-        var rows = await ExecuteSearchSqlAsync(deliveryD.Value, shipStr, filterByStore, storeCust, storeLoc, ct);
+        var rows = await ExecuteSearchSqlAsync(shipD.Value, deliveryStr, filterByStore, storeCust, storeLoc, customerStr, ct);
 
-        return rows.Select(MapSearchRow).ToList();
+        var deliveryDates = rows.Select(r => r.DeliveryYyyymmdd).Where(d => d.Length == 8).Distinct().ToList();
+        var cstmeatMap = await LoadCstmeatMapAsync(deliveryDates, ct);
+
+        return rows.Select(r => MapSearchRow(r, cstmeatMap)).ToList();
     }
 
     private static (string[] Cust, string[] Loc) ParseStorePairs(IReadOnlyList<string>? storePairs)
@@ -97,11 +128,12 @@ public sealed class AcceptanceRecordService
     }
 
     private async Task<List<AcceptanceRecordSearchSqlRow>> ExecuteSearchSqlAsync(
-        DateOnly deliveryDate,
-        string shipStr,
+        DateOnly shipDate,
+        string deliveryStr,
         bool filterByStore,
         string[] storeCust,
         string[] storeLoc,
+        string customerStr,
         CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
@@ -121,7 +153,11 @@ public sealed class AcceptanceRecordService
                   COALESCE(TRIM(MAX(i.itemname)), ''),
                   COALESCE(TRIM(MAX(u0.unitname)), ''),
                   SUM(sol.quantity),
-                  MIN(COALESCE(a.addinfo01, ''))
+                  MIN(COALESCE(a.addinfo01, '')),
+                  COALESCE(MIN(TRIM(COALESCE(so.customercode, ''))), ''),
+                  COALESCE(MIN(TRIM(COALESCE(so.customerdeliverylocationcode, ''))), ''),
+                  COALESCE(MIN(TRIM(COALESCE(a.addinfo05, ''))), ''),
+                  COALESCE(MIN(TRIM(COALESCE(a.addinfo02, ''))), '')
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -131,8 +167,9 @@ public sealed class AcceptanceRecordService
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
-                WHERE sol.planneddeliverydate = @deliveryDate
-                  AND (@shipStr = '' OR TO_CHAR(sol.plannedshipdate, 'YYYYMMDD') = @shipStr)
+                WHERE sol.plannedshipdate = @shipDate
+                  AND (@deliveryStr = '' OR TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD') = @deliveryStr)
+                  AND (@customerStr = '' OR TRIM(COALESCE(so.customercode, '')) = @customerStr)
                   AND (
                     NOT @filterByStore
                     OR EXISTS (
@@ -148,7 +185,9 @@ public sealed class AcceptanceRecordService
                   so.customercode,
                   so.customerdeliverylocationcode,
                   TRIM(COALESCE(ds.slotcode, '')),
-                  TRIM(COALESCE(i.itemcode, ''))
+                  TRIM(COALESCE(i.itemcode, '')),
+                  TRIM(COALESCE(a.addinfo05, '')),
+                  TRIM(COALESCE(a.addinfo02, ''))
                 ORDER BY
                   MIN(TRIM(COALESCE(cdl.locationname, ''))),
                   MIN(sol.plannedshipdate),
@@ -157,8 +196,9 @@ public sealed class AcceptanceRecordService
                   MIN(TRIM(COALESCE(i.itemcode, '')))
                 """, conn);
 
-            cmd.Parameters.AddWithValue("deliveryDate", deliveryDate);
-            cmd.Parameters.AddWithValue("shipStr", shipStr);
+            cmd.Parameters.AddWithValue("shipDate", shipDate);
+            cmd.Parameters.AddWithValue("deliveryStr", deliveryStr);
+            cmd.Parameters.AddWithValue("customerStr", customerStr);
             cmd.Parameters.AddWithValue("filterByStore", filterByStore);
             cmd.Parameters.Add(new NpgsqlParameter("storeCust", NpgsqlDbType.Array | NpgsqlDbType.Text)
             {
@@ -184,7 +224,11 @@ public sealed class AcceptanceRecordService
                     ItemName = reader.IsDBNull(5) ? "" : reader.GetString(5),
                     UnitName = reader.IsDBNull(6) ? "" : reader.GetString(6),
                     LineQuantity = reader.IsDBNull(7) ? 0m : reader.GetDecimal(7),
-                    Addinfo01 = reader.IsDBNull(8) ? "" : reader.GetString(8)
+                    Addinfo01 = reader.IsDBNull(8) ? "" : reader.GetString(8),
+                    CustomerCode = reader.IsDBNull(9) ? "" : reader.GetString(9),
+                    LocationCode = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    Addinfo05 = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    Addinfo02 = reader.IsDBNull(12) ? "" : reader.GetString(12),
                 });
             }
 
@@ -223,7 +267,11 @@ public sealed class AcceptanceRecordService
                   COALESCE(i.itemname, '') AS itemname,
                   COALESCE(u0.unitname, '') AS unitname,
                   sol.quantity AS line_qty,
-                  COALESCE(a.addinfo01, '') AS addinfo01
+                  COALESCE(a.addinfo01, '') AS addinfo01,
+                  COALESCE(TRIM(so.customercode), '') AS customercode,
+                  COALESCE(TRIM(so.customerdeliverylocationcode), '') AS locationcode,
+                  COALESCE(TRIM(COALESCE(a.addinfo05, '')), '') AS addinfo05,
+                  COALESCE(TRIM(COALESCE(a.addinfo02, '')), '') AS addinfo02
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -269,15 +317,44 @@ public sealed class AcceptanceRecordService
                     EatDateDisplay = needDate?.ToString("MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = reader.IsDBNull(4) ? "" : reader.GetString(4),
                     ChildItemText = childText,
-                    MealCountDisplay = BentoPdfService.FormatMealCountDisplay(lineQty, addinfo01),
+                    MealCountDisplay = lineQty.ToString("0.###", CultureInfo.InvariantCulture),
                     TotalQtyDisplay = lineQty.ToString("0.###", CultureInfo.InvariantCulture),
                     UnitName = reader.GetString(7),
                     LineQuantity = lineQty,
-                    Addinfo01 = addinfo01
+                    Addinfo01 = addinfo01,
+                    CustomerCode = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                    LocationCode = reader.IsDBNull(11) ? "" : reader.GetString(11),
+                    Addinfo05 = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                    Addinfo02 = reader.IsDBNull(13) ? "" : reader.GetString(13),
                 });
             }
 
-            return AggregatePdfLines(list);
+            var aggregated = AggregatePdfLines(list);
+
+            // cstmeat から食数を取得し、総量 = 食数 × addinfo01 で上書き
+            var deliveryDates = aggregated
+                .Select(m => m.PlannedDeliveryDate?.ToString("yyyyMMdd") ?? "")
+                .Where(d => d.Length == 8).Distinct().ToList();
+            var cstmeatMap = await LoadCstmeatMapAsync(deliveryDates, ct);
+
+            foreach (var model in aggregated)
+            {
+                var delivDate = model.PlannedDeliveryDate?.ToString("yyyyMMdd") ?? "";
+                var cstKey = (
+                    (model.CustomerCode ?? "").Trim(),
+                    (model.LocationCode ?? "").Trim(),
+                    delivDate,
+                    (model.Addinfo05 ?? "").Trim(),
+                    (model.Addinfo02 ?? "").Trim()
+                );
+                var mealCount = cstmeatMap.TryGetValue(cstKey, out var cstQty) ? cstQty : model.LineQuantity;
+                var totalQty = ComputeTotalQty(mealCount, model.Addinfo01);
+                model.LineQuantity = mealCount;
+                model.MealCountDisplay = mealCount.ToString("0.###", CultureInfo.InvariantCulture);
+                model.TotalQtyDisplay = totalQty.ToString("0.###", CultureInfo.InvariantCulture);
+            }
+
+            return aggregated;
         }
         finally
         {
@@ -286,8 +363,14 @@ public sealed class AcceptanceRecordService
         }
     }
 
-    private static AcceptanceRecordSearchRowDto MapSearchRow(AcceptanceRecordSearchSqlRow r)
+    private static AcceptanceRecordSearchRowDto MapSearchRow(
+        AcceptanceRecordSearchSqlRow r,
+        IReadOnlyDictionary<(string, string, string, string, string), decimal> cstmeatMap)
     {
+        var cstKey = (r.CustomerCode.Trim(), r.LocationCode.Trim(), r.DeliveryYyyymmdd, r.Addinfo05.Trim(), r.Addinfo02.Trim());
+        var mealCount = cstmeatMap.TryGetValue(cstKey, out var cstQty) ? cstQty : r.LineQuantity;
+        var totalQty = ComputeTotalQty(mealCount, r.Addinfo01 ?? "");
+
         var eatDate = FormatDateDisplay(r.DeliveryYyyymmdd);
         var childItem = string.IsNullOrEmpty(r.ItemCode)
             ? r.ItemName ?? ""
@@ -299,12 +382,28 @@ public sealed class AcceptanceRecordService
             SalesOrderLineIds = ids.ToList(),
             SalesOrderLineId = ids.Length > 0 ? ids[0] : 0,
             EatDate = eatDate,
-            MealTime = r.SlotDisplay ?? "",
+            MealTime = MapMealTime(r.Addinfo05),
             ChildItem = childItem,
-            MealCountDisplay = BentoPdfService.FormatMealCountDisplay(r.LineQuantity, r.Addinfo01 ?? ""),
-            TotalQtyDisplay = r.LineQuantity.ToString("0.###", CultureInfo.InvariantCulture),
+            MealCountDisplay = mealCount.ToString("0.###", CultureInfo.InvariantCulture),
+            TotalQtyDisplay = totalQty.ToString("0.###", CultureInfo.InvariantCulture),
             UnitName = r.UnitName ?? ""
         };
+    }
+
+    private static string MapMealTime(string? addinfo05) => (addinfo05 ?? "").Trim() switch
+    {
+        "1" => "朝",
+        "2" => "昼",
+        "3" => "夕",
+        var v => v
+    };
+
+    private static decimal ComputeTotalQty(decimal mealCount, string addinfo01)
+    {
+        if (string.IsNullOrWhiteSpace(addinfo01)) return mealCount;
+        if (!decimal.TryParse(addinfo01.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var portion) || portion == 0)
+            return mealCount;
+        return mealCount * portion;
     }
 
     /// <summary>
@@ -338,17 +437,21 @@ public sealed class AcceptanceRecordService
                     EatDateDisplay = head.EatDateDisplay,
                     SlotDisplay = head.SlotDisplay ?? "",
                     ChildItemText = head.ChildItemText ?? "",
-                    MealCountDisplay = BentoPdfService.FormatMealCountDisplay(qty, addinfo),
+                    MealCountDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture),
                     TotalQtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture),
                     UnitName = head.UnitName ?? "",
                     LineQuantity = qty,
-                    Addinfo01 = addinfo
+                    Addinfo01 = addinfo,
+                    CustomerCode = head.CustomerCode ?? "",
+                    LocationCode = head.LocationCode ?? "",
+                    Addinfo05 = head.Addinfo05 ?? "",
+                    Addinfo02 = head.Addinfo02 ?? "",
                 };
             })
             .OrderBy(x => x.DeliveryLocationName, StringComparer.Ordinal)
             .ThenBy(x => x.PlannedShipDate ?? DateOnly.MaxValue)
             .ThenBy(x => x.PlannedDeliveryDate ?? DateOnly.MaxValue)
-            .ThenBy(x => x.SlotDisplay ?? "", StringComparer.Ordinal)
+            .ThenBy(x => x.Addinfo05 ?? "", StringComparer.Ordinal)
             .ThenBy(x => x.ItemCode ?? "", StringComparer.Ordinal)
             .ThenBy(x => x.SalesOrderLineId)
             .ToList();
@@ -406,6 +509,44 @@ public sealed class AcceptanceRecordService
         if (string.IsNullOrEmpty(yyyymmdd) || yyyymmdd.Length != 8) return yyyymmdd;
         return $"{yyyymmdd[..4]}-{yyyymmdd.Substring(4, 2)}-{yyyymmdd.Substring(6, 2)}";
     }
+
+    /// <summary>
+    /// cstmeat から食数マップを取得する。
+    /// キー: (得意先コード, 納入場所コード, 喫食日YYYYMMDD, 喫食時間=info04, 食種=info05) → 食数。
+    /// </summary>
+    private async Task<IReadOnlyDictionary<(string, string, string, string, string), decimal>>
+        LoadCstmeatMapAsync(IReadOnlyList<string> deliveryDates, CancellationToken ct)
+    {
+        if (deliveryDates == null || deliveryDates.Count == 0)
+            return new Dictionary<(string, string, string, string, string), decimal>();
+
+        var dateList = deliveryDates.Where(d => !string.IsNullOrEmpty(d)).Distinct().ToList();
+        if (dateList.Count == 0)
+            return new Dictionary<(string, string, string, string, string), decimal>();
+
+        var entities = await _otherDb.Cstmeats.AsNoTracking()
+            .Where(c => c.Info03 != null && dateList.Contains(c.Info03))
+            .ToListAsync(ct);
+
+        return entities
+            .GroupBy(c => (
+                StripLeadingZeros((c.Info01 ?? "").Trim()),
+                (c.Info02 ?? "").Trim(),
+                (c.Info03 ?? "").Trim(),
+                (c.Info04 ?? "").Trim(),
+                (c.Info05 ?? "").Trim()
+            ))
+            .ToDictionary(
+                g => g.Key,
+                g => g.Sum(c => decimal.TryParse((c.Info07 ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var q) ? q : 0m));
+    }
+
+    private static string StripLeadingZeros(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.TrimStart('0');
+        return t.Length == 0 ? "0" : t;
+    }
 }
 
 internal sealed class AcceptanceRecordSearchSqlRow
@@ -419,4 +560,8 @@ internal sealed class AcceptanceRecordSearchSqlRow
     public string? UnitName { get; set; }
     public decimal LineQuantity { get; set; }
     public string? Addinfo01 { get; set; }
+    public string CustomerCode { get; set; } = "";
+    public string LocationCode { get; set; } = "";
+    public string Addinfo05 { get; set; } = "";
+    public string Addinfo02 { get; set; } = "";
 }

@@ -70,7 +70,8 @@ public sealed class AcceptanceRecordPdfService
             .OrderBy(l => l.DeliveryLocationName ?? "", StringComparer.Ordinal)
             .ThenBy(l => l.PlannedShipDate ?? DateOnly.MaxValue)
             .ThenBy(l => l.PlannedDeliveryDate ?? DateOnly.MaxValue)
-            .ThenBy(l => l.SlotDisplay ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.Addinfo05 ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.ItemCode ?? "", StringComparer.Ordinal)
             .ThenBy(l => l.SalesOrderLineId)
             .ToList();
 
@@ -101,6 +102,14 @@ public sealed class AcceptanceRecordPdfService
 
         return pages;
     }
+
+    private static string MapMealTime(string? addinfo05) => (addinfo05 ?? "").Trim() switch
+    {
+        "1" => "朝",
+        "2" => "昼",
+        "3" => "夕",
+        var v => v
+    };
 
     internal static Dictionary<string, string> BuildPageTagValues(
         IReadOnlyList<AcceptanceRecordPdfLineModel> chunk,
@@ -149,7 +158,7 @@ public sealed class AcceptanceRecordPdfService
 
             tags[$"ITEMNM{nn}"] = name;
             tags[$"EATDATE{nn}"] = r.EatDateDisplay ?? "";
-            tags[$"EATTIME{nn}"] = r.SlotDisplay ?? "";
+            tags[$"EATTIME{nn}"] = MapMealTime(r.Addinfo05);
             tags[$"ITEMNUM{nn}"] = code;
             tags[$"COUNT{nn}"] = r.MealCountDisplay ?? "";
             tags[$"ALLQUN{nn}"] = r.TotalQtyDisplay ?? "";

@@ -1,4 +1,4 @@
-import { fetchAcceptanceDeliveryLocations, searchAcceptanceRecord } from './api.js';
+import { fetchAcceptanceCustomers, fetchAcceptanceDeliveryLocations, searchAcceptanceRecord } from './api.js';
 
 let acceptanceRows = [];
 let acceptanceLocationList = [];
@@ -51,7 +51,8 @@ function displayAcceptanceResults(rows) {
     section.style.display = 'block';
     printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('acceptanceHeaderCheckbox');
-    if (headerCheckbox) headerCheckbox.checked = false;
+    tbody.querySelectorAll('.acceptance-item-checkbox').forEach(cb => { cb.checked = true; });
+    if (headerCheckbox) headerCheckbox.checked = true;
 }
 
 function updateAcceptanceStoreSummary() {
@@ -98,6 +99,22 @@ function buildAcceptanceStorePanel() {
         container.appendChild(label);
     });
     updateAcceptanceStoreSummary();
+}
+
+async function loadAcceptanceCustomers() {
+    const sel = document.getElementById('acceptanceCustomerCode');
+    if (!sel) return;
+    try {
+        const list = await fetchAcceptanceCustomers();
+        (list || []).forEach((c) => {
+            const opt = document.createElement('option');
+            opt.value = c.customerCode || '';
+            opt.textContent = (c.displayLabel || c.customerCode || '').trim();
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 async function loadAcceptanceDeliveryLocations() {
@@ -150,6 +167,7 @@ export function getSelectedAcceptanceSalesOrderLineIds() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadAcceptanceCustomers();
     loadAcceptanceDeliveryLocations();
 
     const storeDisplay = document.getElementById('acceptanceStoreDisplay');
@@ -185,17 +203,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!searchBtn) return;
 
     searchBtn.addEventListener('click', async () => {
-        const delvDate = document.getElementById('acceptanceDelvDate').value;
         const shipDate = document.getElementById('acceptanceShipDate').value || '';
+        const delvDate = document.getElementById('acceptanceDelvDate').value || '';
+        const customerCode = document.getElementById('acceptanceCustomerCode')?.value || '';
         const storePairs = getSelectedAcceptanceStorePairs();
 
-        if (!delvDate) {
-            alert('納品日を入力してください');
+        if (!shipDate) {
+            alert('出荷日を入力してください');
             return;
         }
 
         try {
-            const res = await searchAcceptanceRecord(delvDate, shipDate, storePairs);
+            const res = await searchAcceptanceRecord(shipDate, delvDate, storePairs, customerCode);
             acceptanceRows = res.rows || [];
             displayAcceptanceResults(acceptanceRows);
         } catch (e) {

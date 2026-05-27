@@ -25,12 +25,14 @@ public class DeliveryNoteController : ControllerBase
     [HttpGet("search")]
     public async Task<ActionResult<DeliveryNoteSearchResponseDto>> Search(
         [FromQuery] string delvedt,
+        [FromQuery] string? customerType,
+        [FromQuery] string? deliveryRoute,
         CancellationToken ct)
     {
         try
         {
             var normalized = delvedt?.Replace("-", "") ?? "";
-            var items = await _searchService.SearchByEatingDateAsync(normalized, ct);
+            var items = await _searchService.SearchByEatingDateAsync(normalized, customerType, deliveryRoute, ct);
             return Ok(new DeliveryNoteSearchResponseDto { Total = items.Count, Items = items });
         }
         catch (ArgumentException ex)

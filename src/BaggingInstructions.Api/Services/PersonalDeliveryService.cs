@@ -1,68 +1,120 @@
 using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
+using BaggingInstructions.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 個人配送指示書画面用：salesorderline を配送日（planneddeliverydate）で検索し、
-/// 配送日・配送便名称（salesorderlineaddinfo.addinfo04name）・配送エリア（customerdeliverylocationaddinfo.addinfo01）の一覧を返す。
-/// 配送エリア未設定（null/空）の組み合わせは検索結果に含めない。
+/// 個人配送指示書画面用：craftlineaxother.cstmeat を喫食日で検索し、
+/// 明細は得意先300・addinfo08先頭1、集計は得意先300/310を対象に喫食日・喫食時間・コースの一覧を返す。
 /// </summary>
 public class PersonalDeliveryService
 {
     private readonly AppDbContext _db;
+    private readonly CstmeatDbContext _cstmeatDb;
 
-    public PersonalDeliveryService(AppDbContext db)
+    public PersonalDeliveryService(AppDbContext db, CstmeatDbContext cstmeatDb)
     {
         _db = db;
+        _cstmeatDb = cstmeatDb;
     }
 
-    /// <summary>配送日（YYYYMMDD）で salesorderline を検索し、配送エリアが設定されている組み合わせに限り、配送日・配送便名称・配送エリアの distinct 一覧を返す。</summary>
-    public async Task<List<PersonalDeliverySearchResultDto>> SearchByDeliveryDateAsync(string delvedt, CancellationToken ct = default)
+    /// <summary>喫食日（YYYYMMDD）で cstmeat を検索し、喫食日・喫食時間・コースの distinct 一覧を返す。</summary>
+    public async Task<List<PersonalDeliverySearchResultDto>> SearchByEatingDateAsync(
+        string delvedt,
+        string? variant = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(delvedt) || delvedt.Length != 8)
-            throw new ArgumentException("配送日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
+            throw new ArgumentException("喫食日はYYYYMMDD形式（8桁）で指定してください。", nameof(delvedt));
 
-        if (!DateOnly.TryParseExact(delvedt, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var deliveryDate))
-            throw new ArgumentException("配送日の形式が不正です。", nameof(delvedt));
+        var isSummary = string.Equals((variant ?? "").Trim(), "summary", StringComparison.OrdinalIgnoreCase);
+        var cstmeatRows = await LoadTargetCstmeatRowsAsync(delvedt, isSummary, ct);
+        if (cstmeatRows.Count == 0)
+            return new List<PersonalDeliverySearchResultDto>();
 
-        // DateOnly.ToString は SQL に変換されないため、DB では日付をそのまま取得し、メモリ上でフォーマットする
-        var rows = await _db.SalesOrderLines
-            .AsNoTracking()
-            .Include(l => l.Addinfo)
-            .Include(l => l.SalesOrder!)
-                .ThenInclude(so => so!.CustomerDeliveryLocation)
-            .Where(l => l.PlannedDeliveryDate == deliveryDate)
-            .Select(l => new
-            {
-                PlannedDeliveryDate = l.PlannedDeliveryDate,
-                TimeName = l.Addinfo != null ? l.Addinfo.Addinfo04Name : null,
-                Area = l.SalesOrder != null && l.SalesOrder.CustomerDeliveryLocation != null && l.SalesOrder.CustomerDeliveryLocation.Addinfo != null
-                    ? l.SalesOrder.CustomerDeliveryLocation.Addinfo.Addinfo01
-                    : null
-            })
-            .Where(x => x.TimeName != null || x.Area != null)
-            .ToListAsync(ct);
+        var customerCodes = isSummary
+            ? PersonalDeliveryHelper.SummaryTargetCustomerCodes
+            : new[] { PersonalDeliveryHelper.TargetCustomerCode };
 
-        return rows
-            .Select(r => new
+        var locationCodes = cstmeatRows
+            .Select(r => (r.Info02 ?? "").Trim())
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var addinfoMap = await LoadLocationAddinfoMapAsync(customerCodes, locationCodes, ct);
+
+        var groups = new HashSet<(string EatingDate, string MealTime, string Course)>();
+        foreach (var cm in cstmeatRows)
+        {
+            var custCode = (cm.Info01 ?? "").Trim();
+            var locCode = (cm.Info02 ?? "").Trim();
+            if (locCode.Length == 0) continue;
+
+            addinfoMap.TryGetValue((custCode, locCode), out var addinfo);
+            if (!isSummary)
             {
-                DeliveryDate = r.PlannedDeliveryDate.HasValue ? r.PlannedDeliveryDate!.Value.ToString("yyyyMMdd") : "",
-                TimeName = r.TimeName,
-                Area = r.Area
-            })
-            .Where(x => x.DeliveryDate != "" && !string.IsNullOrEmpty(x.Area))
-            .Distinct()
-            .OrderBy(x => x.DeliveryDate)
-            .ThenBy(x => x.TimeName ?? "")
-            .ThenBy(x => x.Area ?? "")
-            .Select(r => new PersonalDeliverySearchResultDto
+                if (addinfo == null) continue;
+                if (!PersonalDeliveryHelper.IsTargetAddinfo08(addinfo.Addinfo08)) continue;
+            }
+
+            var (course, _) = PersonalDeliveryHelper.ResolveCourseAndOrder(cm.Info19, addinfo);
+            groups.Add(((cm.Info03 ?? "").Trim(), (cm.Info04 ?? "").Trim(), course));
+        }
+
+        return groups
+            .OrderBy(g => g.EatingDate, StringComparer.Ordinal)
+            .ThenBy(g => g.MealTime, StringComparer.Ordinal)
+            .ThenBy(g => g.Course, StringComparer.Ordinal)
+            .Select(g => new PersonalDeliverySearchResultDto
             {
-                DeliveryDate = r.DeliveryDate,
-                TimeName = r.TimeName ?? "",
-                Area = r.Area ?? ""
+                EatingDate = g.EatingDate,
+                MealTime = g.MealTime,
+                MealTimeName = BaggingEatingTimeLabel.MapFromAddinfo05(g.MealTime),
+                Course = g.Course
             })
             .ToList();
+    }
+
+    internal async Task<List<Cstmeat>> LoadTargetCstmeatRowsAsync(string dateStr, bool isSummary, CancellationToken ct)
+    {
+        var query = _cstmeatDb.Cstmeats
+            .AsNoTracking()
+            .Where(c => c.Info03 == dateStr);
+
+        if (isSummary)
+        {
+            var codes = PersonalDeliveryHelper.SummaryTargetCustomerCodes;
+            return await query
+                .Where(c => c.Info01 != null && codes.Contains(c.Info01.Trim()))
+                .ToListAsync(ct);
+        }
+
+        return await query
+            .Where(c => c.Info01 != null && c.Info01.Trim() == PersonalDeliveryHelper.TargetCustomerCode)
+            .ToListAsync(ct);
+    }
+
+    internal async Task<Dictionary<(string CustomerCode, string LocationCode), CustomerDeliveryLocationAddinfo>>
+        LoadLocationAddinfoMapAsync(
+            IReadOnlyList<string> customerCodes,
+            IReadOnlyList<string> locationCodes,
+            CancellationToken ct)
+    {
+        if (locationCodes.Count == 0 || customerCodes.Count == 0)
+            return new Dictionary<(string, string), CustomerDeliveryLocationAddinfo>();
+
+        var addinfos = await _db.CustomerDeliveryLocationAddinfos
+            .AsNoTracking()
+            .Where(a => customerCodes.Contains(a.CustomerCode))
+            .Where(a => locationCodes.Contains(a.LocationCode))
+            .ToListAsync(ct);
+
+        return addinfos
+            .GroupBy(a => ((a.CustomerCode ?? "").Trim(), (a.LocationCode ?? "").Trim()))
+            .Where(g => g.Key.Item1.Length > 0 && g.Key.Item2.Length > 0)
+            .ToDictionary(g => g.Key, g => g.First());
     }
 }
