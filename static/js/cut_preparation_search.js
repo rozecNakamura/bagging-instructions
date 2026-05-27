@@ -8,7 +8,7 @@ import {
     exportCutPreparationExcel,
     exportCutPreparationProductLabelPdf
 } from './api.js';
-import { openPdfInIframe } from './pdf_generator.js';
+import { openLabelPdfForPrint } from './pdf_generator.js';
 
 let cutGroups = [];
 let cutWorkcenterList = [];
@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 labelCount,
                 'cut'
             );
-            openPdfInIframe(blob, '現品ラベル PDF 印刷');
+            openLabelPdfForPrint(blob, '現品ラベル PDF 印刷');
         } catch (e) {
             alert('現品ラベル出力に失敗しました: ' + e.message);
             console.error(e);

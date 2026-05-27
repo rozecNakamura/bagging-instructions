@@ -126,7 +126,7 @@ export async function generateLabelPDF(data) {
     const items = data.items || [];
     if (items.length === 0) throw new Error('ラベルデータがありません');
     const blob = await generateBaggingLabelPdfBlob(items);
-    openPdfInIframe(blob, '袋詰現品票 PDF 印刷');
+    openLabelPdfForPrint(blob, '袋詰現品票 PDF 印刷');
 }
 
 /**
@@ -212,6 +212,33 @@ export function openPdfInIframe(blob, title) {
     };
     iframe.src = url;
     document.body.appendChild(iframe);
+}
+
+/**
+ * ラベル印刷専用（現品票など小サイズ PDF）。
+ * 通常の openPdfInIframe では Chrome が 0×0 iframe から正確な用紙サイズを読み取れず
+ * A4 扱いにしてしまう場合があるため、PDF 本来のサイズで印刷できるよう
+ * 新しいウィンドウで PDF を開いてから print() を呼び出す。
+ * 印刷ダイアログで用紙サイズ「60×60mm」・倍率「実際のサイズ」を確認してください。
+ * @param {Blob} blob - PDF blob
+ * @param {string} title - ウィンドウタイトル
+ */
+export function openLabelPdfForPrint(blob, title) {
+    const url = URL.createObjectURL(blob);
+    // 用紙サイズ相当（60mm≈170pt≈227px@96dpi）のウィンドウを開く
+    const labelPx = Math.ceil(60 * 96 / 25.4); // ≈227px
+    const win = window.open(url, '_blank',
+        `noopener,width=${labelPx * 4},height=${labelPx * 4 + 60},toolbar=0,menubar=0,scrollbars=0`);
+    if (win) {
+        win.onload = () => {
+            try { win.print(); } catch (_) { /* ユーザーが手動で印刷ボタンを押してください */ }
+            setTimeout(() => URL.revokeObjectURL(url), 120000);
+        };
+    } else {
+        // ポップアップブロックされた場合はフォールバック
+        openPdfInIframe(blob, title);
+        URL.revokeObjectURL(url);
+    }
 }
 
 function escapeHtml(text) {

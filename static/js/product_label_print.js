@@ -2,7 +2,7 @@
  * 現品票（調理）：サーバー PDF（現品票（調理）.rxz）→ブラウザ印刷
  */
 import { generateProductLabelPdfBlob } from './api.js';
-import { openPdfInIframe } from './pdf_generator.js';
+import { openLabelPdfForPrint } from './pdf_generator.js';
 import { getSelectedProductLabelItems } from './product_label_search.js';
 
 document.getElementById('productLabelPrintBtn').addEventListener('click', async () => {
@@ -28,7 +28,10 @@ document.getElementById('productLabelPrintBtn').addEventListener('click', async 
 
     try {
         const blob = await generateProductLabelPdfBlob(allIds, 1, cutMode, instructionType, perRowCounts);
-        openPdfInIframe(blob, '現品票（調理） PDF 印刷');
+        // ラベル専用: 60×60mm ページを正しいサイズで印刷するため、
+        // 新しいウィンドウで PDF を開いて印刷ダイアログを起動する。
+        // 印刷ダイアログで用紙サイズを「60×60mm」に、倍率を「実際のサイズ」に設定してください。
+        openLabelPdfForPrint(blob, '現品票（調理） PDF 印刷');
     } catch (e) {
         alert(e instanceof Error ? e.message : String(e));
     }
