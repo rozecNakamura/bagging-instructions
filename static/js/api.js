@@ -1769,5 +1769,12 @@ export async function exportCstmeatText({ slipType, dateFrom, timeFrom, dateTo, 
         try { const body = await res.json(); detail = body.detail ? ` - ${body.detail}` : ''; } catch (_) { /* ignore */ }
         throw new Error(`出力エラー: ${res.status}${detail}`);
     }
-    return await res.blob();
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const plainMatch = disposition.match(/filename="?([^";\r\n]+)"?/i);
+    const filename = starMatch
+        ? decodeURIComponent(starMatch[1])
+        : (plainMatch ? plainMatch[1] : 'export.txt');
+    return { blob, filename };
 }

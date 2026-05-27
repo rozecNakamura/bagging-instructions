@@ -64,8 +64,14 @@ public class AkinaibugyouController : ControllerBase
         {
             var filter = new AkinaibugyouFilter(slipType ?? "", dateFrom, timeFrom ?? "1", dateTo, timeTo ?? "3", customer, store);
             var bytes = await _service.BuildTextBytesAsync(filter, ct);
-            var filename = $"商奉行出力_{dateFrom}_{dateTo}.txt";
-            return File(bytes, "text/plain; charset=utf-8", filename);
+            var today = DateTime.Today.ToString("yyyyMMdd");
+            var filename = (slipType ?? "") switch
+            {
+                "sales"    => $"Uriage3({today}).txt",
+                "delivery" => $"Nouhin1({today}).txt",
+                _          => $"商奉行出力_{dateFrom}_{dateTo}.txt",
+            };
+            return File(bytes, "text/plain; charset=shift_jis", filename);
         }
         catch (Exception ex)
         {

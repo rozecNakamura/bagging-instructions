@@ -79,10 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            const blob = await exportCstmeatText(lastSearchParams);
-            const dateFrom = (lastSearchParams.dateFrom || '').replace(/-/g, '');
-            const dateTo = (lastSearchParams.dateTo || '').replace(/-/g, '');
-            triggerDownload(blob, `商奉行出力_${dateFrom}_${dateTo}.txt`);
+            const { blob, filename } = await exportCstmeatText(lastSearchParams);
+            triggerDownload(blob, filename);
         } catch (e) {
             alert('出力に失敗しました: ' + e.message);
             console.error(e);
