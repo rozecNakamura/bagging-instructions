@@ -45,26 +45,41 @@ public class CutPreparationService
 
         var rows = await _db.Database
             .SqlQuery<CutPreparationGroupSqlRow>($@"
+WITH mfg AS (
+  SELECT
+    ot.ordertableid,
+    COALESCE(ot.needdate, sol.planneddeliverydate) AS needdate_combined,
+    TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) AS item_code,
+    COALESCE(
+      NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+      NULLIF(TRIM(COALESCE(SPLIT_PART(p.productno,  '|', 2), '')), ''),
+      NULLIF(TRIM(COALESCE(SPLIT_PART(gp.productno, '|', 2), '')), ''),
+      ''
+    ) AS route_code
+  FROM ordertable ot
+  LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+  LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
+  LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
+)
 SELECT
-  TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') AS ""Delvedt"",
-  TRIM(COALESCE(a.addinfo03, '')) AS ""MfgRouteCode"",
-  COALESCE(MAX(TRIM(COALESCE(a.addinfo03name, ''))), '') AS ""MfgRouteName"",
-  COUNT(DISTINCT ot.ordertableid)::int AS ""LineCount""
-FROM ordertable ot
-LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
-WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
-  AND ({mfgRoutes.Length} = 0 OR TRIM(COALESCE(a.addinfo03, '')) = ANY({mfgRoutes}))
+  TO_CHAR(m.needdate_combined, 'YYYYMMDD') AS ""Delvedt"",
+  m.route_code AS ""MfgRouteCode"",
+  COALESCE(NULLIF(TRIM(COALESCE(ds.slotname, '')), ''), m.route_code) AS ""MfgRouteName"",
+  COUNT(DISTINCT m.ordertableid)::int AS ""LineCount""
+FROM mfg m
+LEFT JOIN deliveryslot ds ON ds.slotcode = m.route_code
+WHERE m.needdate_combined = {date.Value}
+  AND ({mfgRoutes.Length} = 0 OR m.route_code = ANY({mfgRoutes}))
   AND ({wcIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM itemworkcentermapping m3
         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
-        WHERE m3.itemcode = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
+        WHERE m3.itemcode = m.item_code
           AND wc.workcenterid = ANY({wcIds})
       ))
-  AND ({itemF} = '' OR TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) ILIKE '%' || {itemF} || '%')
+  AND ({itemF} = '' OR m.item_code ILIKE '%' || {itemF} || '%')
 GROUP BY
-  TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
-  TRIM(COALESCE(a.addinfo03, ''))
+  TO_CHAR(m.needdate_combined, 'YYYYMMDD'),
+  m.route_code
 ORDER BY ""Delvedt"", ""MfgRouteCode""
 ")
             .ToListAsync(ct);
@@ -114,10 +129,16 @@ ORDER BY ""Delvedt"", ""MfgRouteCode""
 SELECT DISTINCT ot.ordertableid AS ""Ordertableid""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
+LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
+LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
-  AND TRIM(COALESCE(a.addinfo03, '')) = {routeCode}
+  AND COALESCE(
+        NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+        NULLIF(TRIM(COALESCE(SPLIT_PART(p.productno,  '|', 2), '')), ''),
+        NULLIF(TRIM(COALESCE(SPLIT_PART(gp.productno, '|', 2), '')), ''),
+        ''
+      ) = {routeCode}
   AND ({wcIds.Length} = 0 OR EXISTS (
         SELECT 1 FROM itemworkcentermapping m3
         INNER JOIN workcenter wc ON wc.workcentercode = m3.workcentercode
@@ -253,12 +274,18 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ELSE ''
                   END AS final_product_name,
                   COALESCE(mid.middleclassificationname, '') AS middle_class_name,
-                  TRIM(COALESCE(a.addinfo03, '')) AS mfg_route,
+                  COALESCE(
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(p.productno,  '|', 2), '')), ''),
+                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp.productno, '|', 2), '')), ''),
+                    ''
+                  ) AS mfg_route,
                   COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
                   COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date
                 FROM ordertable ot
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
+                LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
+                LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
                 INNER JOIN item parent_i ON TRIM(BOTH FROM parent_i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                 LEFT JOIN item sol_i ON TRIM(sol_i.itemcode) = TRIM(COALESCE(NULLIF(TRIM(sol.itemcode), ''), ''))
                 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassficationcode

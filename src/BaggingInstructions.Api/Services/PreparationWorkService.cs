@@ -93,17 +93,44 @@ public class PreparationWorkService
         var rows = await _db.Database
             .SqlQuery<PreparationWorkManufacturingRouteSqlRow>($@"
 SELECT
-  TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) AS ""Code"",
-  COALESCE(NULLIF(TRIM(ds.slotname), ''), TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))) AS ""Name""
+  COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno,         '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno,  '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno,      '|', 2), '')), ''),
+    ''
+  ) AS ""Code"",
+  COALESCE(
+    NULLIF(TRIM(ds.slotname), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno,         '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno,  '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno,      '|', 2), '')), ''),
+    ''
+  ) AS ""Name""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-LEFT JOIN deliveryslot ds ON ds.slotcode = TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+LEFT JOIN ordertable gp_ot     ON gp_ot.ordertableid     = parent_ot.parentordertableid
+LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno,         '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno,  '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno,      '|', 2), '')), ''),
+    ''
+  )
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-  AND TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')) <> ''
-GROUP BY TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), '')), TRIM(ds.slotname)
-ORDER BY TRIM(COALESCE(SPLIT_PART(parent_ot.productno, '|', 2), ''))
+  AND COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno,         '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno,  '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno,      '|', 2), '')), ''),
+    ''
+  ) <> ''
+GROUP BY COALESCE(
+    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno,         '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(parent_ot.productno,  '|', 2), '')), ''),
+    NULLIF(TRIM(COALESCE(SPLIT_PART(gp_ot.productno,      '|', 2), '')), ''),
+    ''
+  ), TRIM(ds.slotname)
+ORDER BY 1
 ")
             .ToListAsync(ct);
 
