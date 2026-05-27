@@ -74,6 +74,8 @@ public sealed class InspectionRecordPdfLineModel
     /// <summary>単位0名称。</summary>
     public string UnitName { get; set; } = "";
 
+    public string SupplierName { get; set; } = "";
+
     // 以下の項目は帳票上は空欄とするため、常に空文字を出力する。
     public string DeviationHandling { get; set; } = "";
     public string StorageLocation { get; set; } = "";

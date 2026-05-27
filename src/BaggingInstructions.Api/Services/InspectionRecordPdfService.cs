@@ -83,6 +83,7 @@ public sealed class InspectionRecordPdfService
             var unitFieldIndex = i + QuantityUnitIndexOffset;
             var unitNn = unitFieldIndex.ToString("D2");
 
+            tags[$"LOCATIONNM{nn}"] = r.SupplierName ?? string.Empty;
             tags[$"ORDERNO{nn}"] = r.OrderNo ?? string.Empty;
             tags[$"ITEMCD{nn}"] = r.ItemCode ?? string.Empty;
             tags[$"ITEMNM{nn}"] = r.ItemName ?? string.Empty;

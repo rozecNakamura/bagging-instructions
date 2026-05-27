@@ -25,13 +25,13 @@ public static class CookingInstructionQuantity
         decimal? conversionValue2,
         decimal? conversionValue3)
     {
-        if (qtyUni0.HasValue)
+        if (qtyUni0 is > 0)
             return qtyUni0.Value;
-        if (qtyUni1.HasValue && conversionValue1 is > 0)
+        if (qtyUni1 is > 0 && conversionValue1 is > 0)
             return qtyUni1.Value * conversionValue1.Value;
-        if (qtyUni2.HasValue && conversionValue2 is > 0)
+        if (qtyUni2 is > 0 && conversionValue2 is > 0)
             return qtyUni2.Value * conversionValue2.Value;
-        if (qtyUni3.HasValue && conversionValue3 is > 0)
+        if (qtyUni3 is > 0 && conversionValue3 is > 0)
             return qtyUni3.Value * conversionValue3.Value;
         return ToParentQtyInUnit0(rawOrdertableQty, iaCar1, iaCar2, iaCar3, iaCar0);
     }
