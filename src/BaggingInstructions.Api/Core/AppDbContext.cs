@@ -231,7 +231,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Classification1>()
             .HasIndex(c => c.Classification1Code)
             .IsUnique();
-        // item.classfication1code（DBカラム名はタイポ）→ classification1.classification1code
+        // item.classification1code → classification1.classification1code
         modelBuilder.Entity<Item>()
             .HasOne(i => i.Classification1)
             .WithMany()

@@ -61,20 +61,20 @@ public class Item
     [Column("salesprice0")]
     public decimal? SalesPrice0 { get; set; }
 
-    /// <summary>大分類コード（DB: majorclassficationcode）。majorclassification.majorclassificationcode と対応。</summary>
-    [Column("majorclassficationcode")]
+    /// <summary>大分類コード（DB: majorclassificationcode）。majorclassification.majorclassificationcode と対応。</summary>
+    [Column("majorclassificationcode")]
     public string? MajorClassificationCode { get; set; }
 
-    /// <summary>分類1コード。DB 列名は craftlineax の綴り classfication（i 欠け）。</summary>
-    [Column("classfication1code")]
+    /// <summary>分類1コード（DB: classification1code）。</summary>
+    [Column("classification1code")]
     public string? Classification1Code { get; set; }
 
-    /// <summary>分類2コード（DB: classfication2code）。</summary>
-    [Column("classfication2code")]
+    /// <summary>分類2コード（DB: classification2code）。</summary>
+    [Column("classification2code")]
     public string? Classification2Code { get; set; }
 
-    /// <summary>分類3コード（DB: classfication3code）。</summary>
-    [Column("classfication3code")]
+    /// <summary>分類3コード（DB: classification3code）。</summary>
+    [Column("classification3code")]
     public string? Classification3Code { get; set; }
 
     /// <summary>仕入先コード（計量器連携 ITEM.csv の LOCCD 候補）。</summary>
@@ -89,12 +89,12 @@ public class Item
     [Column("warehousecode")]
     public string? WarehouseCode { get; set; }
 
-    /// <summary>中分類コード（DB 列名は middleclassficationcode）。middleclassification.middleclassificationcode と対応。</summary>
-    [Column("middleclassficationcode")]
+    /// <summary>中分類コード（DB: middleclassificationcode）。middleclassification.middleclassificationcode と対応。</summary>
+    [Column("middleclassificationcode")]
     public string? MiddleClassificationCode { get; set; }
 
-    /// <summary>小分類コード（DB 列名は minorclassficationcode）。minorclassification.minorclassificationcode と対応。</summary>
-    [Column("minorclassficationcode")]
+    /// <summary>小分類コード（DB: minorclassificationcode）。minorclassification.minorclassificationcode と対応。</summary>
+    [Column("minorclassificationcode")]
     public string? MinorClassificationCode { get; set; }
 
     public virtual Unit? Unit0 { get; set; }

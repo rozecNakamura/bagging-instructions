@@ -290,8 +290,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                   LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
                   INNER JOIN item parent_i ON TRIM(BOTH FROM parent_i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                   LEFT JOIN item sol_i ON TRIM(sol_i.itemcode) = TRIM(COALESCE(NULLIF(TRIM(sol.itemcode), ''), ''))
-                  LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassficationcode
-                    AND mid.middleclassificationcode = parent_i.middleclassficationcode
+                  LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassificationcode
+                    AND mid.middleclassificationcode = parent_i.middleclassificationcode
                   WHERE ot.ordertableid = ANY(@ids)
                 )
                 SELECT

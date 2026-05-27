@@ -797,7 +797,7 @@ FROM m_shokushu";
 
             if (majorCode != null)
             {
-                sql.AppendLine("AND TRIM(COALESCE(i.majorclassficationcode, '')) = TRIM(@majorCode)");
+                sql.AppendLine("AND TRIM(COALESCE(i.majorclassificationcode, '')) = TRIM(@majorCode)");
                 cmd.Parameters.AddWithValue("majorCode", majorCode.Trim());
             }
             if (!string.IsNullOrWhiteSpace(itemCode))

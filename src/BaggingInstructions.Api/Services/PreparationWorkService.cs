@@ -204,9 +204,9 @@ FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
-LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
-LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
-  AND mid.middleclassificationcode = i.middleclassficationcode
+LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
+LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
+  AND mid.middleclassificationcode = i.middleclassificationcode
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND ({mfgRoutes.Length} = 0 OR
@@ -232,8 +232,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
           AND TRIM(COALESCE(wh_f.warehousecode, '')) = TRIM(COALESCE(i.warehousecode, ''))
       ))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
-  AND ({majorCodes.Length} = 0 OR TRIM(COALESCE(i.majorclassficationcode, '')) = ANY ({majorCodes}))
-  AND ({middleCodeFilter} = '' OR TRIM(COALESCE(i.middleclassficationcode, '')) = {middleCodeFilter})
+  AND ({majorCodes.Length} = 0 OR TRIM(COALESCE(i.majorclassificationcode, '')) = ANY ({majorCodes}))
+  AND ({middleCodeFilter} = '' OR TRIM(COALESCE(i.middleclassificationcode, '')) = {middleCodeFilter})
 GROUP BY
   TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
   mc.majorclassificationcode,
@@ -294,9 +294,9 @@ FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
-LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
-LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassficationcode
-  AND midt.middleclassificationcode = i.middleclassficationcode
+LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
+LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassificationcode
+  AND midt.middleclassificationcode = i.middleclassificationcode
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
@@ -616,11 +616,11 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
                 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
                 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
-                LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassficationcode
-                  AND mn.middleclassificationcode = i.middleclassficationcode
-                  AND mn.minorclassificationcode = i.minorclassficationcode
-                LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
-                  AND mid.middleclassificationcode = i.middleclassficationcode
+                LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassificationcode
+                  AND mn.middleclassificationcode = i.middleclassificationcode
+                  AND mn.minorclassificationcode = i.minorclassificationcode
+                LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
+                  AND mid.middleclassificationcode = i.middleclassificationcode
                 LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),

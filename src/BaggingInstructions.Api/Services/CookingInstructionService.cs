@@ -200,8 +200,8 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
             AND wc_d.workcenterid = ANY ({wcIds})
         )
       ))
-  AND TRIM(COALESCE(i.classfication3code, '')) <> ''
-  AND ({class3Codes.Length} = 0 OR TRIM(COALESCE(i.classfication3code, '')) = ANY ({class3Codes}))
+  AND TRIM(COALESCE(i.classification3code, '')) <> ''
+  AND ({class3Codes.Length} = 0 OR TRIM(COALESCE(i.classification3code, '')) = ANY ({class3Codes}))
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '55'
 ORDER BY i.itemname, COALESCE(
@@ -452,7 +452,7 @@ ORDER BY i.itemname, COALESCE(
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   ) AS slot_display,
-                  COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classfication3code, ''))) AS work_name,
+                  COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classification3code, ''))) AS work_name,
                   COALESCE(ot.needdate, ot.releasedate) AS need_date,
                   ot.ordertableid::text AS order_no_for_pdf
                 FROM ordertable ot
@@ -468,7 +468,7 @@ ORDER BY i.itemname, COALESCE(
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
                     ''
                   )
-                LEFT JOIN classification3 c3 ON TRIM(c3.classification3code) = TRIM(i.classfication3code)
+                LEFT JOIN classification3 c3 ON TRIM(c3.classification3code) = TRIM(i.classification3code)
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
                 ORDER BY ot.ordertableid

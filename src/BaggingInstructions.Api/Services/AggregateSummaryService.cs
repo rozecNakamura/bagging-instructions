@@ -68,9 +68,9 @@ LEFT JOIN LATERAL (
   ORDER BY ordertableid
   LIMIT 1
 ) ot_first ON TRUE
-LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
-LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassficationcode
-  AND mid.middleclassificationcode = i.middleclassficationcode
+LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
+LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
+  AND mid.middleclassificationcode = i.middleclassificationcode
 LEFT JOIN bom b ON b.parentitemcode = i.itemcode
 WHERE COALESCE(ot_first.needdate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
@@ -150,9 +150,9 @@ LEFT JOIN LATERAL (
   ORDER BY ordertableid
   LIMIT 1
 ) ot_first ON TRUE
-LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassficationcode
-LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassficationcode
-  AND midt.middleclassificationcode = i.middleclassficationcode
+LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
+LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassificationcode
+  AND midt.middleclassificationcode = i.middleclassificationcode
 WHERE COALESCE(ot_first.needdate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
   AND TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.ShipDate}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
