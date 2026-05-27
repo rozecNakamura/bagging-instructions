@@ -105,6 +105,7 @@
                 <li><button type="button" class="menu-btn" data-screen="sorting-inquiry">仕分け照会</button></li>
                 <li><button type="button" class="menu-btn" data-screen="scales-link">計量器連携</button></li>
                 <li><button type="button" class="menu-btn" data-screen="acceptance-record">検収の記録簿</button></li>
+                <li><button type="button" class="menu-btn" data-screen="akinaibugyou">商奉行出力</button></li>
             </ul>
         </nav>
 
@@ -1413,6 +1414,66 @@
                     </section>
                 </div>
             </div>
+
+            <!-- 商奉行出力画面 -->
+            <div id="screen-akinaibugyou" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>商奉行出力</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group" style="flex-basis: 100%;">
+                                <label>伝票選択<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <div class="radio-group">
+                                    <label><input type="radio" name="akinaibugyouSlipType" value="sales" checked> 売上伝票（個人）</label>
+                                    <label><input type="radio" name="akinaibugyouSlipType" value="delivery"> 納品伝票（施設・病院）</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="akinaibugyouDateFrom">納品日（開始）<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="akinaibugyouDateFrom" required aria-required="true">
+                                <label for="akinaibugyouTimeFrom" style="margin-left:8px;">時間帯<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <select id="akinaibugyouTimeFrom">
+                                    <option value="1">朝</option>
+                                    <option value="2">昼</option>
+                                    <option value="3">夜</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="akinaibugyouDateTo">納品日（終了）<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="akinaibugyouDateTo" required aria-required="true">
+                                <label for="akinaibugyouTimeTo" style="margin-left:8px;">時間帯<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <select id="akinaibugyouTimeTo">
+                                    <option value="1">朝</option>
+                                    <option value="2">昼</option>
+                                    <option value="3" selected>夜</option>
+                                </select>
+                            </div>
+                            <div style="flex-basis: 100%; height: 0;"></div>
+                            <div class="form-group">
+                                <label for="akinaibugyouCustomer">得意先:</label>
+                                <input type="text" id="akinaibugyouCustomer" placeholder="得意先コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label for="akinaibugyouStore">店舗:</label>
+                                <input type="text" id="akinaibugyouStore" placeholder="店舗コードを入力">
+                            </div>
+                            <button type="button" id="akinaibugyouSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="akinaibugyouExportSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="akinaibugyouExportBtn" class="btn btn-success">実行</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="akinaibugyouResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="akinaibugyouResultCount">0件</span>
+                        </div>
+                    </section>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1455,6 +1516,7 @@
     <script type="module" src="js/scales_link.js"></script>
     <script type="module" src="js/acceptance_record_search.js"></script>
     <script type="module" src="js/acceptance_record_print.js"></script>
+    <script type="module" src="js/akinaibugyou_search.js"></script>
     <script type="module" src="js/print.js"></script>
     <script type="module" src="js/pdf_generator.js"></script>
 </body>
