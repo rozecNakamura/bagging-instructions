@@ -101,6 +101,9 @@ public sealed class InspectionRecordService
         var lines = new List<InspectionRecordPdfLineModel>();
         foreach (var h in headers)
         {
+            if (h.Qty == 0)
+                continue;
+
             var needDateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "";
             var qtyDisplay = h.Qty.ToString("0.###", CultureInfo.InvariantCulture);
 
