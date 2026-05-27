@@ -10,7 +10,7 @@ namespace BaggingInstructions.Api.Services;
 /// 予定食数帳票: salesorderline を喫食日・便で検索し、集計食種（m_shokushu.sum_shokushu_name）×店舗別に数量を集計する。
 /// グループ1（得意先200・210）: 商品分類（上段=通常品／下段=検食・検体）×容器区分（宅配A=5AA常菜以外／宅配B=5AA常菜）の4行。
 /// グループ2（得意先240・300・310）: 集計食種別 1 行。
-/// 施設の並び順・基本食種ラベル・備考は craftlineaxother.m_shisetsu から取得する。
+/// 施設の並び順は customerdeliverylocation.sortorder の昇順。基本食種ラベル・備考は customerdeliverylocationaddinfo から取得する。
 /// </summary>
 public sealed class YoteiShokusuService
 {
@@ -52,16 +52,17 @@ public sealed class YoteiShokusuService
         IReadOnlyDictionary<string, int> sumSortOrders;
         IReadOnlyDictionary<(string, string), ShisetsuMasterRow> shisetsuMap;
         IReadOnlyDictionary<string, string> locationNames;
+        IReadOnlyDictionary<string, int?> locationSortOrders;
 
         if (_db.Database.IsRelational())
         {
             lines = await LoadLinesRelationalAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
-            locationNames = await LoadLocationNamesRelationalAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
+            (locationNames, locationSortOrders) = await LoadLocationNamesRelationalAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
         }
         else
         {
             lines = await LoadLinesInMemoryAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
-            locationNames = await LoadLocationNamesInMemoryAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
+            (locationNames, locationSortOrders) = await LoadLocationNamesInMemoryAsync(date.Value, normalizedMealTime, effectiveCodes, ct);
         }
 
         if (_cstmeatDb.Database.IsRelational())
@@ -75,7 +76,7 @@ public sealed class YoteiShokusuService
             shisetsuMap = await LoadShisetsuMasterInMemoryAsync(ct);
         }
 
-        return BuildResponse(lines, shokushuMap, sumSortOrders, shisetsuMap, locationNames);
+        return BuildResponse(lines, shokushuMap, sumSortOrders, shisetsuMap, locationNames, locationSortOrders);
     }
 
     // ─── SQL ロード ──────────────────────────────────────────────
@@ -112,8 +113,8 @@ WHERE info03 = {dateStr}
             (r.MajorClassCode ?? "").Trim())).ToList();
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> LoadLocationNamesRelationalAsync(
-        DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
+    private async Task<(IReadOnlyDictionary<string, string> Names, IReadOnlyDictionary<string, int?> SortOrders)>
+        LoadLocationNamesRelationalAsync(DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
     {
         var dateStr = plannedDate.ToString("yyyyMMdd");
         var custCodes = effectiveCodes;
@@ -135,22 +136,30 @@ WHERE info03 = {dateStr}
             .ToArray();
 
         if (locCodes.Length == 0)
-            return new Dictionary<string, string>(StringComparer.Ordinal);
+            return (new Dictionary<string, string>(StringComparer.Ordinal),
+                    new Dictionary<string, int?>(StringComparer.Ordinal));
 
         var nameRows = await _db.Database
             .SqlQuery<YoteiLocationNameSqlRow>($@"
-SELECT DISTINCT
+SELECT
   TRIM(locationcode) AS ""LocationCode"",
-  NULLIF(TRIM(COALESCE(locationname, '')), '') AS ""LocationName""
+  MAX(NULLIF(TRIM(COALESCE(locationname, '')), '')) AS ""LocationName"",
+  MIN(sortorder) AS ""SortOrder""
 FROM customerdeliverylocation
 WHERE TRIM(locationcode) = ANY ({locCodes})
+GROUP BY TRIM(locationcode)
 ")
             .ToListAsync(ct);
 
-        return nameRows
+        var names = nameRows
             .Where(r => !string.IsNullOrWhiteSpace(r.LocationCode))
-            .GroupBy(r => r.LocationCode!.Trim(), StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.LocationName))?.LocationName?.Trim() ?? g.Key, StringComparer.Ordinal);
+            .ToDictionary(r => r.LocationCode!.Trim(), r => r.LocationName?.Trim() ?? r.LocationCode!.Trim(), StringComparer.Ordinal);
+
+        var sortOrders = nameRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.LocationCode))
+            .ToDictionary(r => r.LocationCode!.Trim(), r => r.SortOrder, StringComparer.Ordinal);
+
+        return (names, sortOrders);
     }
 
     private async Task<(IReadOnlyDictionary<string, (string SumName, int SortOrder)>, IReadOnlyDictionary<string, int>)>
@@ -220,8 +229,8 @@ WHERE c.customercode = ANY ({custCodes})
             (r.Info06 ?? "").Trim())).ToList();
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> LoadLocationNamesInMemoryAsync(
-        DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
+    private async Task<(IReadOnlyDictionary<string, string> Names, IReadOnlyDictionary<string, int?> SortOrders)>
+        LoadLocationNamesInMemoryAsync(DateOnly plannedDate, string mealTime, string[] effectiveCodes, CancellationToken ct)
     {
         var dateStr = plannedDate.ToString("yyyyMMdd");
         var query = _cstmeatDb.Cstmeats
@@ -240,19 +249,28 @@ WHERE c.customercode = ANY ({custCodes})
             .ToList();
 
         if (locCodes.Count == 0)
-            return new Dictionary<string, string>(StringComparer.Ordinal);
+            return (new Dictionary<string, string>(StringComparer.Ordinal),
+                    new Dictionary<string, int?>(StringComparer.Ordinal));
 
         var locs = await _db.CustomerDeliveryLocations
             .AsNoTracking()
             .Where(l => locCodes.Contains(l.LocationCode ?? ""))
             .ToListAsync(ct);
 
-        return locs
+        var grouped = locs
             .Where(l => !string.IsNullOrWhiteSpace(l.LocationCode))
             .GroupBy(l => l.LocationCode!.Trim(), StringComparer.Ordinal)
-            .ToDictionary(g => g.Key,
-                g => (g.First().LocationName ?? g.First().LocationShortName ?? g.Key).Trim(),
-                StringComparer.Ordinal);
+            .ToList();
+
+        var names = grouped.ToDictionary(g => g.Key,
+            g => (g.First().LocationName ?? g.First().LocationShortName ?? g.Key).Trim(),
+            StringComparer.Ordinal);
+
+        var sortOrders = grouped.ToDictionary(g => g.Key,
+            g => g.Min(l => l.SortOrder),
+            StringComparer.Ordinal);
+
+        return (names, sortOrders);
     }
 
     private async Task<(IReadOnlyDictionary<string, (string SumName, int SortOrder)>, IReadOnlyDictionary<string, int>)>
@@ -299,7 +317,8 @@ WHERE c.customercode = ANY ({custCodes})
         IReadOnlyDictionary<string, (string SumName, int SortOrder)> shokushuMap,
         IReadOnlyDictionary<string, int> sumSortOrders,
         IReadOnlyDictionary<(string, string), ShisetsuMasterRow> shisetsuMap,
-        IReadOnlyDictionary<string, string> locationNames)
+        IReadOnlyDictionary<string, string> locationNames,
+        IReadOnlyDictionary<string, int?> locationSortOrders)
     {
         // コード300（在宅個人）は食種コード5AA→宅配B、それ以外→宅配Aに集約
         var processedLines = lines.Select(line =>
@@ -358,11 +377,11 @@ WHERE c.customercode = ANY ({custCodes})
 
         // ── グループ1 店舗 DTO ──
         var group1Stores = BuildGroup1Stores(
-            g1Agg, g1CustomerByLoc, shisetsuMap, locationNames, group1Columns);
+            g1Agg, g1CustomerByLoc, shisetsuMap, locationNames, locationSortOrders, group1Columns);
 
         // ── グループ2 店舗 DTO ──
         var group2Stores = BuildGroup2Stores(
-            g2Agg, g2CustomerByLoc, shisetsuMap, locationNames, group2Columns);
+            g2Agg, g2CustomerByLoc, shisetsuMap, locationNames, locationSortOrders, group2Columns);
 
         return new YoteiShokusuResponseDto
         {
@@ -378,17 +397,13 @@ WHERE c.customercode = ANY ({custCodes})
         Dictionary<string, string> customerByLoc,
         IReadOnlyDictionary<(string, string), ShisetsuMasterRow> shisetsuMap,
         IReadOnlyDictionary<string, string> locationNames,
+        IReadOnlyDictionary<string, int?> locationSortOrders,
         List<string> columns)
     {
         var locations = agg.Keys.Select(k => k.Loc).Distinct(StringComparer.Ordinal).ToList();
 
-        int StoreOrder(string loc)
-        {
-            var cust = customerByLoc.TryGetValue(loc, out var c) ? c : "";
-            return shisetsuMap.TryGetValue((cust, loc), out var m) && m.SortOrder.HasValue
-                ? m.SortOrder.Value
-                : int.MaxValue;
-        }
+        int StoreOrder(string loc) =>
+            locationSortOrders.TryGetValue(loc, out var o) && o.HasValue ? o.Value : int.MaxValue;
 
         var sections = new[] { "通常品", "検食・検体" };
 
@@ -430,6 +445,7 @@ WHERE c.customercode = ANY ({custCodes})
         Dictionary<string, string> customerByLoc,
         IReadOnlyDictionary<(string, string), ShisetsuMasterRow> shisetsuMap,
         IReadOnlyDictionary<string, string> locationNames,
+        IReadOnlyDictionary<string, int?> locationSortOrders,
         List<string> columns)
     {
         var locations = agg.Keys.Select(k => k.Loc).Distinct(StringComparer.Ordinal).ToList();
@@ -438,10 +454,7 @@ WHERE c.customercode = ANY ({custCodes})
         {
             if (loc == "宅配A") return 9990;
             if (loc == "宅配B") return 9991;
-            var cust = customerByLoc.TryGetValue(loc, out var c) ? c : "";
-            return shisetsuMap.TryGetValue((cust, loc), out var m) && m.SortOrder.HasValue
-                ? m.SortOrder.Value
-                : int.MaxValue;
+            return locationSortOrders.TryGetValue(loc, out var o) && o.HasValue ? o.Value : int.MaxValue;
         }
 
         return locations
@@ -555,6 +568,7 @@ internal sealed class YoteiLocationNameSqlRow
 {
     public string? LocationCode { get; set; }
     public string? LocationName { get; set; }
+    public int? SortOrder { get; set; }
 }
 
 internal sealed class YoteiLocationCodeSqlRow

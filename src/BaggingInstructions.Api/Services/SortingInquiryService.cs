@@ -234,7 +234,8 @@ SELECT
   ia.car1 AS ""ItemIaCar1"",
   ia.car2 AS ""ItemIaCar2"",
   ia.car3 AS ""ItemIaCar3"",
-  ia.car0 AS ""ItemCar0""
+  ia.car0 AS ""ItemCar0"",
+  c.sortorder AS ""LocationSortOrder""
 FROM salesorderline s
 LEFT JOIN item i ON s.itemcode = i.itemcode
 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
@@ -273,7 +274,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             r.Addinfo01,
             r.Addinfo02,
             r.Addinfo02Name,
-            r.Addinfo05)).ToList();
+            r.Addinfo05,
+            r.LocationSortOrder)).ToList();
     }
 
     private async Task<IReadOnlyList<SortingInquiryLineMaterial>> LoadLinesForSearchInMemoryAsync(
@@ -325,7 +327,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             l.Addinfo?.Addinfo01,
             l.Addinfo?.Addinfo02,
             l.Addinfo?.Addinfo02Name,
-            l.Addinfo?.Addinfo05)).ToList();
+            l.Addinfo?.Addinfo05,
+            l.SalesOrder?.CustomerDeliveryLocation?.SortOrder)).ToList();
     }
 
     /// <summary>
@@ -436,6 +439,7 @@ WHERE priority_order IS NOT NULL
         var columnLocationCode = new Dictionary<string, string>(StringComparer.Ordinal);
         var columnLocationTag = new Dictionary<string, string>(StringComparer.Ordinal);
         var columnCustomerDisplay = new Dictionary<string, string>(StringComparer.Ordinal);
+        var columnSortOrder = new Dictionary<string, int?>(StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -454,6 +458,7 @@ WHERE priority_order IS NOT NULL
             var disp = headerLabelByCustomer.TryGetValue(cust, out var dn) ? dn : cust;
             var t = (disp ?? "").Trim();
             columnCustomerDisplay[colKey] = t.Length > 0 ? t : cust;
+            columnSortOrder[colKey] = line.LocationSortOrder;
         }
 
         if (columnCustomer.Count == 0)
@@ -471,7 +476,7 @@ WHERE priority_order IS NOT NULL
         var storeHeaders = DisambiguateStoreRowLabels(rawLocTags, StringComparer.Ordinal, columnCustomer);
 
         var storeKeys = columnCustomer.Keys
-            .OrderBy(k => storeHeaders[k], StringComparer.Ordinal)
+            .OrderBy(k => columnSortOrder.TryGetValue(k, out var so) && so.HasValue ? so.Value : int.MaxValue)
             .ThenBy(k => columnCustomer[k], StringComparer.Ordinal)
             .ThenBy(k => k, StringComparer.Ordinal)
             .ToList();
@@ -641,7 +646,8 @@ WHERE priority_order IS NOT NULL
         string? addinfo01,
         string? addinfo02,
         string? addinfo02Name,
-        string? addinfo05)
+        string? addinfo05,
+        int? locationSortOrder = null)
     {
         var qty0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
             quantity,
@@ -669,7 +675,8 @@ WHERE priority_order IS NOT NULL
             addinfo01,
             qty0,
             addinfo05,
-            null);
+            null,
+            locationSortOrder);
     }
 
     private static string ResolveFoodTypeFromStrings(string? addinfo02, string? addinfo02Name)
@@ -722,6 +729,7 @@ internal sealed class SortingInquiryLineSqlRow
     public decimal? ItemIaCar2 { get; set; }
     public decimal? ItemIaCar3 { get; set; }
     public decimal? ItemCar0 { get; set; }
+    public int? LocationSortOrder { get; set; }
 }
 
 /// <summary>m_shokushu から食種コードと優先順を読み取る SQL 行。</summary>
@@ -752,4 +760,5 @@ internal readonly record struct SortingInquiryLineMaterial(
     string? Addinfo01,
     decimal QtyInUnit0,
     string? MealTime,
-    decimal? CstmeatFoodCount);
+    decimal? CstmeatFoodCount,
+    int? LocationSortOrder);
