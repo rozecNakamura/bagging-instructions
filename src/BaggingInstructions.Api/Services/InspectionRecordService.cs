@@ -116,6 +116,7 @@ public sealed class InspectionRecordService
                 Spec = h.Spec ?? "",
                 QuantityDisplay = qtyDisplay,
                 UnitName = h.UnitName ?? "",
+                SupplierName = h.SupplierName,
                 DeviationHandling = "",
                 StorageLocation = h.WarehouseName,
                 DeliveryTime = "",
@@ -258,12 +259,14 @@ public sealed class InspectionRecordService
                   i.conversionvalue1,
                   i.conversionvalue2,
                   i.conversionvalue3,
-                  COALESCE(w.warehousename, '') AS warehouse_name
+                  COALESCE(w.warehousename, '') AS warehouse_name,
+                  COALESCE(s.suppliername, '') AS supplier_name
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = NULLIF(TRIM(ot.itemcode), '')
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN warehouses w ON w.warehousecode = i.warehousecode
+                LEFT JOIN supplier s ON s.suppliercode = ot.suppliercode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'PO'
                 ORDER BY ot.ordertableid
@@ -302,7 +305,8 @@ public sealed class InspectionRecordService
                     Spec = reader.GetString(5),
                     UnitName = reader.GetString(6),
                     Qty = qtyU0,
-                    WarehouseName = reader.IsDBNull(19) ? "" : reader.GetString(19)
+                    WarehouseName = reader.IsDBNull(19) ? "" : reader.GetString(19),
+                    SupplierName = reader.IsDBNull(20) ? "" : reader.GetString(20)
                 });
             }
 
@@ -368,5 +372,6 @@ internal sealed class InspectionRecordHeaderRow
     public string UnitName { get; set; } = "";
     public decimal Qty { get; set; }
     public string WarehouseName { get; set; } = "";
+    public string SupplierName { get; set; } = "";
 }
 
