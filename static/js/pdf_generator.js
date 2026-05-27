@@ -218,27 +218,31 @@ export function openPdfInIframe(blob, title) {
  * ラベル印刷専用（現品票など小サイズ PDF）。
  * 通常の openPdfInIframe では Chrome が 0×0 iframe から正確な用紙サイズを読み取れず
  * A4 扱いにしてしまう場合があるため、PDF 本来のサイズで印刷できるよう
- * 新しいウィンドウで PDF を開いてから print() を呼び出す。
- * 印刷ダイアログで用紙サイズ「60×60mm」・倍率「実際のサイズ」を確認してください。
+ * 新しいウィンドウで PDF を表示する。
+ *
+ * Chrome の PDF ビューワーには印刷ボタンが内蔵されているため、
+ * コードから print() を自動呼び出しするとビューワー初期化時に
+ * onload が複数回発火して印刷ダイアログが二重に出る問題があった。
+ * そのため PDF を開くのみとし、印刷はビューワーのボタンから行う。
+ *
+ * 印刷時は用紙サイズを「60×60mm」、倍率を「実際のサイズ」に設定してください。
+ *
  * @param {Blob} blob - PDF blob
- * @param {string} title - ウィンドウタイトル
+ * @param {string} _title - （将来利用のため残置）
  */
-export function openLabelPdfForPrint(blob, title) {
+export function openLabelPdfForPrint(blob, _title) {
     const url = URL.createObjectURL(blob);
-    // 用紙サイズ相当（60mm≈170pt≈227px@96dpi）のウィンドウを開く
-    const labelPx = Math.ceil(60 * 96 / 25.4); // ≈227px
+    const labelPx = Math.ceil(60 * 96 / 25.4); // 60mm ≈ 227px @96dpi
     const win = window.open(url, '_blank',
-        `noopener,width=${labelPx * 4},height=${labelPx * 4 + 60},toolbar=0,menubar=0,scrollbars=0`);
-    if (win) {
-        win.onload = () => {
-            try { win.print(); } catch (_) { /* ユーザーが手動で印刷ボタンを押してください */ }
-            setTimeout(() => URL.revokeObjectURL(url), 120000);
-        };
-    } else {
-        // ポップアップブロックされた場合はフォールバック
-        openPdfInIframe(blob, title);
+        `noopener,width=${labelPx * 4},height=${labelPx * 4 + 60},toolbar=1,menubar=0,scrollbars=1`);
+    // ポップアップブロック時はフォールバック
+    if (!win) {
+        openPdfInIframe(blob, _title);
         URL.revokeObjectURL(url);
+        return;
     }
+    // URL の解放：ウィンドウが閉じられるか2分後に解放
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
 }
 
 function escapeHtml(text) {
