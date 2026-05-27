@@ -10,14 +10,20 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 納品書.rxz 用のタグ値を構築する。
 /// 1枚に3帳票（_0, _1, _2）を縦並びで同一データを表示。明細が4行を超える場合は複数ページに分割。
-/// CUSTOMERCD→customerdeliverylocation.customerid, CUSTOMERLOC→address1+address2, CUSTOMERNM→customer.customername,
-/// CUSTOMERTEL→customerdeliverylocation.phonenumber, YEAR/MONTH/DAY→cstmeat.info03,
-/// ITEMNM→foodtype.foodtypename＋全角コロン＋eattime.eattimename（info05↔foodtypecd, info04↔eattimecdで連携、いずれもcraftlineaxother）, COUNT→info07合算（info05+info04でグループ化）。
+/// 検索キー：cstmeat.info18（出荷日）。
+/// ケータリング（200/210/220/230/240）: ITEMNM=食種名：喫食時間名、SUMCOUNT=食数合計、SUMPRICE=合計金額。
+/// 個人配食（300）: ITEMNM=請求区分コード4文字目以降:喫食時間（朝/昼/夕）:info17。
+/// 病院向（310）: 3011/3111/3411品目がある場合は ITEMNM=食種名:ご飯量(addinfo01)、なければ ITEMNM=食種名。
 /// </summary>
 public class DeliveryNotePdfService
 {
     private const int FormsPerSheet = 3;
     private const int ItemRowsPerForm = 4;
+    private const string FullWidthColon = "：";
+    private const string HalfWidthColon = ":";
+
+    private static readonly IReadOnlySet<string> CateringCustomerCodes =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "200", "210", "220", "230", "240" };
 
     private readonly CstmeatDbContext _cstmeatDb;
     private readonly AppDbContext _appDb;
@@ -30,48 +36,73 @@ public class DeliveryNotePdfService
         _juicePdfService = juicePdfService;
     }
 
-    /// <summary>1件の納品書（喫食日・納入場所・得意先）に対する全ページ分のタグ値を構築する。明細が4行超の場合は複数ページ。</summary>
+    /// <summary>1件の納品書（出荷日・納入場所・得意先）に対する全ページ分のタグ値を構築する。明細が4行超の場合は複数ページ。</summary>
     public List<Dictionary<string, string>> BuildTagValuesPagesForOne(string eatingDateYyyymmdd, string locationCode, string customerCode)
     {
         var pages = new List<Dictionary<string, string>>();
+        var custCodeTrimmed = (customerCode ?? "").Trim();
+        var customerType = GetCustomerType(custCodeTrimmed);
 
         // customerdeliverylocation（info02=locationcode かつ 得意先一致）＋ customer（craftlineax）
-        var loc = ResolveLocation(locationCode, customerCode);
-        var customer = loc?.Customer;
-        var custCd = customer?.CustomerCode ?? customerCode ?? "";
+        var loc = ResolveLocation(locationCode ?? "", customerCode ?? "");
+        var custCd = loc?.LocationCode ?? locationCode ?? "";
         var address1 = loc?.Address1 ?? "";
         var address2 = loc?.Address2 ?? "";
         var customerLoc = (address1 + (address2 ?? "")).Trim();
-        var customerNm = customer?.CustomerName ?? "";
+        var customerNm = loc?.LocationName ?? "";
         var customerTel = loc?.PhoneNumber ?? "";
 
-        // info03: YYYYMMDD → YEAR, MONTH, DAY
+        // info18: YYYYMMDD → YEAR, MONTH, DAY
         var year = "";
         var month = "";
         var day = "";
         if (!string.IsNullOrEmpty(eatingDateYyyymmdd) && eatingDateYyyymmdd.Length >= 8)
         {
-            year = eatingDateYyyymmdd.Length >= 4 ? eatingDateYyyymmdd[..4] : "";
-            month = eatingDateYyyymmdd.Length >= 6 ? eatingDateYyyymmdd.Substring(4, 2) : "";
-            day = eatingDateYyyymmdd.Length >= 8 ? eatingDateYyyymmdd.Substring(6, 2) : "";
+            year = eatingDateYyyymmdd[..4];
+            month = eatingDateYyyymmdd.Substring(4, 2);
+            day = eatingDateYyyymmdd.Substring(6, 2);
         }
 
-        // cstmeat から (info03, info02, info01) で該当行を取得し、info05+info04 でグループ化、COUNT=sum(info07)
+        // cstmeat を出荷日（info18）・納入場所（info02）・得意先（info01）で絞り込む
         var cstmeatRows = _cstmeatDb.Cstmeats
             .AsNoTracking()
-            .Where(c => c.Info03 == eatingDateYyyymmdd && (c.Info02 ?? "") == locationCode && (c.Info01 ?? "") == customerCode)
+            .Where(c => c.Info18 == eatingDateYyyymmdd && (c.Info02 ?? "") == locationCode && (c.Info01 ?? "") == customerCode)
             .ToList();
 
-        // info05 → foodtype.foodtypename、info04 → eattime.eattimename（いずれも craftlineaxother、info04 と eattimecd で結合）
+        // RECEPTNO: info03（喫食日 YYYYMMDD）→ salesorderline.planneddeliverydate でマッチして salesorderid を取得
+        var info03Dates = cstmeatRows
+            .Select(c => c.Info03)
+            .Where(x => x != null && x.Length == 8)
+            .Select(x => x!)
+            .Distinct()
+            .Select(s => DateOnly.TryParseExact(s, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var d) ? (DateOnly?)d : null)
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value)
+            .ToList();
+
+        var salesOrderIds = new List<long>();
+        if (info03Dates.Count > 0)
+        {
+            var locCodeTrimmed = (locationCode ?? "").Trim();
+            var candidates = _appDb.SalesOrders
+                .AsNoTracking()
+                .Include(so => so.SalesOrderLines)
+                .Where(so =>
+                    so.CustomerCode == custCodeTrimmed &&
+                    so.CustomerDeliveryLocationCode == locCodeTrimmed)
+                .ToList();
+
+            salesOrderIds = candidates
+                .Where(so => so.SalesOrderLines.Any(l => l.PlannedDeliveryDate.HasValue && info03Dates.Contains(l.PlannedDeliveryDate!.Value)))
+                .Select(so => so.SalesOrderId)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToList();
+        }
+
+        // info05 → m_shokushu.shokushu_name、info04 → eattime.eattimename
         var info05List = cstmeatRows.Select(c => c.Info05).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
         var info04List = cstmeatRows.Select(c => c.Info04).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
-
-        var foodtypeNameByCd = info05List.Count == 0
-            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            : _cstmeatDb.Foodtypes
-                .AsNoTracking()
-                .Where(f => info05List.Contains(f.Foodtypecd ?? ""))
-                .ToDictionary(f => f.Foodtypecd ?? "", f => f.Foodtypename ?? "", StringComparer.OrdinalIgnoreCase);
 
         var eattimeNameByCd = info04List.Count == 0
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -80,48 +111,96 @@ public class DeliveryNotePdfService
                 .Where(e => info04List.Contains(e.Eattimecd ?? ""))
                 .ToDictionary(e => e.Eattimecd ?? "", e => e.Eattimename ?? "", StringComparer.OrdinalIgnoreCase);
 
-        var itemCdList = info05List;
-        var itemsByCd = itemCdList.Count == 0
-            ? new Dictionary<string, Item>()
-            : _appDb.Items
+        // m_shokushu: 全区分で shokushu_name を取得、個人配食では seikyu_kubun_code も使用
+        Dictionary<string, string> shokushuNameByCd = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> seikyuKubunByCd = new(StringComparer.OrdinalIgnoreCase);
+        if (info05List.Count > 0)
+        {
+            var mshokushuList = _cstmeatDb.Mshokushus
                 .AsNoTracking()
-                .Include(i => i.Unit0)
-                .Where(i => itemCdList.Contains(i.ItemCd ?? ""))
-                .ToDictionary(i => i.ItemCd ?? "", i => i);
+                .Where(m => m.ShokushuCode != null && info05List.Contains(m.ShokushuCode))
+                .ToList();
 
-        const string itemNmSeparator = "："; // 全角コロン
+            shokushuNameByCd = mshokushuList
+                .GroupBy(m => m.ShokushuCode!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().ShokushuName ?? "", StringComparer.OrdinalIgnoreCase);
+
+            if (customerType == "personal")
+            {
+                seikyuKubunByCd = mshokushuList
+                    .Where(m => m.SeikyuKubunCode != null)
+                    .GroupBy(m => m.ShokushuCode!, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First().SeikyuKubunCode ?? "", StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        // 個人配食: item_definition_master から単価コード名を取得（item_code='cdpret', item_def=info09 → item_name）
+        Dictionary<string, string> itemDefNameByInfo09 = new(StringComparer.OrdinalIgnoreCase);
+        if (customerType == "personal")
+        {
+            var info09List = cstmeatRows
+                .Select(c => c.Info09)
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Select(x => x!)
+                .Distinct()
+                .ToList();
+            if (info09List.Count > 0)
+            {
+                itemDefNameByInfo09 = _cstmeatDb.ItemDefinitionMasters
+                    .AsNoTracking()
+                    .Where(d => d.ItemCode == "cdpret" && d.ItemDef != null && info09List.Contains(d.ItemDef))
+                    .ToList()
+                    .GroupBy(d => d.ItemDef!, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First().ItemName ?? "", StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
 
         var grouped = cstmeatRows
             .GroupBy(c => new { Info05 = c.Info05 ?? "", Info04 = c.Info04 ?? "" })
             .Select(g =>
             {
-                var itemCd = g.Key.Info05;
-                itemsByCd.TryGetValue(itemCd ?? "", out var it);
-                var unitPrice = it != null && it.SalesPrice0.HasValue ? it.SalesPrice0.Value : 0m;
+                var info05 = g.Key.Info05;
+                var info04 = g.Key.Info04;
+                var info06 = g.Select(c => c.Info06).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+                var info09 = g.Select(c => c.Info09).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+                var info17 = g.Select(c => c.Info17).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
                 var cnt = g.Sum(x => decimal.TryParse(x.Info07, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0);
-                var unit = it?.Unit0?.UnitCode ?? "";
-                var foodtypename = foodtypeNameByCd.TryGetValue(g.Key.Info05, out var ft) ? ft : "";
-                var eattimename = eattimeNameByCd.TryGetValue(g.Key.Info04, out var et) ? et : "";
-                var itemNm = (foodtypename ?? "").TrimEnd() + itemNmSeparator + (eattimename ?? "").TrimStart();
+                var info08 = g.Select(c => c.Info08).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+                var unitPrice = decimal.TryParse(info08, NumberStyles.Any, CultureInfo.InvariantCulture, out var up) ? up : 0m;
+                var price = g.Sum(x => decimal.TryParse(x.Info11, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m);
+                var info19 = g.Select(c => c.Info19).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+                var foodtypename = shokushuNameByCd.TryGetValue(info05, out var ft) ? ft : "";
+                var eattimename = eattimeNameByCd.TryGetValue(info04, out var et) ? et : "";
+
+                // 単価コード名: item_definition_master(cdpret, info09) → item_name のみ。マッチしない場合は空
+                var tankaCdName = (!string.IsNullOrEmpty(info09) && itemDefNameByInfo09.TryGetValue(info09, out var defName))
+                    ? defName
+                    : "";
+
+                var itemNm = BuildItemName(
+                    customerType, info05, info04, foodtypename, eattimename,
+                    tankaCdName, info17, info06, seikyuKubunByCd);
+
                 return new
                 {
                     ItemNm = itemNm,
                     Count = cnt,
-                    ItemCd = itemCd,
                     UnitPrice = unitPrice,
-                    Price = cnt * unitPrice,
-                    Unit = unit
+                    Price = price,
+                    Unit = "食",
+                    Note = Info19Display(info19)
                 };
             })
             .OrderBy(x => x.ItemNm)
             .ToList();
 
-        decimal sumPriceTotal = grouped.Sum(x => x.Price);
+        var sumPriceTotal = grouped.Sum(x => x.Price);
+        var sumCountTotal = grouped.Sum(x => x.Count);
 
-        // 共通ヘッダー（3帳票で同じ値）
-        void SetHeaderTags(Dictionary<string, string> tags)
+        void SetHeaderTags(Dictionary<string, string> tags, string receptNo)
         {
-            for (int f = 0; f < FormsPerSheet; f++)
+            for (var f = 0; f < FormsPerSheet; f++)
             {
                 tags[$"CUSTOMERCD_{f}"] = custCd;
                 tags[$"CUSTOMERLOC_{f}"] = customerLoc;
@@ -130,51 +209,51 @@ public class DeliveryNotePdfService
                 tags[$"YEAR_{f}"] = year;
                 tags[$"MONTH_{f}"] = month;
                 tags[$"DAY_{f}"] = day;
-                tags[$"RECEPTNO_{f}"] = "";
+                tags[$"RECEPTNO_{f}"] = receptNo;
                 tags[$"SUMPRICE_{f}"] = sumPriceTotal.ToString(CultureInfo.InvariantCulture);
+                if (customerType == "catering")
+                    tags[$"SUMCOUNT_{f}"] = sumCountTotal.ToString(CultureInfo.InvariantCulture);
             }
         }
 
-        // 1ページあたり ItemRowsPerForm 行。複数ページに分割
-        int totalItems = grouped.Count;
-        int pageIndex = 0;
-        for (int start = 0; start < totalItems; start += ItemRowsPerForm, pageIndex++)
+        var totalItems = grouped.Count;
+        var pageIndex = 0;
+        for (var start = 0; start < totalItems; start += ItemRowsPerForm)
         {
+            var receptNo = pageIndex < salesOrderIds.Count ? salesOrderIds[pageIndex].ToString() : "";
             var tagValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            SetHeaderTags(tagValues);
+            SetHeaderTags(tagValues, receptNo);
 
-            int end = Math.Min(start + ItemRowsPerForm, totalItems);
-            decimal pageSum = 0;
-            for (int i = 0; i < ItemRowsPerForm; i++)
+            for (var i = 0; i < ItemRowsPerForm; i++)
             {
-                int idx = start + i;
+                var idx = start + i;
                 var nn = i.ToString("D2");
                 var row = idx < totalItems ? grouped[idx] : null;
 
-                for (int f = 0; f < FormsPerSheet; f++)
+                for (var f = 0; f < FormsPerSheet; f++)
                 {
                     tagValues[$"ITEMNM_{f}_{nn}"] = row?.ItemNm ?? "";
                     tagValues[$"COUNT_{f}_{nn}"] = row != null ? row.Count.ToString(CultureInfo.InvariantCulture) : "";
                     tagValues[$"UNIT_{f}_{nn}"] = row?.Unit ?? "";
                     tagValues[$"UNITPRICE_{f}_{nn}"] = row != null ? row.UnitPrice.ToString(CultureInfo.InvariantCulture) : "";
                     tagValues[$"PRICE_{f}_{nn}"] = row != null ? row.Price.ToString(CultureInfo.InvariantCulture) : "";
-                    tagValues[$"NOTE_{f}_{nn}"] = "";
+                    tagValues[$"NOTE_{f}_{nn}"] = row?.Note ?? "";
                 }
-                if (row != null)
-                    pageSum += row.Price;
             }
 
             pages.Add(tagValues);
+            pageIndex++;
         }
 
-        // 1件も明細がない場合でも1ページは出す
+        // 明細なしでも1ページ出力
         if (pages.Count == 0)
         {
+            var receptNo = salesOrderIds.Count > 0 ? salesOrderIds[0].ToString() : "";
             var tagValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            SetHeaderTags(tagValues);
-            for (int f = 0; f < FormsPerSheet; f++)
+            SetHeaderTags(tagValues, receptNo);
+            for (var f = 0; f < FormsPerSheet; f++)
             {
-                for (int i = 0; i < ItemRowsPerForm; i++)
+                for (var i = 0; i < ItemRowsPerForm; i++)
                 {
                     var nn = i.ToString("D2");
                     tagValues[$"ITEMNM_{f}_{nn}"] = "";
@@ -190,6 +269,81 @@ public class DeliveryNotePdfService
 
         return pages;
     }
+
+    private static string GetCustomerType(string customerCode) =>
+        CateringCustomerCodes.Contains(customerCode) ? "catering" :
+        customerCode == "300" ? "personal" :
+        customerCode == "310" ? "hospital" :
+        "catering";
+
+    private static string BuildItemName(
+        string customerType,
+        string info05,
+        string info04,
+        string foodtypename,
+        string eattimename,
+        string tankaCdName,
+        string kinshiShokuzai,
+        string info06,
+        Dictionary<string, string> seikyuKubunByCd)
+    {
+        switch (customerType)
+        {
+            case "personal":
+            {
+                // 請求区分名称（seikyu_kubun_code 4文字目以降）: 喫食時間 : 単価コード名 : 禁止食材(info17)
+                seikyuKubunByCd.TryGetValue(info05, out var kubun);
+                var kubunSuffix = !string.IsNullOrEmpty(kubun)
+                    ? (kubun.Length >= 4 ? kubun[3..] : kubun)
+                    : "";
+                var mealDisplay = MealTimeDisplay(info04);
+                var parts = new List<string>();
+                if (!string.IsNullOrEmpty(kubunSuffix)) parts.Add(kubunSuffix);
+                if (!string.IsNullOrEmpty(mealDisplay)) parts.Add(mealDisplay);
+                if (!string.IsNullOrEmpty(tankaCdName)) parts.Add(tankaCdName);
+                if (!string.IsNullOrEmpty(kinshiShokuzai)) parts.Add(kinshiShokuzai);
+                return string.Join(HalfWidthColon, parts);
+            }
+            default: // ケータリング・病院向: 食種名称:喫食時間:info06変換値
+            {
+                var parts = new List<string>();
+                var food = (foodtypename ?? "").Trim();
+                if (!string.IsNullOrEmpty(food)) parts.Add(food);
+                var eattime = (eattimename ?? "").Trim();
+                if (!string.IsNullOrEmpty(eattime)) parts.Add(eattime);
+                var info06Display = Info06Display(info06);
+                if (!string.IsNullOrEmpty(info06Display)) parts.Add(info06Display);
+                return string.Join(HalfWidthColon, parts);
+            }
+        }
+    }
+
+    private static string Info06Display(string? info06) =>
+        (info06 ?? "").Trim() switch
+        {
+            "1" => "通常品",
+            "2" => "検食",
+            "3" => "検体",
+            var s => s
+        };
+
+    private static string Info19Display(string? info19) =>
+        (info19 ?? "").Trim() switch
+        {
+            "1" => "出荷便朝",
+            "2" => "出荷便昼",
+            "3" => "出荷便夜",
+            var s => s
+        };
+
+    private static string MealTimeDisplay(string? info04) =>
+        (info04 ?? "").Trim() switch
+        {
+            "1" => "朝",
+            "2" => "昼",
+            "3" => "夕",
+            var s => s
+        };
 
     private CustomerDeliveryLocation? ResolveLocation(string locationCode, string customerCode)
     {
@@ -216,7 +370,6 @@ public class DeliveryNotePdfService
                     return l;
             }
         }
-        // 納入場所コードのみでフォールバック（既存挙動）
         return locs.FirstOrDefault(l => (l.LocationCode ?? "").Trim().Equals(locCode, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -243,7 +396,7 @@ public class DeliveryNotePdfService
                 var onePdf = _juicePdfService.GeneratePdf(rxzTemplatePath, tagValues);
                 using var ms = new MemoryStream(onePdf);
                 var doc = PdfReader.Open(ms, PdfDocumentOpenMode.Import);
-                for (int i = 0; i < doc.PageCount; i++)
+                for (var i = 0; i < doc.PageCount; i++)
                     outputDoc.AddPage(doc.Pages[i]);
             }
         }

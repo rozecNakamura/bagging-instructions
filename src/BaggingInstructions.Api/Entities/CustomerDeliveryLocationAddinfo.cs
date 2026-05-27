@@ -22,6 +22,21 @@ public class CustomerDeliveryLocationAddinfo
     [Column("addinfo01")]
     public string? Addinfo01 { get; set; }
 
+    [Column("addinfo02")]
+    public string? Addinfo02 { get; set; }
+
+    [Column("addinfo03")]
+    public string? Addinfo03 { get; set; }
+
+    [Column("addinfo04")]
+    public string? Addinfo04 { get; set; }
+
+    [Column("addinfo05")]
+    public string? Addinfo05 { get; set; }
+
+    [Column("addinfo06")]
+    public string? Addinfo06 { get; set; }
+
     [Column("addinfo08")]
     public string? Addinfo08 { get; set; }
 

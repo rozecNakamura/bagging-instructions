@@ -7,11 +7,16 @@ public static class AppContentPaths
 {
     public static string StaticRoot(IWebHostEnvironment env)
     {
+        var devRepoStatic = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "static"));
+
+        // 開発時はリポジトリ直下の static を優先（.rxz 編集が bin コピー待ちにならない）
+        if (env.IsDevelopment() && Directory.Exists(devRepoStatic))
+            return devRepoStatic;
+
         var besideDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "static"));
         if (Directory.Exists(besideDll))
             return besideDll;
 
-        var devRepoStatic = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "static"));
         if (Directory.Exists(devRepoStatic))
             return devRepoStatic;
 

@@ -15,6 +15,7 @@ public class CstmeatDbContext : DbContext
     public DbSet<BaggedQuantity> BaggedQuantities => Set<BaggedQuantity>();
     public DbSet<Mshokushu> Mshokushus => Set<Mshokushu>();
     public DbSet<MShisetsu> MShisetsus => Set<MShisetsu>();
+    public DbSet<ItemDefinitionMaster> ItemDefinitionMasters => Set<ItemDefinitionMaster>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,5 +55,6 @@ public class CstmeatDbContext : DbContext
 
         modelBuilder.Entity<Mshokushu>().HasKey(m => m.Id);
         modelBuilder.Entity<MShisetsu>().HasKey(s => s.Id);
+        modelBuilder.Entity<ItemDefinitionMaster>().HasKey(e => new { e.ItemCode, e.ItemDef });
     }
 }

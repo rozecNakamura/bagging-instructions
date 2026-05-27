@@ -93,6 +93,10 @@ public class Item
     [Column("middleclassficationcode")]
     public string? MiddleClassificationCode { get; set; }
 
+    /// <summary>小分類コード（DB 列名は minorclassficationcode）。minorclassification.minorclassificationcode と対応。</summary>
+    [Column("minorclassficationcode")]
+    public string? MinorClassificationCode { get; set; }
+
     public virtual Unit? Unit0 { get; set; }
     public virtual ItemAdditionalInformation? AdditionalInformation { get; set; }
     public virtual ICollection<ItemWorkCenterMapping> WorkCenterMappings { get; set; } = new List<ItemWorkCenterMapping>();

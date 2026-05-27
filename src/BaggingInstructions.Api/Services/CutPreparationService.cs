@@ -51,9 +51,9 @@ WITH mfg AS (
     COALESCE(ot.needdate, sol.planneddeliverydate) AS needdate_combined,
     TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) AS item_code,
     COALESCE(
-      NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-      NULLIF(TRIM(COALESCE(SPLIT_PART(p.productno,  '|', 2), '')), ''),
-      NULLIF(TRIM(COALESCE(SPLIT_PART(gp.productno, '|', 2), '')), ''),
+      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
+      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
       ''
     ) AS route_code
   FROM ordertable ot
@@ -79,7 +79,8 @@ WHERE m.needdate_combined = {date.Value}
   AND ({itemF} = '' OR m.item_code ILIKE '%' || {itemF} || '%')
 GROUP BY
   TO_CHAR(m.needdate_combined, 'YYYYMMDD'),
-  m.route_code
+  m.route_code,
+  ds.slotname
 ORDER BY ""Delvedt"", ""MfgRouteCode""
 ")
             .ToListAsync(ct);
@@ -134,9 +135,9 @@ LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
 WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(
-        NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-        NULLIF(TRIM(COALESCE(SPLIT_PART(p.productno,  '|', 2), '')), ''),
-        NULLIF(TRIM(COALESCE(SPLIT_PART(gp.productno, '|', 2), '')), ''),
+        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
+        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
         ''
       ) = {routeCode}
   AND ({wcIds.Length} = 0 OR EXISTS (
@@ -261,37 +262,52 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
         {
             await using var cmd = new NpgsqlCommand(
                 """
+                WITH base AS (
+                  SELECT
+                    COALESCE(ot.ordertableid, 0) AS ordertableid,
+                    COALESCE(ot.qty, sol.quantity) AS mfg_qty,
+                    TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) AS parent_itemcode,
+                    COALESCE(parent_i.itemname, '') AS parent_itemname,
+                    TRIM(COALESCE(ot.itemcode, '')) AS ot_itemcode,
+                    CASE
+                      WHEN TRIM(COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), '')) <> ''
+                           AND TRIM(COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), '')) <> TRIM(COALESCE(ot.itemcode, ''))
+                      THEN COALESCE(sol_i.itemname, '')
+                      ELSE ''
+                    END AS final_product_name,
+                    COALESCE(mid.middleclassificationname, '') AS middle_class_name,
+                    COALESCE(
+                      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
+                      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
+                      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
+                      ''
+                    ) AS route_code,
+                    COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
+                    COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date
+                  FROM ordertable ot
+                  LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+                  LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
+                  LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
+                  INNER JOIN item parent_i ON TRIM(BOTH FROM parent_i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
+                  LEFT JOIN item sol_i ON TRIM(sol_i.itemcode) = TRIM(COALESCE(NULLIF(TRIM(sol.itemcode), ''), ''))
+                  LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassficationcode
+                    AND mid.middleclassificationcode = parent_i.middleclassficationcode
+                  WHERE ot.ordertableid = ANY(@ids)
+                )
                 SELECT
-                  COALESCE(ot.ordertableid, 0),
-                  COALESCE(ot.qty, sol.quantity) AS mfg_qty,
-                  TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) AS parent_itemcode,
-                  COALESCE(parent_i.itemname, '') AS parent_itemname,
-                  TRIM(COALESCE(ot.itemcode, '')) AS ot_itemcode,
-                  CASE
-                    WHEN TRIM(COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), '')) <> ''
-                         AND TRIM(COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), '')) <> TRIM(COALESCE(ot.itemcode, ''))
-                    THEN COALESCE(sol_i.itemname, '')
-                    ELSE ''
-                  END AS final_product_name,
-                  COALESCE(mid.middleclassificationname, '') AS middle_class_name,
-                  COALESCE(
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(ot.productno, '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(p.productno,  '|', 2), '')), ''),
-                    NULLIF(TRIM(COALESCE(SPLIT_PART(gp.productno, '|', 2), '')), ''),
-                    ''
-                  ) AS mfg_route,
-                  COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
-                  COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date
-                FROM ordertable ot
-                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
-                LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
-                INNER JOIN item parent_i ON TRIM(BOTH FROM parent_i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
-                LEFT JOIN item sol_i ON TRIM(sol_i.itemcode) = TRIM(COALESCE(NULLIF(TRIM(sol.itemcode), ''), ''))
-                LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassficationcode
-                  AND mid.middleclassificationcode = parent_i.middleclassficationcode
-                WHERE ot.ordertableid = ANY(@ids)
-                ORDER BY ot.ordertableid
+                  b.ordertableid,
+                  b.mfg_qty,
+                  b.parent_itemcode,
+                  b.parent_itemname,
+                  b.ot_itemcode,
+                  b.final_product_name,
+                  b.middle_class_name,
+                  COALESCE(NULLIF(TRIM(COALESCE(ds.slotname, '')), ''), b.route_code) AS mfg_route,
+                  b.planned_delivery,
+                  b.need_date
+                FROM base b
+                LEFT JOIN deliveryslot ds ON ds.slotcode = b.route_code
+                ORDER BY b.ordertableid
                 """, conn);
             cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array)
             {

@@ -14,6 +14,7 @@ public class CutPreparationController : ControllerBase
     private readonly CutPreparationExcelService _cutPrepExcelService;
     private readonly PreparationWorkService _prepWorkService;
     private readonly ProductLabelPdfService _productLabelPdfService;
+    private readonly SortingInquiryService _sortingInquiryService;
     private readonly IWebHostEnvironment _env;
 
     public CutPreparationController(
@@ -22,6 +23,7 @@ public class CutPreparationController : ControllerBase
         CutPreparationExcelService cutPrepExcelService,
         PreparationWorkService prepWorkService,
         ProductLabelPdfService productLabelPdfService,
+        SortingInquiryService sortingInquiryService,
         IWebHostEnvironment env)
     {
         _cutPrepService = cutPrepService;
@@ -29,6 +31,7 @@ public class CutPreparationController : ControllerBase
         _cutPrepExcelService = cutPrepExcelService;
         _prepWorkService = prepWorkService;
         _productLabelPdfService = productLabelPdfService;
+        _sortingInquiryService = sortingInquiryService;
         _env = env;
     }
 
@@ -63,6 +66,21 @@ public class CutPreparationController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { detail = $"製造便一覧取得エラー: {ex.Message}" });
+        }
+    }
+
+    /// <summary>製造便マスタ（deliveryslot テーブル全件）。</summary>
+    [HttpGet("delivery-slots")]
+    public async Task<ActionResult<List<ProductionInstructionSlotOptionDto>>> ListDeliverySlots(CancellationToken ct)
+    {
+        try
+        {
+            var list = await _sortingInquiryService.ListSlotsAsync(ct);
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { detail = $"製造便マスタ取得エラー: {ex.Message}" });
         }
     }
 

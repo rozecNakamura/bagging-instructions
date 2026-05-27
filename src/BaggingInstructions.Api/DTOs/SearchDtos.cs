@@ -624,17 +624,20 @@ public class DeliveryNoteSearchResponseDto
     public List<DeliveryNoteSearchResultDto> Items { get; set; } = new();
 }
 
-/// <summary>個人配送指示書検索結果1件（配送日・配送便名称・配送エリア）</summary>
+/// <summary>個人配送指示書検索結果1件（喫食日・喫食時間・コース）</summary>
 public class PersonalDeliverySearchResultDto
 {
-    [JsonPropertyName("delivery_date")]
-    public string? DeliveryDate { get; set; }
+    [JsonPropertyName("eating_date")]
+    public string? EatingDate { get; set; }
 
-    [JsonPropertyName("time_name")]
-    public string? TimeName { get; set; }
+    [JsonPropertyName("meal_time")]
+    public string? MealTime { get; set; }
 
-    [JsonPropertyName("area")]
-    public string? Area { get; set; }
+    [JsonPropertyName("meal_time_name")]
+    public string? MealTimeName { get; set; }
+
+    [JsonPropertyName("course")]
+    public string? Course { get; set; }
 }
 
 /// <summary>個人配送指示書検索APIレスポンス</summary>

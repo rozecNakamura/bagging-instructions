@@ -116,7 +116,7 @@ public class SortingInquiryServiceTests
         Assert.Equal("LOC1", allSlots.StoreHeaderCodes[k]);
         Assert.Equal("200", allSlots.StoreHeaderDeliveryCodes[k]);
         Assert.Equal("得意先1", allSlots.StoreHeaderDeliveryNames[k]);
-        Assert.Equal(3m, allSlots.Rows[0].QuantitiesByStore[k]);
+        Assert.Equal(6m, allSlots.Rows[0].QuantitiesByStore[k]);
         Assert.Equal("昼食", allSlots.Rows[0].FoodType);
 
         var filtered = await svc.SearchAsync("20250710", new[] { "OTHER" });

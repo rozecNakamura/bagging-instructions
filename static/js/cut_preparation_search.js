@@ -40,13 +40,8 @@ function updateCutWorkcenterSummary() {
 function updateCutManufacturingRouteSummary() {
     const label = document.getElementById('cutManufacturingRouteSelectedLabel');
     if (!label) return;
-    const needDate = document.getElementById('cutNeedDate')?.value;
-    if (!needDate) {
-        label.textContent = '製造日を選択してください';
-        return;
-    }
     if (cutManufacturingRouteList.length === 0) {
-        label.textContent = '該当する製造便がありません';
+        label.textContent = '読み込み中...';
         return;
     }
     if (cutSelectedManufacturingRoutes.size === 0) {
@@ -106,23 +101,12 @@ function buildCutManufacturingRoutePanel() {
     updateCutManufacturingRouteSummary();
 }
 
-async function refreshCutManufacturingRoutesFromNeedDate() {
-    const needDate = document.getElementById('cutNeedDate')?.value || '';
-    cutSelectedManufacturingRoutes = new Set();
-    cutManufacturingRouteList = [];
-    const container = document.getElementById('cutManufacturingRouteOptions');
-    if (container) container.innerHTML = '';
-
-    if (!needDate) {
-        updateCutManufacturingRouteSummary();
-        return;
-    }
-
+async function loadCutManufacturingRoutes() {
     try {
-        cutManufacturingRouteList = await fetchCutPreparationManufacturingRoutes(needDate) || [];
+        cutManufacturingRouteList = await fetchCutPreparationManufacturingRoutes() || [];
         buildCutManufacturingRoutePanel();
     } catch (e) {
-        console.error('カット前準備書 製造便取得エラー:', e);
+        console.error('カット前準備書 製造便マスタ取得エラー:', e);
         cutManufacturingRouteList = [];
         updateCutManufacturingRouteSummary();
     }
@@ -211,12 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })();
 
-    const needDateInput = document.getElementById('cutNeedDate');
-    needDateInput?.addEventListener('change', refreshCutManufacturingRoutesFromNeedDate);
-    needDateInput?.addEventListener('input', refreshCutManufacturingRoutesFromNeedDate);
-    if (getCutNeedDateValue()) {
-        refreshCutManufacturingRoutesFromNeedDate();
-    }
+    loadCutManufacturingRoutes();
 
     const workcenterDisplay = document.getElementById('cutWorkcenterDisplay');
     const manufacturingRouteDisplay = document.getElementById('cutManufacturingRouteDisplay');
@@ -243,10 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             const panel = document.getElementById('cutManufacturingRouteOptions');
             if (!panel) return;
-            if (!document.getElementById('cutNeedDate')?.value) {
-                alert('先に製造日を選択してください');
-                return;
-            }
             const isHidden = panel.style.display === 'none' || panel.style.display === '';
             closeAllCutPanels();
             panel.style.display = isHidden ? 'block' : 'none';

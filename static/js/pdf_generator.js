@@ -218,12 +218,10 @@ export function openPdfInIframe(blob, title) {
  * ラベル印刷専用（現品票など小サイズ PDF）。
  * 通常の openPdfInIframe では Chrome が 0×0 iframe から正確な用紙サイズを読み取れず
  * A4 扱いにしてしまう場合があるため、PDF 本来のサイズで印刷できるよう
- * 新しいウィンドウで PDF を表示する。
+ * 新しいウィンドウで PDF を表示し、1.5 秒後に印刷ダイアログを自動表示する。
  *
- * Chrome の PDF ビューワーには印刷ボタンが内蔵されているため、
- * コードから print() を自動呼び出しするとビューワー初期化時に
- * onload が複数回発火して印刷ダイアログが二重に出る問題があった。
- * そのため PDF を開くのみとし、印刷はビューワーのボタンから行う。
+ * onload イベントは Chrome PDF ビューワーで複数回発火するため、
+ * setTimeout によるワンショット呼び出しで印刷ダイアログの二重表示を防ぐ。
  *
  * 印刷時は用紙サイズを「60×60mm」、倍率を「実際のサイズ」に設定してください。
  *
@@ -241,6 +239,12 @@ export function openLabelPdfForPrint(blob, _title) {
         URL.revokeObjectURL(url);
         return;
     }
+    // PDF 読み込み後に1回だけ印刷ダイアログを自動表示。
+    // onload は Chrome PDF ビューワーで複数回発火するため setTimeout で代替し、
+    // 印刷ダイアログの二重表示を防ぐ。
+    setTimeout(() => {
+        try { if (!win.closed) win.print(); } catch (_) {}
+    }, 1500);
     // URL の解放：ウィンドウが閉じられるか2分後に解放
     setTimeout(() => URL.revokeObjectURL(url), 120000);
 }

@@ -405,8 +405,31 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="deliveryNoteEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <label for="deliveryNoteEatingDate">出荷日<span class="field-required-mark" aria-label="必須">*</span>:</label>
                                 <input type="date" id="deliveryNoteEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>区分<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+                                    <label style="font-weight:normal;"><input type="radio" name="deliveryNoteCustomerType" value="catering" checked> ケータリング</label>
+                                    <label style="font-weight:normal;"><input type="radio" name="deliveryNoteCustomerType" value="personal"> 個人配食</label>
+                                    <label style="font-weight:normal;"><input type="radio" name="deliveryNoteCustomerType" value="hospital"> 病院向（個人配食）</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="deliveryNoteDeliveryRoute">納品便:</label>
+                                <select id="deliveryNoteDeliveryRoute" style="width:10rem;">
+                                    <option value="">（全て）</option>
+                                    <option value="1">出荷朝便</option>
+                                    <option value="2">出荷昼便</option>
+                                    <option value="3">出荷夜便</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="deliveryNoteLocationFilter">納入場所:</label>
+                                <select id="deliveryNoteLocationFilter" style="width:16rem;" disabled>
+                                    <option value="">（全て）</option>
+                                </select>
                             </div>
                             <button type="button" id="deliveryNoteSearchBtn" class="btn btn-primary">検索</button>
                             <div id="deliveryNotePrintSection" class="search-form-inline-actions print-section" style="display: none;">
@@ -579,8 +602,15 @@
                         <h2>検索条件</h2>
                         <div class="search-form">
                             <div class="form-group">
-                                <label for="personalDeliveryDate">配送日<span class="field-required-mark" aria-label="必須">*</span>:</label>
-                                <input type="date" id="personalDeliveryDate" required aria-required="true">
+                                <label for="personalDeliveryEatingDate">喫食日<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="personalDeliveryEatingDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="personalDeliveryVariant">帳票<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <select id="personalDeliveryVariant" required aria-required="true">
+                                    <option value="detail">個人配送指示書</option>
+                                    <option value="summary">個人配送指示書（集計）</option>
+                                </select>
                             </div>
                             <button type="button" id="personalDeliverySearchBtn" class="btn btn-primary">検索</button>
                             <div id="personalDeliveryPrintSection" class="search-form-inline-actions print-section" style="display: none;">
@@ -603,9 +633,9 @@
                                 <thead>
                                     <tr>
                                         <th><input type="checkbox" id="personalDeliveryHeaderCheckbox"></th>
-                                        <th>配送日</th>
-                                        <th>配送便名称</th>
-                                        <th>配送エリア</th>
+                                        <th>喫食日</th>
+                                        <th>喫食時間</th>
+                                        <th>コース</th>
                                     </tr>
                                 </thead>
                                 <tbody id="personalDeliveryResultsBody">

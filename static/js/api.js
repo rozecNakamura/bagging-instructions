@@ -312,13 +312,15 @@ export async function searchJuice(delvedt, itemcd, mealTime) {
 /**
  * 納品書用：喫食日で検索（喫食日・納入場所名）
  */
-export async function searchDeliveryNote(delvedt) {
+export async function searchDeliveryNote(delvedt, customerType, deliveryRoute) {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
             delvedtStr = delvedt.replace(/-/g, '');
         }
         const params = new URLSearchParams({ delvedt: delvedtStr });
+        if (customerType) params.append('customerType', customerType);
+        if (deliveryRoute) params.append('deliveryRoute', deliveryRoute);
         const response = await fetch(`${API_BASE_URL}/delivery-note/search?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -628,15 +630,15 @@ export async function searchGohan(delvedt, itemcd, addinfo08Type) {
 }
 
 /**
- * 個人配送指示書用：配送日で検索（配送日・喫食時間・配送エリア）
+ * 個人配送指示書用：喫食日で検索（cstmeat 基準・喫食日・喫食時間・コース）
  */
-export async function searchPersonalDelivery(delvedt) {
+export async function searchPersonalDelivery(delvedt, variant = 'detail') {
     try {
         let delvedtStr = delvedt;
         if (delvedt && delvedt.includes('-')) {
             delvedtStr = delvedt.replace(/-/g, '');
         }
-        const params = new URLSearchParams({ delvedt: delvedtStr });
+        const params = new URLSearchParams({ delvedt: delvedtStr, variant: variant || 'detail' });
         const response = await fetch(`${API_BASE_URL}/personal-delivery/search?${params}`);
         if (!response.ok) {
             let detail = '';
@@ -655,7 +657,7 @@ export async function searchPersonalDelivery(delvedt) {
 
 /**
  * 個人配送指示書 PDF 生成
- * @param {Array<{ delivery_date: string, time_name: string, area: string }>} rows
+ * @param {Array<{ eating_date: string, meal_time: string, course: string }>} rows
  * @param {'detail'|'summary'} variant - 'detail'=個人配送指示書.rxz のみ / 'summary'=個人配送指示書（集計）.rxz のみ
  * @returns {Promise<Blob>}
  */
@@ -665,9 +667,9 @@ export async function generatePersonalDeliveryPdfBlob(rows, variant) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             rows: rows.map(r => ({
-                delivery_date: r.delivery_date,
-                time_name: r.time_name ?? '',
-                area: r.area ?? ''
+                eating_date: r.eating_date,
+                meal_time: r.meal_time ?? '',
+                course: r.course ?? ''
             })),
             variant: variant
         })
@@ -1569,18 +1571,14 @@ export async function fetchCutPreparationWorkcenters() {
 }
 
 /**
- * カット前準備書：製造便一覧（製造日当日の受注付帯より）
+ * カット前準備書：製造便マスタ（deliveryslot テーブル全件）
  */
-export async function fetchCutPreparationManufacturingRoutes(delvedt) {
-    let delvedtStr = delvedt;
-    if (delvedt && delvedt.includes('-')) delvedtStr = delvedt.replace(/-/g, '');
-    if (!delvedtStr || delvedtStr.length !== 8) return [];
-    const params = new URLSearchParams({ delvedt: delvedtStr });
-    const res = await fetch(`${API_BASE_URL}/cut-preparation/manufacturing-routes?${params}`);
+export async function fetchCutPreparationManufacturingRoutes() {
+    const res = await fetch(`${API_BASE_URL}/cut-preparation/delivery-slots`);
     if (!res.ok) {
         let detail = '';
         try { const body = await res.json(); detail = body.detail ? ` - ${body.detail}` : ''; } catch (_) { /* ignore */ }
-        throw new Error(`製造便一覧取得エラー: ${res.status}${detail}`);
+        throw new Error(`製造便マスタ取得エラー: ${res.status}${detail}`);
     }
     return await res.json();
 }

@@ -19,4 +19,7 @@ public class Mshokushu
 
     [Column("priority_order")]
     public decimal? PriorityOrder { get; set; }
+
+    [Column("seikyu_kubun_code")]
+    public string? SeikyuKubunCode { get; set; }
 }
