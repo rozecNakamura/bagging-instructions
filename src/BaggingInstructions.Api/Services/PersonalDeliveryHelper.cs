@@ -5,7 +5,7 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>個人配送指示書の共通判定・コース/配送順解決。</summary>
 public static class PersonalDeliveryHelper
 {
-    private static readonly string[] DetailRiceItemCodePrefixes = ["3011", "3111", "3411"];
+    private static readonly string[] DetailRiceItemCodePrefixes = ["3010", "3011", "3111", "3411"];
     public const string TargetCustomerCode = "300";
     public const string StapleFoodItemCodePrefix = "3011";
     public const string SoupItemCodePrefix = "305";

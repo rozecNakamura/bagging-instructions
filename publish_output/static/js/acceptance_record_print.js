@@ -19,21 +19,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const deliveryDate = document.getElementById('acceptanceDelvDate').value;
-        if (!deliveryDate) {
-            alert('納品日を入力してください');
+        const shipDate = document.getElementById('acceptanceShipDate').value || '';
+        if (!shipDate) {
+            alert('出荷日を入力してください');
             return;
         }
 
-        const shipDate = document.getElementById('acceptanceShipDate').value || '';
+        const deliveryDate = document.getElementById('acceptanceDelvDate').value || '';
         const headerLocation = buildAcceptanceStoreHeaderText();
 
         const filter = {
             deliveryDate,
             shipDate,
             headerLocation,
-            headerOutDate: shipDate ? isoDateToSlash(shipDate) : '',
-            headerDelvDate: isoDateToSlash(deliveryDate)
+            headerOutDate: isoDateToSlash(shipDate),
+            headerDelvDate: deliveryDate ? isoDateToSlash(deliveryDate) : ''
         };
 
         try {

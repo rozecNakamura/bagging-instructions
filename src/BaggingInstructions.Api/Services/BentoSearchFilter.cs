@@ -6,7 +6,7 @@ public static class BentoSearchFilter
     public const string TypeOkazu = "okazu";
     public const string TypeGohan = "gohan";
 
-    private static readonly string[] GohanItemCodePrefixes = ["3011", "3111", "3411"];
+    private static readonly string[] GohanItemCodePrefixes = ["3010", "3011", "3111", "3411"];
     private static readonly string[] TargetCustomerCodes = ["240", "300", "310"];
 
     public static bool IsOkazu(string? bentoType) =>

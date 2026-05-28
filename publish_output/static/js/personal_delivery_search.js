@@ -1,20 +1,36 @@
 /**
- * 個人配送指示書：配送日で検索・結果表示・選択
+ * 個人配送指示書：喫食日で検索・結果表示・選択
  */
 import { searchPersonalDelivery } from './api.js';
 
 let personalDeliverySearchResults = [];
 
-document.getElementById('personalDeliverySearchBtn').addEventListener('click', async () => {
-    const deliveryDate = document.getElementById('personalDeliveryDate').value;
+function getSelectedVariant() {
+    return document.getElementById('personalDeliveryVariant')?.value || 'detail';
+}
 
-    if (!deliveryDate) {
-        alert('配送日を入力してください');
+function updatePrintButtonsVisibility() {
+    const variant = getSelectedVariant();
+    const detailBtn = document.getElementById('personalDeliveryDetailPrintBtn');
+    const summaryBtn = document.getElementById('personalDeliverySummaryPrintBtn');
+    if (detailBtn) detailBtn.style.display = variant === 'detail' ? '' : 'none';
+    if (summaryBtn) summaryBtn.style.display = variant === 'summary' ? '' : 'none';
+}
+
+document.getElementById('personalDeliveryVariant')?.addEventListener('change', updatePrintButtonsVisibility);
+updatePrintButtonsVisibility();
+
+document.getElementById('personalDeliverySearchBtn').addEventListener('click', async () => {
+    const eatingDate = document.getElementById('personalDeliveryEatingDate').value;
+    const variant = getSelectedVariant();
+
+    if (!eatingDate) {
+        alert('喫食日を入力してください');
         return;
     }
 
     try {
-        const response = await searchPersonalDelivery(deliveryDate);
+        const response = await searchPersonalDelivery(eatingDate, variant);
         personalDeliverySearchResults = response.items || [];
         displayPersonalDeliveryResults(personalDeliverySearchResults);
     } catch (error) {
@@ -42,9 +58,9 @@ function displayPersonalDeliveryResults(items) {
         const row = tbody.insertRow();
         row.innerHTML = `
             <td><input type="checkbox" class="personal-delivery-item-checkbox" data-index="${index}"></td>
-            <td>${formatDate(item.delivery_date) || '-'}</td>
-            <td>${escapeHtml(item.time_name) || '-'}</td>
-            <td>${escapeHtml(item.area) || '-'}</td>
+            <td>${formatDate(item.eating_date) || '-'}</td>
+            <td>${escapeHtml(item.meal_time_name || item.meal_time) || '-'}</td>
+            <td>${escapeHtml(item.course) || '-'}</td>
         `;
         row.style.cursor = 'pointer';
         row.addEventListener('click', (e) => {
@@ -56,6 +72,7 @@ function displayPersonalDeliveryResults(items) {
 
     section.style.display = 'block';
     printSection.style.display = 'flex';
+    updatePrintButtonsVisibility();
     document.getElementById('personalDeliveryHeaderCheckbox').checked = false;
 }
 
@@ -94,8 +111,12 @@ export function getSelectedPersonalDeliveryRows() {
     return personalDeliverySearchResults
         .filter((_, i) => indices.has(i))
         .map(item => ({
-            delivery_date: item.delivery_date || '',
-            time_name: item.time_name ?? '',
-            area: item.area ?? ''
+            eating_date: item.eating_date || '',
+            meal_time: item.meal_time ?? '',
+            course: item.course ?? ''
         }));
+}
+
+export function getSelectedPersonalDeliveryVariant() {
+    return getSelectedVariant();
 }

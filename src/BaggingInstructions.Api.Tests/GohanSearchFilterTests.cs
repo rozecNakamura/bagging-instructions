@@ -5,6 +5,7 @@ namespace BaggingInstructions.Api.Tests;
 public class GohanSearchFilterTests
 {
     [Theory]
+    [InlineData("30100001", true)]
     [InlineData("30110001", true)]
     [InlineData("31110001", true)]
     [InlineData("34110001", true)]

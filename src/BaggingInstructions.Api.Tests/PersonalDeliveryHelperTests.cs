@@ -33,6 +33,7 @@ public class PersonalDeliveryHelperTests
     }
 
     [Theory]
+    [InlineData("3010001", true)]
     [InlineData("3011001", true)]
     [InlineData("3111001", true)]
     [InlineData("3411001", true)]

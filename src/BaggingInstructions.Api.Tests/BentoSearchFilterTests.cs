@@ -35,6 +35,7 @@ public class BentoSearchFilterTests
     }
 
     [Theory]
+    [InlineData("30100001", true)]
     [InlineData("30110001", true)]
     [InlineData("31110001", true)]
     [InlineData("34110001", true)]

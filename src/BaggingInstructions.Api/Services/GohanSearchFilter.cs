@@ -3,12 +3,12 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>ご飯盛り付け指示書の検索対象判定。</summary>
 public static class GohanSearchFilter
 {
-    private static readonly string[] ItemCodePrefixes = ["3011", "3111", "3411"];
+    private static readonly string[] ItemCodePrefixes = ["3010", "3011", "3111", "3411"];
     private static readonly string[] BoxCustomerCodes = ["200", "210"];
     private static readonly string[] IndividualCustomerCodes = ["240", "300", "310"];
     private static readonly string[] AllCustomerCodes = ["200", "210", "240", "300", "310"];
 
-    /// <summary>品目コード先頭4桁が 3011 / 3111 / 3411 のいずれかか。</summary>
+    /// <summary>品目コード先頭4桁が 3010 / 3011 / 3111 / 3411 のいずれかか。</summary>
     public static bool IsTargetItemCode(string? itemCode)
     {
         var code = (itemCode ?? "").Trim();

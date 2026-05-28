@@ -7,9 +7,7 @@ import { productionInstructionMultiSelectLabel } from './production_instruction_
 
 let prodRows = [];
 let aggregatedProdRows = [];
-let prodWorkcenterList = [];
 let prodSlotList = [];
-let prodSelectedWorkcenterIds = new Set();
 let prodSelectedSlotCodes = new Set();
 
 function formatQtySum(sum) {
@@ -115,7 +113,8 @@ function displayProductionResults(rows) {
     section.style.display = 'block';
     printSection.style.display = 'flex';
     const headerCheckbox = document.getElementById('prodHeaderCheckbox');
-    if (headerCheckbox) headerCheckbox.checked = false;
+    tbody.querySelectorAll('.prod-item-checkbox').forEach(cb => { cb.checked = true; });
+    if (headerCheckbox) headerCheckbox.checked = true;
 }
 
 export function getSelectedOrderIds() {
@@ -139,24 +138,17 @@ export function getSelectedOrderIds() {
 /** @returns {{ needDate: string, workcenterIds: number[], slotCodes: string[] }} */
 export function getProductionInstructionReportFilter() {
     const needDate = document.getElementById('prodNeedDate')?.value || '';
+    const wcVal = document.getElementById('prodWorkcenter')?.value || '';
+    const wcId = wcVal ? Number(wcVal) : 0;
     return {
         needDate,
-        workcenterIds: Array.from(prodSelectedWorkcenterIds).map(id => Number(id)).filter(id => id > 0),
+        workcenterIds: wcId > 0 ? [wcId] : [],
         slotCodes: Array.from(prodSelectedSlotCodes).filter(s => s)
     };
 }
 
-function updateProdWorkcenterSlotLabels() {
-    const wcLabel = document.getElementById('prodWorkcenterSelectedLabel');
+function updateProdSlotLabel() {
     const slotLabel = document.getElementById('prodSlotSelectedLabel');
-
-    if (wcLabel) {
-        wcLabel.textContent = productionInstructionMultiSelectLabel(
-            prodSelectedWorkcenterIds.size,
-            prodWorkcenterList.length
-        );
-    }
-
     if (slotLabel) {
         slotLabel.textContent = productionInstructionMultiSelectLabel(
             prodSelectedSlotCodes.size,
@@ -165,34 +157,11 @@ function updateProdWorkcenterSlotLabels() {
     }
 }
 
-function buildProdWorkcenterSlotPanels() {
-    const wcContainer = document.getElementById('prodWorkcenterOptions');
+function buildProdSlotPanel() {
     const slotContainer = document.getElementById('prodSlotOptions');
-    if (!wcContainer || !slotContainer) return;
+    if (!slotContainer) return;
 
-    wcContainer.innerHTML = '';
     slotContainer.innerHTML = '';
-
-    prodWorkcenterList.forEach(w => {
-        const label = document.createElement('label');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = String(w.id);
-        if (prodSelectedWorkcenterIds.has(w.id)) cb.checked = true;
-        cb.addEventListener('change', () => {
-            if (cb.checked) {
-                prodSelectedWorkcenterIds.add(w.id);
-            } else {
-                prodSelectedWorkcenterIds.delete(w.id);
-            }
-            updateProdWorkcenterSlotLabels();
-        });
-        const text = document.createElement('span');
-        text.textContent = w.name || '';
-        label.appendChild(cb);
-        label.appendChild(text);
-        wcContainer.appendChild(label);
-    });
 
     prodSlotList.forEach(s => {
         const label = document.createElement('label');
@@ -206,7 +175,7 @@ function buildProdWorkcenterSlotPanels() {
             } else {
                 prodSelectedSlotCodes.delete(s.code);
             }
-            updateProdWorkcenterSlotLabels();
+            updateProdSlotLabel();
         });
         const text = document.createElement('span');
         text.textContent = s.name || s.code || '';
@@ -215,7 +184,19 @@ function buildProdWorkcenterSlotPanels() {
         slotContainer.appendChild(label);
     });
 
-    updateProdWorkcenterSlotLabels();
+    updateProdSlotLabel();
+}
+
+function populateProdWorkcenterSelect(list) {
+    const sel = document.getElementById('prodWorkcenter');
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    (list || []).forEach(w => {
+        const opt = document.createElement('option');
+        opt.value = String(w.id);
+        opt.textContent = w.name || String(w.id);
+        sel.appendChild(opt);
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -223,7 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerCheckbox = document.getElementById('prodHeaderCheckbox');
     const selectAllBtn = document.getElementById('prodSelectAllBtn');
     const deselectAllBtn = document.getElementById('prodDeselectAllBtn');
-    const wcDisplay = document.getElementById('prodWorkcenterDisplay');
     const slotDisplay = document.getElementById('prodSlotDisplay');
 
     if (!searchBtn) return;
@@ -231,9 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
     (async () => {
         try {
             const wcs = await fetchProductionInstructionWorkcenters();
-            prodWorkcenterList = wcs || [];
-            prodSlotList = [];
-            buildProdWorkcenterSlotPanels();
+            populateProdWorkcenterSelect(wcs || []);
         } catch (e) {
             console.error('調味液配合表仕様 マスタ取得エラー:', e);
         }
@@ -245,15 +223,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('prodSlotOptions');
         if (container) container.innerHTML = '';
         if (!needDate) {
-            updateProdWorkcenterSlotLabels();
+            updateProdSlotLabel();
             return;
         }
         try {
             prodSlotList = await fetchProductionInstructionSlots(needDate) || [];
-            buildProdWorkcenterSlotPanels();
+            buildProdSlotPanel();
         } catch (e) {
             console.error('調味液配合表仕様 便一覧取得エラー:', e);
-            updateProdWorkcenterSlotLabels();
+            updateProdSlotLabel();
         }
     }
 
@@ -266,21 +244,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function closeAllProdPanels() {
-        const p1 = document.getElementById('prodWorkcenterOptions');
         const p2 = document.getElementById('prodSlotOptions');
-        if (p1) p1.style.display = 'none';
         if (p2) p2.style.display = 'none';
-    }
-
-    if (wcDisplay) {
-        wcDisplay.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const panel = document.getElementById('prodWorkcenterOptions');
-            if (!panel) return;
-            const isHidden = panel.style.display === 'none' || panel.style.display === '';
-            closeAllProdPanels();
-            panel.style.display = isHidden ? 'block' : 'none';
-        });
     }
 
     if (slotDisplay) {
@@ -305,7 +270,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     searchBtn.addEventListener('click', async () => {
         const needDate = document.getElementById('prodNeedDate').value;
-        const workcenterIds = Array.from(prodSelectedWorkcenterIds);
+        const wcVal = document.getElementById('prodWorkcenter')?.value || '';
+        const workcenterIds = wcVal ? [Number(wcVal)] : [];
         const slotCodes = Array.from(prodSelectedSlotCodes);
 
         if (!needDate) {

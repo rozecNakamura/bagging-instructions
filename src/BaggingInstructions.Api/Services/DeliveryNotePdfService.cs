@@ -14,6 +14,7 @@ namespace BaggingInstructions.Api.Services;
 /// ケータリング（200/210/220/230/240）: ITEMNM=食種名：喫食時間名、SUMCOUNT=食数合計、SUMPRICE=合計金額。
 /// 個人配食（300）: ITEMNM=請求区分コード4文字目以降:喫食時間（朝/昼/夕）:info17。
 /// 病院向（310）: 3011/3111/3411品目がある場合は ITEMNM=食種名:ご飯量(addinfo01)、なければ ITEMNM=食種名。
+/// 個人配食（300）: 備考欄に受注明細のご飯品目（3010/3011/3111/3411）の addinfo01 を "{量}g" で印字。
 /// </summary>
 public class DeliveryNotePdfService
 {
@@ -100,6 +101,34 @@ public class DeliveryNotePdfService
                 .ToList();
         }
 
+        // 個人配食(300): 喫食時間(addinfo05)→ご飯量(addinfo01) のマップを構築
+        var riceAmountByMealTime = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (customerType == "personal" && info03Dates.Count > 0)
+        {
+            var locCode = (locationCode ?? "").Trim();
+            var riceLines = _appDb.SalesOrderLines
+                .AsNoTracking()
+                .Include(l => l.SalesOrder)
+                .Include(l => l.Item)
+                .Include(l => l.Addinfo)
+                .Where(l =>
+                    l.SalesOrder != null &&
+                    l.SalesOrder.CustomerCode == custCodeTrimmed &&
+                    l.SalesOrder.CustomerDeliveryLocationCode == locCode)
+                .ToList()
+                .Where(l => l.PlannedDeliveryDate.HasValue && info03Dates.Contains(l.PlannedDeliveryDate!.Value))
+                .ToList();
+
+            foreach (var line in riceLines)
+            {
+                if (!PersonalDeliveryHelper.IsRiceItemCode(line.Item?.ItemCd)) continue;
+                var mealTime = (line.Addinfo?.Addinfo05 ?? "").Trim();
+                var amount = (line.Addinfo?.Addinfo01 ?? "").Trim();
+                if (mealTime.Length > 0 && amount.Length > 0 && !riceAmountByMealTime.ContainsKey(mealTime))
+                    riceAmountByMealTime[mealTime] = amount;
+            }
+        }
+
         // info05 → m_shokushu.shokushu_name、info04 → eattime.eattimename
         var info05List = cstmeatRows.Select(c => c.Info05).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
         var info04List = cstmeatRows.Select(c => c.Info04).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
@@ -182,6 +211,10 @@ public class DeliveryNotePdfService
                     customerType, info05, info04, foodtypename, eattimename,
                     tankaCdName, info17, info06, seikyuKubunByCd);
 
+                var note = customerType == "personal" && riceAmountByMealTime.TryGetValue(info04, out var riceAmt)
+                    ? $"{riceAmt}g"
+                    : Info19Display(info19);
+
                 return new
                 {
                     ItemNm = itemNm,
@@ -189,7 +222,7 @@ public class DeliveryNotePdfService
                     UnitPrice = unitPrice,
                     Price = price,
                     Unit = "食",
-                    Note = Info19Display(info19)
+                    Note = note
                 };
             })
             .OrderBy(x => x.ItemNm)

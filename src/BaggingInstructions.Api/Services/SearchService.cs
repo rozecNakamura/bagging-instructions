@@ -344,7 +344,7 @@ FROM m_shokushu";
             .ToList();
     }
 
-    /// <summary>弁当箱・ご飯：得意先240/300/310、addinfo08=1、info14=1、品目3011/3111/3411。</summary>
+    /// <summary>弁当箱・ご飯：得意先240/300/310、addinfo08=1、info14=1、品目3010/3011/3111/3411。</summary>
     private async Task<List<BentoSearchGroupDto>> SearchBentoGohanGroupedAsync(string delvedt, string? itemcd, CancellationToken ct)
     {
         var delvedtDate = ParseProductDate(delvedt);
@@ -362,7 +362,8 @@ FROM m_shokushu";
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
             .Where(l => l.Item != null
                 && l.Item.ItemCd != null
-                && (l.Item.ItemCd.StartsWith("3011")
+                && (l.Item.ItemCd.StartsWith("3010")
+                    || l.Item.ItemCd.StartsWith("3011")
                     || l.Item.ItemCd.StartsWith("3111")
                     || l.Item.ItemCd.StartsWith("3411")));
 
@@ -503,7 +504,7 @@ FROM m_shokushu";
 
     /// <summary>
     /// ご飯盛り付け指示書用：喫食日・品目コードで検索。
-    /// 品目コード先頭4桁が 3011/3111/3411 のみ。区分=個人→得意先240/300/310、BOX→得意先200/210。
+    /// 品目コード先頭4桁が 3010/3011/3111/3411 のみ。区分=個人→得意先240/300/310、BOX→得意先200/210。
     /// </summary>
     public async Task<List<JobordItemDto>> SearchByDeliveryDateForGohanAsync(string delvedt, string? itemcd, string? addinfo08Type = null, CancellationToken ct = default)
     {
@@ -523,7 +524,8 @@ FROM m_shokushu";
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
             .Where(l => l.Item != null
                 && l.Item.ItemCd != null
-                && (l.Item.ItemCd.StartsWith("3011")
+                && (l.Item.ItemCd.StartsWith("3010")
+                    || l.Item.ItemCd.StartsWith("3011")
                     || l.Item.ItemCd.StartsWith("3111")
                     || l.Item.ItemCd.StartsWith("3411")));
 
