@@ -38,7 +38,7 @@ public class DeliveryNotePdfService
     }
 
     /// <summary>1件の納品書（出荷日・納入場所・得意先）に対する全ページ分のタグ値を構築する。明細が4行超の場合は複数ページ。</summary>
-    public List<Dictionary<string, string>> BuildTagValuesPagesForOne(string eatingDateYyyymmdd, string locationCode, string customerCode)
+    public List<Dictionary<string, string>> BuildTagValuesPagesForOne(string eatingDateYyyymmdd, string locationCode, string customerCode, string deliveryRoute = "")
     {
         var pages = new List<Dictionary<string, string>>();
         var custCodeTrimmed = (customerCode ?? "").Trim();
@@ -64,11 +64,13 @@ public class DeliveryNotePdfService
             day = eatingDateYyyymmdd.Substring(6, 2);
         }
 
-        // cstmeat を出荷日（info18）・納入場所（info02）・得意先（info01）で絞り込む
-        var cstmeatRows = _cstmeatDb.Cstmeats
+        // cstmeat を出荷日（info18）・納入場所（info02）・得意先（info01）・便（info19）で絞り込む
+        var cstmeatQuery = _cstmeatDb.Cstmeats
             .AsNoTracking()
-            .Where(c => c.Info18 == eatingDateYyyymmdd && (c.Info02 ?? "") == locationCode && (c.Info01 ?? "") == customerCode)
-            .ToList();
+            .Where(c => c.Info18 == eatingDateYyyymmdd && (c.Info02 ?? "") == locationCode && (c.Info01 ?? "") == customerCode);
+        if (!string.IsNullOrEmpty(deliveryRoute))
+            cstmeatQuery = cstmeatQuery.Where(c => c.Info19 == deliveryRoute);
+        var cstmeatRows = cstmeatQuery.ToList();
 
         // RECEPTNO: info03（喫食日 YYYYMMDD）→ salesorderline.planneddeliverydate でマッチして salesorderid を取得
         var info03Dates = cstmeatRows
@@ -186,12 +188,12 @@ public class DeliveryNotePdfService
 
 
         var grouped = cstmeatRows
-            .GroupBy(c => new { Info05 = c.Info05 ?? "", Info04 = c.Info04 ?? "" })
+            .GroupBy(c => new { Info05 = c.Info05 ?? "", Info04 = c.Info04 ?? "", Info06 = c.Info06 ?? "" })
             .Select(g =>
             {
                 var info05 = g.Key.Info05;
                 var info04 = g.Key.Info04;
-                var info06 = g.Select(c => c.Info06).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+                var info06 = g.Key.Info06;
                 var info09 = g.Select(c => c.Info09).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
                 var info17 = g.Select(c => c.Info17).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
                 var cnt = g.Sum(x => decimal.TryParse(x.Info07, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0);
@@ -243,7 +245,7 @@ public class DeliveryNotePdfService
                 tags[$"MONTH_{f}"] = month;
                 tags[$"DAY_{f}"] = day;
                 tags[$"RECEPTNO_{f}"] = receptNo;
-                tags[$"SUMPRICE_{f}"] = sumPriceTotal.ToString(CultureInfo.InvariantCulture);
+                tags[$"SUMPRICE_{f}"] = sumPriceTotal != 0 ? sumPriceTotal.ToString(CultureInfo.InvariantCulture) : "";
                 if (customerType == "catering")
                     tags[$"SUMCOUNT_{f}"] = sumCountTotal.ToString(CultureInfo.InvariantCulture);
             }
@@ -268,8 +270,8 @@ public class DeliveryNotePdfService
                     tagValues[$"ITEMNM_{f}_{nn}"] = row?.ItemNm ?? "";
                     tagValues[$"COUNT_{f}_{nn}"] = row != null ? row.Count.ToString(CultureInfo.InvariantCulture) : "";
                     tagValues[$"UNIT_{f}_{nn}"] = row?.Unit ?? "";
-                    tagValues[$"UNITPRICE_{f}_{nn}"] = row != null ? row.UnitPrice.ToString(CultureInfo.InvariantCulture) : "";
-                    tagValues[$"PRICE_{f}_{nn}"] = row != null ? row.Price.ToString(CultureInfo.InvariantCulture) : "";
+                    tagValues[$"UNITPRICE_{f}_{nn}"] = row != null && row.UnitPrice != 0 ? row.UnitPrice.ToString(CultureInfo.InvariantCulture) : "";
+                    tagValues[$"PRICE_{f}_{nn}"] = row != null && row.Price != 0 ? row.Price.ToString(CultureInfo.InvariantCulture) : "";
                     tagValues[$"NOTE_{f}_{nn}"] = row?.Note ?? "";
                 }
             }
@@ -365,7 +367,7 @@ public class DeliveryNotePdfService
         {
             "1" => "出荷便朝",
             "2" => "出荷便昼",
-            "3" => "出荷便夜",
+            "3" => "出荷便夕",
             var s => s
         };
 
@@ -415,15 +417,15 @@ public class DeliveryNotePdfService
     }
 
     /// <summary>複数件の納品書を1つのPDFに結合して返す。1件あたり1～複数ページ（明細4行超で複数ページ）。</summary>
-    public byte[] GenerateMergedPdf(string rxzTemplatePath, IReadOnlyList<(string EatingDate, string LocationCode, string CustomerCode)> rows)
+    public byte[] GenerateMergedPdf(string rxzTemplatePath, IReadOnlyList<(string EatingDate, string LocationCode, string CustomerCode, string DeliveryRoute)> rows)
     {
         if (rows == null || rows.Count == 0)
             return Array.Empty<byte>();
 
         var outputDoc = new PdfDocument();
-        foreach (var (eatingDate, locationCode, customerCode) in rows)
+        foreach (var (eatingDate, locationCode, customerCode, deliveryRoute) in rows)
         {
-            var pageTagLists = BuildTagValuesPagesForOne(eatingDate, locationCode, customerCode);
+            var pageTagLists = BuildTagValuesPagesForOne(eatingDate, locationCode, customerCode, deliveryRoute);
             foreach (var tagValues in pageTagLists)
             {
                 var onePdf = _juicePdfService.GeneratePdf(rxzTemplatePath, tagValues);

@@ -103,7 +103,7 @@ public sealed class AcceptanceRecordPdfLineModel
     /// <summary>cstmeat 結合キー用：喫食時間（salesorderlineaddinfo.addinfo05 = cstmeat.info04）。</summary>
     public string Addinfo05 { get; set; } = "";
 
-    /// <summary>cstmeat 結合キー用：食種（salesorderlineaddinfo.addinfo02 = cstmeat.info05）。</summary>
+    /// <summary>食種（salesorderlineaddinfo.addinfo02）。cstmeat 結合キーには使用しない。</summary>
     public string Addinfo02 { get; set; } = "";
 
     public string EatDateDisplay { get; set; } = "";

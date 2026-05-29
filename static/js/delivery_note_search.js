@@ -129,6 +129,7 @@ document.getElementById('deliveryNoteDeselectAllBtn').addEventListener('click', 
  * 選択された行データを取得（PDF印刷・納品書.rxz テンプレート用）
  */
 export function getSelectedDeliveryNoteRows() {
+    const deliveryRoute = document.getElementById('deliveryNoteDeliveryRoute')?.value || '';
     const checked = document.querySelectorAll('.delivery-note-item-checkbox:checked');
     const indices = new Set(Array.from(checked).map(cb => parseInt(cb.dataset.index, 10)));
     return deliveryNoteSearchResults
@@ -136,6 +137,7 @@ export function getSelectedDeliveryNoteRows() {
         .map(item => ({
             eating_date: item.eating_date || '',
             location_code: item.location_code || '',
-            customer_code: item.customer_code ?? ''
+            customer_code: item.customer_code ?? '',
+            delivery_route: deliveryRoute
         }));
 }

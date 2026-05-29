@@ -58,7 +58,7 @@ public class DeliveryNoteController : ControllerBase
             return NotFound(new { detail = "納品書テンプレートが見つかりません" });
 
         var rows = request.Rows
-            .Select(r => (EatingDate: r.EatingDate ?? "", LocationCode: r.LocationCode ?? "", CustomerCode: r.CustomerCode ?? ""))
+            .Select(r => (EatingDate: r.EatingDate ?? "", LocationCode: r.LocationCode ?? "", CustomerCode: r.CustomerCode ?? "", DeliveryRoute: r.DeliveryRoute ?? ""))
             .Where(t => !string.IsNullOrEmpty(t.EatingDate) && !string.IsNullOrEmpty(t.LocationCode))
             .ToList();
 
@@ -87,4 +87,7 @@ public class DeliveryNotePrintRowRequest
 
     [JsonPropertyName("customer_code")]
     public string? CustomerCode { get; set; }
+
+    [JsonPropertyName("delivery_route")]
+    public string? DeliveryRoute { get; set; }
 }

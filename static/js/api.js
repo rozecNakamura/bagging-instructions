@@ -350,7 +350,8 @@ export async function generateDeliveryNotePdfBlob(rows) {
             rows: rows.map(r => ({
                 eating_date: r.eating_date,
                 location_code: r.location_code,
-                customer_code: r.customer_code ?? ''
+                customer_code: r.customer_code ?? '',
+                delivery_route: r.delivery_route ?? ''
             }))
         })
     });

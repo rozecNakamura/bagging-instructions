@@ -186,8 +186,7 @@ public sealed class AcceptanceRecordService
                   so.customerdeliverylocationcode,
                   TRIM(COALESCE(ds.slotcode, '')),
                   TRIM(COALESCE(i.itemcode, '')),
-                  TRIM(COALESCE(a.addinfo05, '')),
-                  TRIM(COALESCE(a.addinfo02, ''))
+                  TRIM(COALESCE(a.addinfo05, ''))
                 ORDER BY
                   MIN(TRIM(COALESCE(cdl.locationname, ''))),
                   MIN(sol.plannedshipdate),
@@ -344,8 +343,7 @@ public sealed class AcceptanceRecordService
                     (model.CustomerCode ?? "").Trim(),
                     (model.LocationCode ?? "").Trim(),
                     delivDate,
-                    (model.Addinfo05 ?? "").Trim(),
-                    (model.Addinfo02 ?? "").Trim()
+                    (model.Addinfo05 ?? "").Trim()
                 );
                 var mealCount = cstmeatMap.TryGetValue(cstKey, out var cstQty) ? cstQty : model.LineQuantity;
                 var totalQty = ComputeTotalQty(mealCount, model.Addinfo01);
@@ -365,9 +363,9 @@ public sealed class AcceptanceRecordService
 
     private static AcceptanceRecordSearchRowDto MapSearchRow(
         AcceptanceRecordSearchSqlRow r,
-        IReadOnlyDictionary<(string, string, string, string, string), decimal> cstmeatMap)
+        IReadOnlyDictionary<(string, string, string, string), decimal> cstmeatMap)
     {
-        var cstKey = (r.CustomerCode.Trim(), r.LocationCode.Trim(), r.DeliveryYyyymmdd, r.Addinfo05.Trim(), r.Addinfo02.Trim());
+        var cstKey = (r.CustomerCode.Trim(), r.LocationCode.Trim(), r.DeliveryYyyymmdd, r.Addinfo05.Trim());
         var mealCount = cstmeatMap.TryGetValue(cstKey, out var cstQty) ? cstQty : r.LineQuantity;
         var totalQty = ComputeTotalQty(mealCount, r.Addinfo01 ?? "");
 
@@ -512,17 +510,17 @@ public sealed class AcceptanceRecordService
 
     /// <summary>
     /// cstmeat から食数マップを取得する。
-    /// キー: (得意先コード, 納入場所コード, 喫食日YYYYMMDD, 喫食時間=info04, 食種=info05) → 食数。
+    /// キー: (得意先コード, 納入場所コード, 喫食日YYYYMMDD, 喫食時間=info04) → 食数（食種を跨いで合算）。
     /// </summary>
-    private async Task<IReadOnlyDictionary<(string, string, string, string, string), decimal>>
+    private async Task<IReadOnlyDictionary<(string, string, string, string), decimal>>
         LoadCstmeatMapAsync(IReadOnlyList<string> deliveryDates, CancellationToken ct)
     {
         if (deliveryDates == null || deliveryDates.Count == 0)
-            return new Dictionary<(string, string, string, string, string), decimal>();
+            return new Dictionary<(string, string, string, string), decimal>();
 
         var dateList = deliveryDates.Where(d => !string.IsNullOrEmpty(d)).Distinct().ToList();
         if (dateList.Count == 0)
-            return new Dictionary<(string, string, string, string, string), decimal>();
+            return new Dictionary<(string, string, string, string), decimal>();
 
         var entities = await _otherDb.Cstmeats.AsNoTracking()
             .Where(c => c.Info03 != null && dateList.Contains(c.Info03))
@@ -533,8 +531,7 @@ public sealed class AcceptanceRecordService
                 StripLeadingZeros((c.Info01 ?? "").Trim()),
                 (c.Info02 ?? "").Trim(),
                 (c.Info03 ?? "").Trim(),
-                (c.Info04 ?? "").Trim(),
-                (c.Info05 ?? "").Trim()
+                (c.Info04 ?? "").Trim()
             ))
             .ToDictionary(
                 g => g.Key,
