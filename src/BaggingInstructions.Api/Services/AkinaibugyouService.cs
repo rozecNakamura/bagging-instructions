@@ -244,9 +244,9 @@ WHERE (COALESCE(info03, '') || COALESCE(info04, '')) >= {fromKey}
             if (info01Filter != null &&
                 (r.Info01 ?? "").Trim() != info01Filter) return false;
             if (!string.IsNullOrWhiteSpace(filter.Customer) &&
-                (r.Info02 ?? "").Trim() != filter.Customer.Trim()) return false;
+                (r.Info01 ?? "").Trim() != filter.Customer.Trim()) return false;
             if (!string.IsNullOrWhiteSpace(filter.Store) &&
-                (r.Info00 ?? "").Trim() != filter.Store.Trim()) return false;
+                (r.Info02 ?? "").Trim() != filter.Store.Trim()) return false;
             return true;
         }).ToList();
     }
