@@ -91,10 +91,18 @@ public class AkinaibugyouService
                 var shokuCode = r.Info05?.Trim() ?? "";
                 shokushuMap.TryGetValue(shokuCode, out var shokuName);
 
+                var info09 = r.Info09?.Trim() ?? "";
+                var info21 = r.Info21?.Trim() ?? "";
+                var hinCode = (info09 == "100" || info09 == "101")
+                    ? "B" + shokuCode + "A"
+                    : info21 == "0"
+                        ? "B" + shokuCode + "B"
+                        : "B" + shokuCode;
+
                 WriteRow(ms, sjis, new object[]
                 {
                     "0",                                                         // 売上区分 (1B 固定)
-                    Fixed("B" + shokuCode + "B", 13),                                  // 商品コード (13B)
+                    Fixed(hinCode, 13),                                          // 商品コード (13B)
                     PadSjisBytes(sjis,                                           // 商品名 (36B, Shift-JIS)
                         (shokuName ?? "") + ":" + FormatMealTime(k.Info04), 36),
                     "   0",                                                       // 倉庫番号 (4B 固定)

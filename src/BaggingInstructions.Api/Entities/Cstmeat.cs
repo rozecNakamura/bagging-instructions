@@ -70,4 +70,10 @@ public class Cstmeat
 
     [Column("info19")]
     public string? Info19 { get; set; }
+
+    [Column("info20")]
+    public string? Info20 { get; set; }
+
+    [Column("info21")]
+    public string? Info21 { get; set; }
 }
