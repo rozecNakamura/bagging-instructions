@@ -76,8 +76,9 @@ public class BentoPdfService
                     Quantity = g.Sum(x => x.Quantity)
                 };
             })
-            .OrderBy(r => r.Itemcd ?? "")
-            .ThenBy(r => r.Addinfo01 ?? "")
+            .OrderBy(r => ResolveRiceTypeGroup(r.Jobordmernm))
+            .ThenBy(r => ParseAddinfo01(r.Addinfo01))
+            .ThenBy(r => r.Itemcd ?? "")
             .ToList();
 
     /// <summary>
@@ -122,6 +123,18 @@ public class BentoPdfService
 
     public static string ResolveTypeLabel(string? bentoType) =>
         BentoSearchFilter.IsGohan(bentoType) ? TypeLabelGohan : TypeLabelOkazu;
+
+    /// <summary>御飯系=0、軟飯系=1、その他=2。</summary>
+    private static int ResolveRiceTypeGroup(string? name)
+    {
+        var s = (name ?? "").Trim();
+        if (s.StartsWith("御飯")) return 0;
+        if (s.StartsWith("軟飯")) return 1;
+        return 2;
+    }
+
+    private static decimal ParseAddinfo01(string? s) =>
+        decimal.TryParse((s ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
 
     /// <summary>折り返し＋縮小表示を適用する対象フィールドか。</summary>
     public static bool ShouldApplyTextLayout(string fieldName)

@@ -26,8 +26,9 @@ public class GohanPdfService
         result.AddRange(AggregateIndividualRows(list.Where(r => IsIndividual(r.Addinfo08))));
         return result
             .OrderBy(r => IsBox(r.Addinfo08) ? 0 : 1)
+            .ThenBy(r => ResolveRiceTypeGroup(r.Jobordmernm))
+            .ThenBy(r => ParseAddinfo01(r.Addinfo01))
             .ThenBy(r => r.Itemcd ?? "")
-            .ThenBy(r => r.Addinfo01 ?? "")
             .ThenBy(r => r.Shpctrnm ?? "")
             .ToList();
     }
@@ -169,6 +170,18 @@ public class GohanPdfService
         if (IsIndividual(addinfo08)) return "個";
         return "";
     }
+
+    /// <summary>御飯系=0、軟飯系=1、その他=2。</summary>
+    private static int ResolveRiceTypeGroup(string? name)
+    {
+        var s = (name ?? "").Trim();
+        if (s.StartsWith("御飯")) return 0;
+        if (s.StartsWith("軟飯")) return 1;
+        return 2;
+    }
+
+    private static decimal ParseAddinfo01(string? s) =>
+        decimal.TryParse((s ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
 
     private static bool TryParseDecimal(string? text, out decimal value)
     {
