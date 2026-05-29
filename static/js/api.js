@@ -1723,3 +1723,56 @@ export function buildYoteiShokusuExportUrl(delvedt, slotCodes) {
     (slotCodes || []).forEach(c => { if (c && String(c).trim()) params.append('slot_code', String(c).trim()); });
     return `${API_BASE_URL}/yotei-shokusu/export?${params}`;
 }
+
+/**
+ * 商奉行出力：cstmeat 検索（件数取得）
+ * @param {{ slipType: string, dateFrom: string, timeFrom: string, dateTo: string, timeTo: string, customer?: string, store?: string }} p
+ * @returns {Promise<{ count: number }>}
+ */
+export async function searchCstmeat({ slipType, dateFrom, timeFrom, dateTo, timeTo, customer, store } = {}) {
+    const params = new URLSearchParams();
+    if (slipType) params.set('slip_type', slipType);
+    if (dateFrom) params.set('date_from', String(dateFrom).replace(/-/g, ''));
+    if (timeFrom) params.set('time_from', String(timeFrom));
+    if (dateTo) params.set('date_to', String(dateTo).replace(/-/g, ''));
+    if (timeTo) params.set('time_to', String(timeTo));
+    if (customer && String(customer).trim()) params.set('customer', String(customer).trim());
+    if (store && String(store).trim()) params.set('store', String(store).trim());
+    const res = await fetch(`${API_BASE_URL}/cstmeat/search?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try { const body = await res.json(); detail = body.detail ? ` - ${body.detail}` : ''; } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 商奉行出力：cstmeat テキストファイルエクスポート
+ * @param {{ slipType: string, dateFrom: string, timeFrom: string, dateTo: string, timeTo: string, customer?: string, store?: string }} p
+ * @returns {Promise<Blob>}
+ */
+export async function exportCstmeatText({ slipType, dateFrom, timeFrom, dateTo, timeTo, customer, store } = {}) {
+    const params = new URLSearchParams();
+    if (slipType) params.set('slip_type', slipType);
+    if (dateFrom) params.set('date_from', String(dateFrom).replace(/-/g, ''));
+    if (timeFrom) params.set('time_from', String(timeFrom));
+    if (dateTo) params.set('date_to', String(dateTo).replace(/-/g, ''));
+    if (timeTo) params.set('time_to', String(timeTo));
+    if (customer && String(customer).trim()) params.set('customer', String(customer).trim());
+    if (store && String(store).trim()) params.set('store', String(store).trim());
+    const res = await fetch(`${API_BASE_URL}/cstmeat/export?${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try { const body = await res.json(); detail = body.detail ? ` - ${body.detail}` : ''; } catch (_) { /* ignore */ }
+        throw new Error(`出力エラー: ${res.status}${detail}`);
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const plainMatch = disposition.match(/filename="?([^";\r\n]+)"?/i);
+    const filename = starMatch
+        ? decodeURIComponent(starMatch[1])
+        : (plainMatch ? plainMatch[1] : 'export.txt');
+    return { blob, filename };
+}

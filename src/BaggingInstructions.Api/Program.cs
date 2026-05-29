@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.Services;
@@ -5,6 +6,9 @@ using PdfSharp.Fonts;
 
 // Npgsql 6.0+ の DateTime 扱いを従来互換にする（timestamp without time zone として扱う）
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
+// Shift-JIS など標準外エンコーディングを有効化
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 // 汁仕分表 PDF 用: 日本語フォントを .ttf で提供するカスタム解決（PdfSharp は TTC 非対応のため）
 try
@@ -68,6 +72,7 @@ builder.Services.AddScoped<SortingInquiryExcelService>();
 builder.Services.AddScoped<YoteiShokusuService>();
 builder.Services.AddScoped<YoteiShokusuExcelService>();
 builder.Services.AddScoped<ScalesLinkService>();
+builder.Services.AddScoped<AkinaibugyouService>();
 
 builder.Services.AddCors(options =>
 {
