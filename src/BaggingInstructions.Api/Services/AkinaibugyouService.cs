@@ -81,7 +81,7 @@ public class AkinaibugyouService
                 "     0",                             // 伝票番号 (6B 固定)
                 Fixed("D" + k.Info02, 13),            // 得意先コード (13B)
                 "    ",                               // 担当者コード (4B スペース)
-                Fixed(k.Info04, 30),                  // 摘要 (30B, 納品時期)
+                Fixed(k.Info04 switch { "1" => "朝", "2" => "昼", "3" => "夕", var v => v }, 30), // 摘要 (30B, 納品時期)
                 "    ",                               // 審判会社コード (4B スペース)
             });
 
@@ -94,14 +94,14 @@ public class AkinaibugyouService
                 WriteRow(ms, sjis, new object[]
                 {
                     "0",                                                         // 売上区分 (1B 固定)
-                    Fixed("B" + shokuCode, 13),                                  // 商品コード (13B)
+                    Fixed("B" + shokuCode + "B", 13),                                  // 商品コード (13B)
                     PadSjisBytes(sjis,                                           // 商品名 (36B, Shift-JIS)
                         (shokuName ?? "") + ":" + FormatMealTime(k.Info04), 36),
                     "   0",                                                       // 倉庫番号 (4B 固定)
                     "         ",                                                  // 注文番号 (9B スペース)
                     "    ",                                                       // 入数 (4B スペース)
                     "   0",                                                       // 箱数 (4B 固定)
-                    (r.Info06?.Trim() ?? "0").PadLeft(8),                        // 数量 (8B 右詰め)
+                    (r.Info07?.Trim() ?? "0").PadLeft(8),                        // 数量 (8B 右詰め)
                     "    ",                                                       // 単位 (4B スペース)
                     FormatTanka(r.Info08).PadLeft(9),                            // 単価 (9B 右詰め, 小数2桁)
                     "         ",                                                  // 原価 (9B スペース)
@@ -202,6 +202,13 @@ public class AkinaibugyouService
         var fromKey = dateFrom + timeFrom;
         var toKey   = dateTo   + timeTo;
 
+        var info01Filter = filter.SlipType switch
+        {
+            "sales"    => "300",
+            "delivery" => "310",
+            _          => null,
+        };
+
         if (_otherDb.Database.IsRelational())
         {
             // relational path: LoadCstmeatDetailRowsAsync と同じ FormattableString 方式
@@ -211,15 +218,17 @@ WHERE (COALESCE(info03, '') || COALESCE(info04, '')) >= {fromKey}
 
             IQueryable<Cstmeat> q = _otherDb.Cstmeats.FromSql(sql).AsNoTracking();
 
+            if (info01Filter != null)
+                q = q.Where(c => (c.Info01 ?? "").Trim() == info01Filter);
             if (!string.IsNullOrWhiteSpace(filter.Customer))
             {
                 var cust = filter.Customer.Trim();
-                q = q.Where(c => (c.Info02 ?? "").Trim() == cust);
+                q = q.Where(c => (c.Info01 ?? "").Trim() == cust);
             }
             if (!string.IsNullOrWhiteSpace(filter.Store))
             {
                 var store = filter.Store.Trim();
-                q = q.Where(c => (c.Info00 ?? "").Trim() == store);
+                q = q.Where(c => (c.Info02 ?? "").Trim() == store);
             }
 
             return await q.ToListAsync(ct);
@@ -232,6 +241,8 @@ WHERE (COALESCE(info03, '') || COALESCE(info04, '')) >= {fromKey}
             var key = (r.Info03 ?? "").Trim() + (r.Info04 ?? "").Trim();
             if (string.CompareOrdinal(key, fromKey) < 0) return false;
             if (string.CompareOrdinal(key, toKey)   > 0) return false;
+            if (info01Filter != null &&
+                (r.Info01 ?? "").Trim() != info01Filter) return false;
             if (!string.IsNullOrWhiteSpace(filter.Customer) &&
                 (r.Info02 ?? "").Trim() != filter.Customer.Trim()) return false;
             if (!string.IsNullOrWhiteSpace(filter.Store) &&
