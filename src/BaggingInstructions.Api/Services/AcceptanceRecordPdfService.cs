@@ -163,6 +163,9 @@ public sealed class AcceptanceRecordPdfService
             tags[$"COUNT{nn}"] = r.MealCountDisplay ?? "";
             tags[$"ALLQUN{nn}"] = r.TotalQtyDisplay ?? "";
             tags[$"QUANTITYUNIT{nn}"] = r.UnitName ?? "";
+            tags[$"COMMENT{nn}"] = string.Join("\n",
+                new[] { r.MakeComment ?? "", r.RegisterComment ?? "" }
+                    .Where(s => !string.IsNullOrEmpty(s)));
         }
 
         return tags;

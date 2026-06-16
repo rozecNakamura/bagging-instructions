@@ -31,23 +31,56 @@ public sealed class InspectionRecordPdfService
         if (lines == null || lines.Count == 0)
             return Array.Empty<byte>();
 
+        var pageChunks = SplitIntoPages(lines);
         var printNow = DateTime.Now;
         var pages = new List<Dictionary<string, string>>();
+        var totalPages = pageChunks.Count;
 
-        var totalPages = Math.Max(1, (lines.Count + RowsPerPage - 1) / RowsPerPage);
-
-        var pageNum = 0;
-        for (var off = 0; off < lines.Count; off += RowsPerPage)
+        for (var i = 0; i < pageChunks.Count; i++)
         {
-            var chunk = lines.Skip(off).Take(RowsPerPage).ToList();
-            pageNum++;
-            var tags = BuildPageTagValues(chunk);
-            JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
-            tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
+            var tags = BuildPageTagValues(pageChunks[i]);
+            JuicePdfService.AddPrintTags(tags, printNow, i + 1, totalPages);
+            tags["PRINTPAGE"] = $"{i + 1}/{totalPages}";
             pages.Add(tags);
         }
 
         return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "検品記録簿");
+    }
+
+    /// <summary>
+    /// 仕入先名 → 仕入先コード → 注番 でソート後、
+    /// 仕入先コードが変わるか 12 行超で改ページする。
+    /// </summary>
+    internal static List<List<InspectionRecordPdfLineModel>> SplitIntoPages(IReadOnlyList<InspectionRecordPdfLineModel> lines)
+    {
+        var sorted = lines
+            .OrderBy(l => l.SupplierName ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.SupplierCode ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.OrderNo ?? "", StringComparer.Ordinal)
+            .ToList();
+
+        var pages = new List<List<InspectionRecordPdfLineModel>>();
+        List<InspectionRecordPdfLineModel>? current = null;
+        string? supplierOnPage = null;
+
+        foreach (var line in sorted)
+        {
+            var supplier = line.SupplierCode ?? "";
+            var needNewPage = current == null
+                              || current.Count >= RowsPerPage
+                              || supplierOnPage != supplier;
+
+            if (needNewPage)
+            {
+                current = new List<InspectionRecordPdfLineModel>();
+                pages.Add(current);
+                supplierOnPage = supplier;
+            }
+
+            current!.Add(line);
+        }
+
+        return pages;
     }
 
     internal static Dictionary<string, string> BuildPageTagValues(IReadOnlyList<InspectionRecordPdfLineModel> chunk)

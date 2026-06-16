@@ -9,17 +9,15 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。食数は cstmeat から取得、総量は 食数×addinfo01 で算出。
+/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。食数は quantity÷addinfo01（端数切捨て）、総量は 食数×addinfo01 で算出。
 /// </summary>
 public sealed class AcceptanceRecordService
 {
     private readonly AppDbContext _db;
-    private readonly CstmeatDbContext _otherDb;
 
-    public AcceptanceRecordService(AppDbContext db, CstmeatDbContext otherDb)
+    public AcceptanceRecordService(AppDbContext db)
     {
         _db = db;
-        _otherDb = otherDb;
     }
 
     /// <summary>得意先プルダウン用。<c>customer</c> テーブルを customercode 昇順で返す。</summary>
@@ -98,10 +96,7 @@ public sealed class AcceptanceRecordService
 
         var rows = await ExecuteSearchSqlAsync(shipD.Value, deliveryStr, filterByStore, storeCust, storeLoc, customerStr, ct);
 
-        var deliveryDates = rows.Select(r => r.DeliveryYyyymmdd).Where(d => d.Length == 8).Distinct().ToList();
-        var cstmeatMap = await LoadCstmeatMapAsync(deliveryDates, ct);
-
-        return rows.Select(r => MapSearchRow(r, cstmeatMap)).ToList();
+        return rows.Select(MapSearchRow).ToList();
     }
 
     private static (string[] Cust, string[] Loc) ParseStorePairs(IReadOnlyList<string>? storePairs)
@@ -157,7 +152,15 @@ public sealed class AcceptanceRecordService
                   COALESCE(MIN(TRIM(COALESCE(so.customercode, ''))), ''),
                   COALESCE(MIN(TRIM(COALESCE(so.customerdeliverylocationcode, ''))), ''),
                   COALESCE(MIN(TRIM(COALESCE(a.addinfo05, ''))), ''),
-                  COALESCE(MIN(TRIM(COALESCE(a.addinfo02, ''))), '')
+                  COALESCE(MIN(TRIM(COALESCE(a.addinfo02, ''))), ''),
+                  SUM(
+                    CASE
+                      WHEN NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') IS NULL
+                        OR CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric) = 0
+                      THEN sol.quantity
+                      ELSE CEILING(sol.quantity / CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric))
+                    END
+                  )
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -184,7 +187,6 @@ public sealed class AcceptanceRecordService
                   sol.planneddeliverydate,
                   so.customercode,
                   so.customerdeliverylocationcode,
-                  TRIM(COALESCE(ds.slotcode, '')),
                   TRIM(COALESCE(i.itemcode, '')),
                   TRIM(COALESCE(a.addinfo05, ''))
                 ORDER BY
@@ -228,6 +230,7 @@ public sealed class AcceptanceRecordService
                     LocationCode = reader.IsDBNull(10) ? "" : reader.GetString(10),
                     Addinfo05 = reader.IsDBNull(11) ? "" : reader.GetString(11),
                     Addinfo02 = reader.IsDBNull(12) ? "" : reader.GetString(12),
+                    MealCount = reader.IsDBNull(13) ? 0m : reader.GetDecimal(13),
                 });
             }
 
@@ -270,7 +273,10 @@ public sealed class AcceptanceRecordService
                   COALESCE(TRIM(so.customercode), '') AS customercode,
                   COALESCE(TRIM(so.customerdeliverylocationcode), '') AS locationcode,
                   COALESCE(TRIM(COALESCE(a.addinfo05, '')), '') AS addinfo05,
-                  COALESCE(TRIM(COALESCE(a.addinfo02, '')), '') AS addinfo02
+                  COALESCE(TRIM(COALESCE(a.addinfo02, '')), '') AS addinfo02,
+                  COALESCE(TRIM(sol.makecomment), '') AS makecomment,
+                  COALESCE(TRIM(sol.registercomment), '') AS registercomment,
+                  COALESCE(TRIM(ia.addinfo04), '') AS ia_addinfo04
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -280,6 +286,7 @@ public sealed class AcceptanceRecordService
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 WHERE sol.salesorderlineid = ANY(@ids)
                 ORDER BY sol.salesorderlineid
                 """, conn);
@@ -325,34 +332,13 @@ public sealed class AcceptanceRecordService
                     LocationCode = reader.IsDBNull(11) ? "" : reader.GetString(11),
                     Addinfo05 = reader.IsDBNull(12) ? "" : reader.GetString(12),
                     Addinfo02 = reader.IsDBNull(13) ? "" : reader.GetString(13),
+                    MakeComment = reader.IsDBNull(14) ? "" : reader.GetString(14),
+                    RegisterComment = reader.IsDBNull(15) ? "" : reader.GetString(15),
+                    ItemAddinfo04 = reader.IsDBNull(16) ? "" : reader.GetString(16),
                 });
             }
 
-            var aggregated = AggregatePdfLines(list);
-
-            // cstmeat から食数を取得し、総量 = 食数 × addinfo01 で上書き
-            var deliveryDates = aggregated
-                .Select(m => m.PlannedDeliveryDate?.ToString("yyyyMMdd") ?? "")
-                .Where(d => d.Length == 8).Distinct().ToList();
-            var cstmeatMap = await LoadCstmeatMapAsync(deliveryDates, ct);
-
-            foreach (var model in aggregated)
-            {
-                var delivDate = model.PlannedDeliveryDate?.ToString("yyyyMMdd") ?? "";
-                var cstKey = (
-                    (model.CustomerCode ?? "").Trim(),
-                    (model.LocationCode ?? "").Trim(),
-                    delivDate,
-                    (model.Addinfo05 ?? "").Trim()
-                );
-                var mealCount = cstmeatMap.TryGetValue(cstKey, out var cstQty) ? cstQty : model.LineQuantity;
-                var totalQty = ComputeTotalQty(mealCount, model.Addinfo01);
-                model.LineQuantity = mealCount;
-                model.MealCountDisplay = mealCount.ToString("0.###", CultureInfo.InvariantCulture);
-                model.TotalQtyDisplay = totalQty.ToString("0.###", CultureInfo.InvariantCulture);
-            }
-
-            return aggregated;
+            return AggregatePdfLines(list);
         }
         finally
         {
@@ -361,13 +347,9 @@ public sealed class AcceptanceRecordService
         }
     }
 
-    private static AcceptanceRecordSearchRowDto MapSearchRow(
-        AcceptanceRecordSearchSqlRow r,
-        IReadOnlyDictionary<(string, string, string, string), decimal> cstmeatMap)
+    private static AcceptanceRecordSearchRowDto MapSearchRow(AcceptanceRecordSearchSqlRow r)
     {
-        var cstKey = (r.CustomerCode.Trim(), r.LocationCode.Trim(), r.DeliveryYyyymmdd, r.Addinfo05.Trim());
-        var mealCount = cstmeatMap.TryGetValue(cstKey, out var cstQty) ? cstQty : r.LineQuantity;
-        var totalQty = ComputeTotalQty(mealCount, r.Addinfo01 ?? "");
+        var mealCount = r.MealCount;
 
         var eatDate = FormatDateDisplay(r.DeliveryYyyymmdd);
         var childItem = string.IsNullOrEmpty(r.ItemCode)
@@ -382,8 +364,8 @@ public sealed class AcceptanceRecordService
             EatDate = eatDate,
             MealTime = MapMealTime(r.Addinfo05),
             ChildItem = childItem,
-            MealCountDisplay = mealCount.ToString("0.###", CultureInfo.InvariantCulture),
-            TotalQtyDisplay = totalQty.ToString("0.###", CultureInfo.InvariantCulture),
+            MealCountDisplay = mealCount.ToString("0", CultureInfo.InvariantCulture),
+            TotalQtyDisplay = Math.Ceiling(r.LineQuantity).ToString("0", CultureInfo.InvariantCulture),
             UnitName = r.UnitName ?? ""
         };
     }
@@ -396,14 +378,6 @@ public sealed class AcceptanceRecordService
         var v => v
     };
 
-    private static decimal ComputeTotalQty(decimal mealCount, string addinfo01)
-    {
-        if (string.IsNullOrWhiteSpace(addinfo01)) return mealCount;
-        if (!decimal.TryParse(addinfo01.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var portion) || portion == 0)
-            return mealCount;
-        return mealCount * portion;
-    }
-
     /// <summary>
     /// 印刷用: 同一（納入場所・出荷日・納品日・喫食時間・品目）で数量を合算。
     /// </summary>
@@ -414,15 +388,19 @@ public sealed class AcceptanceRecordService
                 Fac: m.DeliveryLocationName ?? "",
                 Ship: m.PlannedShipDate,
                 Del: m.PlannedDeliveryDate,
-                Slot: m.SlotDisplay ?? "",
+                Cust: m.CustomerCode ?? "",
+                EatTime: m.Addinfo05 ?? "",
                 Item: m.ItemCode ?? ""
             ))
             .Select(g =>
             {
                 var rows = g.OrderBy(x => x.SalesOrderLineId).ToList();
-                var qty = rows.Sum(x => x.LineQuantity);
-                var addinfo = rows.Select(x => x.Addinfo01).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) ?? "";
+                var totalQty = rows.Sum(x => x.LineQuantity);
+                var mealCount = rows.Sum(x => ComputeMealCount(x.LineQuantity, x.Addinfo01));
                 var head = rows[0];
+
+                // itemadditionalinformation.addinfo04 は %入力。÷100 して総量を割る
+                var totalQtyDisplay = ComputeTotalQtyDisplay(totalQty, head.ItemAddinfo04);
 
                 return new AcceptanceRecordPdfLineModel
                 {
@@ -435,15 +413,18 @@ public sealed class AcceptanceRecordService
                     EatDateDisplay = head.EatDateDisplay,
                     SlotDisplay = head.SlotDisplay ?? "",
                     ChildItemText = head.ChildItemText ?? "",
-                    MealCountDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture),
-                    TotalQtyDisplay = qty.ToString("0.###", CultureInfo.InvariantCulture),
+                    MealCountDisplay = mealCount.ToString("0", CultureInfo.InvariantCulture),
+                    TotalQtyDisplay = totalQtyDisplay,
                     UnitName = head.UnitName ?? "",
-                    LineQuantity = qty,
-                    Addinfo01 = addinfo,
+                    LineQuantity = mealCount,
+                    Addinfo01 = "",
                     CustomerCode = head.CustomerCode ?? "",
                     LocationCode = head.LocationCode ?? "",
                     Addinfo05 = head.Addinfo05 ?? "",
                     Addinfo02 = head.Addinfo02 ?? "",
+                    MakeComment = head.MakeComment ?? "",
+                    RegisterComment = head.RegisterComment ?? "",
+                    ItemAddinfo04 = head.ItemAddinfo04 ?? "",
                 };
             })
             .OrderBy(x => x.DeliveryLocationName, StringComparer.Ordinal)
@@ -509,40 +490,26 @@ public sealed class AcceptanceRecordService
     }
 
     /// <summary>
-    /// cstmeat から食数マップを取得する。
-    /// キー: (得意先コード, 納入場所コード, 喫食日YYYYMMDD, 喫食時間=info04) → 食数（食種を跨いで合算）。
+    /// 総量表示値を算出。itemadditionalinformation.addinfo04 が %入力のため ÷100 して除算。
+    /// addinfo04 が空・0・非数値の場合はそのまま切り上げ。
     /// </summary>
-    private async Task<IReadOnlyDictionary<(string, string, string, string), decimal>>
-        LoadCstmeatMapAsync(IReadOnlyList<string> deliveryDates, CancellationToken ct)
+    private static string ComputeTotalQtyDisplay(decimal totalQty, string itemAddinfo04)
     {
-        if (deliveryDates == null || deliveryDates.Count == 0)
-            return new Dictionary<(string, string, string, string), decimal>();
-
-        var dateList = deliveryDates.Where(d => !string.IsNullOrEmpty(d)).Distinct().ToList();
-        if (dateList.Count == 0)
-            return new Dictionary<(string, string, string, string), decimal>();
-
-        var entities = await _otherDb.Cstmeats.AsNoTracking()
-            .Where(c => c.Info03 != null && dateList.Contains(c.Info03))
-            .ToListAsync(ct);
-
-        return entities
-            .GroupBy(c => (
-                StripLeadingZeros((c.Info01 ?? "").Trim()),
-                (c.Info02 ?? "").Trim(),
-                (c.Info03 ?? "").Trim(),
-                (c.Info04 ?? "").Trim()
-            ))
-            .ToDictionary(
-                g => g.Key,
-                g => g.Sum(c => decimal.TryParse((c.Info07 ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var q) ? q : 0m));
+        if (!string.IsNullOrWhiteSpace(itemAddinfo04)
+            && decimal.TryParse(itemAddinfo04.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var pct)
+            && pct != 0)
+        {
+            return Math.Ceiling(totalQty / (pct / 100m)).ToString("0", CultureInfo.InvariantCulture);
+        }
+        return Math.Ceiling(totalQty).ToString("0", CultureInfo.InvariantCulture);
     }
 
-    private static string StripLeadingZeros(string? s)
+    private static decimal ComputeMealCount(decimal quantity, string addinfo01)
     {
-        if (string.IsNullOrWhiteSpace(s)) return "";
-        var t = s.TrimStart('0');
-        return t.Length == 0 ? "0" : t;
+        if (string.IsNullOrWhiteSpace(addinfo01)) return quantity;
+        if (!decimal.TryParse(addinfo01.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var portion) || portion == 0)
+            return quantity;
+        return Math.Ceiling(quantity / portion);
     }
 }
 
@@ -561,4 +528,5 @@ internal sealed class AcceptanceRecordSearchSqlRow
     public string LocationCode { get; set; } = "";
     public string Addinfo05 { get; set; } = "";
     public string Addinfo02 { get; set; } = "";
+    public decimal MealCount { get; set; }
 }

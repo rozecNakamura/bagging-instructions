@@ -112,4 +112,13 @@ public sealed class AcceptanceRecordPdfLineModel
     public string MealCountDisplay { get; set; } = "";
     public string TotalQtyDisplay { get; set; } = "";
     public string UnitName { get; set; } = "";
+
+    /// <summary>製造コメント（salesorderline.makecomment）。COMMENT〇〇 タグへ出力。</summary>
+    public string MakeComment { get; set; } = "";
+
+    /// <summary>登録コメント（salesorderline.registercomment）。MakeComment に改行して続けて出力。</summary>
+    public string RegisterComment { get; set; } = "";
+
+    /// <summary>itemadditionalinformation.addinfo04（%入力）。総量計算時に ÷100 して使用。</summary>
+    public string ItemAddinfo04 { get; set; } = "";
 }

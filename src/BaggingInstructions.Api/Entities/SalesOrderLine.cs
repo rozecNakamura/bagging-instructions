@@ -64,6 +64,12 @@ public class SalesOrderLine
     [Column("comment")]
     public string? Comment { get; set; }
 
+    [Column("makecomment")]
+    public string? MakeComment { get; set; }
+
+    [Column("registercomment")]
+    public string? RegisterComment { get; set; }
+
     /// <summary>便コード（deliveryslot.slotcode と連携）。</summary>
     [Column("slotcode")]
     public string? SlotCode { get; set; }

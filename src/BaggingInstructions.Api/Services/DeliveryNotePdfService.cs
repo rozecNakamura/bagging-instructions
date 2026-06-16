@@ -326,17 +326,15 @@ public class DeliveryNotePdfService
         {
             case "personal":
             {
-                // 請求区分名称（seikyu_kubun_code 4文字目以降）: 喫食時間 : 単価コード名 : 禁止食材(info17)
-                seikyuKubunByCd.TryGetValue(info05, out var kubun);
-                var kubunSuffix = !string.IsNullOrEmpty(kubun)
-                    ? (kubun.Length >= 4 ? kubun[3..] : kubun)
-                    : "";
+                // 食種名称 : 喫食時間（朝喫食/昼喫食/夕喫食）: 単価コード名
+                // ※変更前: 食種名称なし、請求区分名称あり、禁止食材あり（請求区分名称 : 喫食時間 : 単価コード名 : 禁止食材）
+                // ※禁止食材（kinshiShokuzai）は印字不要のため除外
                 var mealDisplay = MealTimeDisplay(info04);
                 var parts = new List<string>();
-                if (!string.IsNullOrEmpty(kubunSuffix)) parts.Add(kubunSuffix);
+                var food = (foodtypename ?? "").Trim();
+                if (!string.IsNullOrEmpty(food)) parts.Add(food);
                 if (!string.IsNullOrEmpty(mealDisplay)) parts.Add(mealDisplay);
                 if (!string.IsNullOrEmpty(tankaCdName)) parts.Add(tankaCdName);
-                if (!string.IsNullOrEmpty(kinshiShokuzai)) parts.Add(kinshiShokuzai);
                 return string.Join(HalfWidthColon, parts);
             }
             default: // ケータリング・病院向: 食種名称:喫食時間:info06変換値
@@ -374,9 +372,9 @@ public class DeliveryNotePdfService
     private static string MealTimeDisplay(string? info04) =>
         (info04 ?? "").Trim() switch
         {
-            "1" => "朝",
-            "2" => "昼",
-            "3" => "夕",
+            "1" => "朝喫食",
+            "2" => "昼喫食",
+            "3" => "夕喫食",
             var s => s
         };
 

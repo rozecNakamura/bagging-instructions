@@ -46,8 +46,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SalesOrderLine>().Property(e => e.PlannedDeliveryDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<SalesOrderLine>().Property(e => e.ProductDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<SalesOrder>().Property(e => e.OrderDate).HasConversion(dateOnlyNullableConverter);
-        modelBuilder.Entity<Item>().Property(e => e.EffectiveFrom).HasConversion(dateOnlyNullableConverter);
-        modelBuilder.Entity<Item>().Property(e => e.EffectiveTo).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<Bom>().Property(e => e.StartDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<Bom>().Property(e => e.EndDate).HasConversion(dateOnlyNullableConverter);
 

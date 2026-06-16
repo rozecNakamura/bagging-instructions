@@ -21,12 +21,6 @@ public class Item
     [Column("activeflag")]
     public bool ActiveFlag { get; set; } = true;
 
-    [Column("effectivefrom")]
-    public DateOnly? EffectiveFrom { get; set; }
-
-    [Column("effectiveto")]
-    public DateOnly? EffectiveTo { get; set; }
-
     /// <summary>基準単位コード（unit.unitcode へ FK）。</summary>
     [Column("unitcode0")]
     public string? UnitCode0 { get; set; }
