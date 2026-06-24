@@ -788,9 +788,9 @@ FROM m_shokushu";
                 )
                 """);
             if (joinWh)
-                sql.AppendLine("LEFT JOIN warehouses wh ON wh.warehousecode = TRIM(COALESCE(i.warehousecode, ''))");
+                sql.AppendLine("LEFT JOIN warehouses wh ON TRIM(COALESCE(wh.warehousecode, '')) = TRIM(COALESCE(i.warehousecode, ''))");
 
-            sql.AppendLine("WHERE ot.needdate = @needDate");
+            sql.AppendLine("WHERE ot.releasedate = @needDate");
             sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
             sql.AppendLine("AND NOT EXISTS (SELECT 1 FROM bom b2 WHERE b2.childitemcode = ot.itemcode)");
 
@@ -971,7 +971,7 @@ FROM m_shokushu";
 
         var typeFilter = instructionType?.Trim().ToLowerInvariant() switch
         {
-            "cut"      => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) IN ('50', '51')",
+            "cut"      => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) IN ('50', '51', '53')",
             "seasoning" => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) = '55'",
             "cooking"  => "LEFT(TRIM(COALESCE(bt.current_itemcode, '')), 2) <> '50'",
             _          => "TRUE",

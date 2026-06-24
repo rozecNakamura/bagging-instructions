@@ -74,7 +74,7 @@ LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
     ''
   )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-  AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = {needDateYyyymmdd}
+  AND TO_CHAR(COALESCE(ot.releasedate, ot.needdate), 'YYYYMMDD') = {needDateYyyymmdd}
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
   AND COALESCE(
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
@@ -154,7 +154,7 @@ SELECT
   TRIM(COALESCE(ot.itemcode, i.itemcode, '')) AS ""ItemCode"",
   COALESCE(i.itemname, '') AS ""ItemName"",
   TO_CHAR(
-    COALESCE(ot.needdate, ot.releasedate),
+    COALESCE(ot.releasedate, ot.needdate),
     'YYYYMMDD'
   ) AS ""NeedDate"",
   COALESCE(
@@ -179,7 +179,7 @@ LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
   )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(
-        COALESCE(ot.needdate, ot.releasedate),
+        COALESCE(ot.releasedate, ot.needdate),
         'YYYYMMDD'
       ) = {needDateYyyymmdd}
   AND ({slots.Length} = 0 OR COALESCE(
@@ -453,7 +453,7 @@ ORDER BY i.itemname, COALESCE(
                     ''
                   ) AS slot_display,
                   COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classification3code, ''))) AS work_name,
-                  COALESCE(ot.needdate, ot.releasedate) AS need_date,
+                  COALESCE(ot.releasedate, ot.needdate) AS need_date,
                   ot.ordertableid::text AS order_no_for_pdf
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode

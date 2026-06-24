@@ -74,7 +74,7 @@ LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
     ''
   )
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-  AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = {needDateYyyymmdd}
+  AND TO_CHAR(COALESCE(ot.releasedate, ot.needdate), 'YYYYMMDD') = {needDateYyyymmdd}
   AND TRIM(COALESCE(ot.workcentercode, '')) = '11011'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) = '55'
   AND COALESCE(
@@ -136,7 +136,7 @@ ORDER BY 1
                   ot.ordertableid,
                   COALESCE(ot.itemcode, i.itemcode, ''),
                   COALESCE(i.itemname, ''),
-                  TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD'),
+                  TO_CHAR(COALESCE(ot.releasedate, ot.needdate), 'YYYYMMDD'),
                   COALESCE(
                     NULLIF(TRIM(ds.slotname), ''),
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
@@ -172,7 +172,7 @@ ORDER BY 1
                     ''
                   )
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-                  AND TO_CHAR(COALESCE(ot.needdate, ot.releasedate), 'YYYYMMDD') = @needdate
+                  AND TO_CHAR(COALESCE(ot.releasedate, ot.needdate), 'YYYYMMDD') = @needdate
                   AND (@slot_count = 0 OR COALESCE(
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
@@ -406,7 +406,7 @@ ORDER BY 1
                     ''
                   ) AS slot_display,
                   COALESCE(wc.workcentername, '') AS workcenter_name,
-                  COALESCE(ot.needdate, ot.releasedate) AS need_date,
+                  COALESCE(ot.releasedate, ot.needdate) AS need_date,
                   ot.releasedate,
                   ot.ordertableid::text AS order_no,
                   COALESCE(ia.addinfo05, '') AS ia_addinfo05,

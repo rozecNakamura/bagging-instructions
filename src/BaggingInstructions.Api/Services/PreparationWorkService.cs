@@ -116,7 +116,7 @@ LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   )
-WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND COALESCE(
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
@@ -194,7 +194,7 @@ ORDER BY 1
         var rows = await _db.Database
             .SqlQuery<PreparationWorkGroupSqlRow>($@"
 SELECT
-  TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') AS ""Delvedt"",
+  TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD') AS ""Delvedt"",
   COALESCE(mc.majorclassificationcode, '') AS ""MajorCode"",
   COALESCE(mc.majorclassificationname, '') AS ""MajorName"",
   COALESCE(mid.middleclassificationcode, '') AS ""MiddleCode"",
@@ -207,7 +207,7 @@ INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
   AND mid.middleclassificationcode = i.middleclassificationcode
-WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND ({mfgRoutes.Length} = 0 OR
         TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')) = ANY ({mfgRoutes})
@@ -235,7 +235,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
   AND ({majorCodes.Length} = 0 OR TRIM(COALESCE(i.majorclassificationcode, '')) = ANY ({majorCodes}))
   AND ({middleCodeFilter} = '' OR TRIM(COALESCE(i.middleclassificationcode, '')) = {middleCodeFilter})
 GROUP BY
-  TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
+  TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD'),
   mc.majorclassificationcode,
   mc.majorclassificationname,
   mid.middleclassificationcode,
@@ -297,9 +297,9 @@ INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
 LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassificationcode
   AND midt.middleclassificationcode = i.middleclassificationcode
-WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
+WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-  AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
+  AND TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}
   AND ({mfgRoutes.Length} = 0 OR
@@ -590,7 +590,7 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ''
                   ) AS workplace_names,
                   COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
-                  COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date,
+                  COALESCE(ot.releasedate, sol.planneddeliverydate) AS need_date,
                   COALESCE(
                     NULLIF(TRIM(BOTH FROM wc_ord.workcentercode), ''),
                     (SELECT string_agg(DISTINCT TRIM(BOTH FROM wc_map.workcentercode), '、' ORDER BY TRIM(BOTH FROM wc_map.workcentercode))

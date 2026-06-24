@@ -24,15 +24,33 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// CSV/Excel/帳票などの出力は、対象データ件数が多いと重い集計・展開クエリの実行に
+// 時間がかかる。Npgsql 既定のコマンドタイムアウト（30 秒）のままだと件数が多い場合に
+// タイムアウトして出力できないため、接続文字列でタイムアウトを引き上げる。
+// EF クエリ・生 NpgsqlCommand の両方に効き、全出力機能で共通の上限となる。
+// appsettings の "Database:CommandTimeoutSeconds" で上書き可能（0 で無制限）。
+var commandTimeoutSeconds = builder.Configuration.GetValue<int?>("Database:CommandTimeoutSeconds") ?? 300;
+
+static string WithCommandTimeout(string connectionString, int timeoutSeconds)
+{
+    var sb = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+    {
+        CommandTimeout = timeoutSeconds
+    };
+    return sb.ConnectionString;
+}
+
 var conn = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
     ?? "Host=localhost;Port=5432;Database=ROZECDB;Username=rozec;Password=***";
+conn = WithCommandTimeout(conn, commandTimeoutSeconds);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(conn));
 
 var connOther = builder.Configuration.GetConnectionString("CraftlineaxOther")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__CraftlineaxOther")
     ?? "Host=localhost;Port=5432;Database=craftlineaxother;Username=rozec;Password=***";
+connOther = WithCommandTimeout(connOther, commandTimeoutSeconds);
 builder.Services.AddDbContext<CstmeatDbContext>(options =>
     options.UseNpgsql(connOther));
 

@@ -11,7 +11,7 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// カット前準備書・現品ラベル画面のデータ取得サービス。
-/// 子品目コードの先頭2桁が50または51の品目のみ対象。連続する同一子品目は先頭のみ出力。
+/// カット対象は品目コードの先頭2桁が50・51・53。親品目が該当すれば紐づく全子品目、親品目が非該当なら該当する子品目のみを対象とする。
 /// </summary>
 public class CutPreparationService
 {
@@ -48,12 +48,20 @@ public class CutPreparationService
 WITH mfg AS (
   SELECT
     ot.ordertableid,
-    COALESCE(ot.needdate, sol.planneddeliverydate) AS needdate_combined,
+    COALESCE(ot.releasedate, sol.planneddeliverydate) AS needdate_combined,
     TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) AS item_code,
     COALESCE(
       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
+      -- 自分・親・祖父にproductnoが無い場合、同じ親を持つ兄弟受注の製造便を継承
+      NULLIF((
+        SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
+        FROM ordertable s
+        WHERE ot.parentordertableid IS NOT NULL
+          AND s.parentordertableid = ot.parentordertableid
+          AND TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')) <> ''
+      ), ''),
       ''
     ) AS route_code
   FROM ordertable ot
@@ -132,12 +140,19 @@ FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
 LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
 LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
-WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
-  AND TO_CHAR(COALESCE(ot.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
+WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
+  AND TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(
         NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
         NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
         NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
+        NULLIF((
+          SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
+          FROM ordertable s
+          WHERE ot.parentordertableid IS NOT NULL
+            AND s.parentordertableid = ot.parentordertableid
+            AND TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')) <> ''
+        ), ''),
         ''
       ) = {routeCode}
   AND ({wcIds.Length} = 0 OR EXISTS (
@@ -158,8 +173,10 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
     }
 
     /// <summary>
-    /// PDF用明細モデルを構築する。子品目コードの先頭2桁が50/51のもののみ対象。
-    /// ソート後、連続する同一子品目コードは先頭のみ出力。
+    /// PDF用明細モデルを構築する。
+    /// ・親品目が50/51/53始まり → 紐づく全子品目を出力（親が50/51/53でBOM子品目が無ければ親単独行）
+    /// ・親品目がそれ以外 → 子品目コードの先頭2桁が50/51/53のもののみ出力
+    /// ソート後、日付×製造便×親品目×子品目で数量を合算する。
     /// </summary>
     public async Task<List<CutPreparationPdfLineModel>> BuildPdfLineModelsAsync(
         IReadOnlyList<long> lineIds,
@@ -182,11 +199,36 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                 bomCache[bomKey] = boms;
             }
 
-            // 子品目コードが50/51始まりのものだけ抽出
-            var filtered = boms.Where(b => IsCutTargetItem(b.ChildItemcode)).ToList();
+            var parentIsCut = IsCutTargetItem(h.ParentItemcode);
+
+            // 親品目が50/51/53なら紐づく全子品目を、そうでなければ50/51/53の子品目のみ対象
+            var filtered = parentIsCut
+                ? boms
+                : boms.Where(b => IsCutTargetItem(b.ChildItemcode)).ToList();
 
             if (filtered.Count == 0)
+            {
+                // 親が50/51/53でBOM子品目が無い場合は、親品目自身を1行出力（子品目列は空）
+                if (parentIsCut)
+                {
+                    lines.Add(new CutPreparationPdfLineModel
+                    {
+                        DateDisplay = h.NeedDate?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "",
+                        ManufacturingRoute = h.MfgRoute,
+                        MiddleClassName = h.MiddleClassName,
+                        FinalProductName = h.FinalProductName,
+                        ParentItemcode = h.ParentItemcode,
+                        ParentItemname = h.ParentItemname,
+                        ChildItemcode = "",
+                        ChildItemname = "",
+                        QtyRaw = h.MfgQty,
+                        Unit = h.ParentUnit,
+                        WarehouseName = h.ParentWarehouse,
+                        OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture)
+                    });
+                }
                 continue;
+            }
 
             foreach (var b in filtered)
             {
@@ -201,7 +243,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     ParentItemname = h.ParentItemname,
                     ChildItemcode = b.ChildItemcode,
                     ChildItemname = b.ChildItemname ?? "",
-                    Quantity = ReportQuantityFormatter.FormatCeilingQuantity(qty),
+                    // 切り上げは集約後に1回だけ行うため、ここでは生数量を保持
+                    QtyRaw = qty,
                     Unit = b.ChildUnitname ?? "",
                     WarehouseName = b.ChildWarehouseName ?? "",
                     OrderNo = h.Ordertableid.ToString(CultureInfo.InvariantCulture)
@@ -217,29 +260,65 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
             .ThenBy(l => l.ChildItemcode, StringComparer.Ordinal)
             .ToList();
 
-        // 連続する同一子品目コードを除去
-        return DeduplicateConsecutive(sorted);
+        // 日付×製造便×親品目×子品目で集約（数量合算・注番併記）
+        return AggregateByKey(sorted);
     }
 
     private static bool IsCutTargetItem(string? itemcode)
     {
         if (string.IsNullOrEmpty(itemcode)) return false;
         var code = itemcode.Trim();
-        return code.Length >= 2 && (code.StartsWith("50", StringComparison.Ordinal) || code.StartsWith("51", StringComparison.Ordinal));
+        return code.Length >= 2 && (code.StartsWith("50", StringComparison.Ordinal) || code.StartsWith("51", StringComparison.Ordinal) || code.StartsWith("53", StringComparison.Ordinal));
     }
 
-    private static List<CutPreparationPdfLineModel> DeduplicateConsecutive(List<CutPreparationPdfLineModel> sorted)
+    /// <summary>
+    /// 日付×製造便×親品目×子品目で集約する。同一キーの行は生数量を合算し、
+    /// 数量は集約後に1回だけ切り上げる。注番は重複を除きカンマ区切りで併記する。
+    /// </summary>
+    private static List<CutPreparationPdfLineModel> AggregateByKey(List<CutPreparationPdfLineModel> sorted)
     {
-        var result = new List<CutPreparationPdfLineModel>(sorted.Count);
-        string? prevChildCode = null;
+        var result = new List<CutPreparationPdfLineModel>();
+        var map = new Dictionary<string, CutPreparationPdfLineModel>(StringComparer.Ordinal);
+        var orderNos = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
         foreach (var line in sorted)
         {
-            if (line.ChildItemcode != prevChildCode)
+            var key = string.Join("", line.DateDisplay, line.ManufacturingRoute, line.ParentItemcode, line.ChildItemcode);
+            if (!map.TryGetValue(key, out var agg))
             {
-                result.Add(line);
-                prevChildCode = line.ChildItemcode;
+                agg = new CutPreparationPdfLineModel
+                {
+                    DateDisplay = line.DateDisplay,
+                    ManufacturingRoute = line.ManufacturingRoute,
+                    MiddleClassName = line.MiddleClassName,
+                    FinalProductName = line.FinalProductName,
+                    ParentItemcode = line.ParentItemcode,
+                    ParentItemname = line.ParentItemname,
+                    ChildItemcode = line.ChildItemcode,
+                    ChildItemname = line.ChildItemname,
+                    Unit = line.Unit,
+                    WarehouseName = line.WarehouseName
+                };
+                map[key] = agg;
+                orderNos[key] = new List<string>();
+                result.Add(agg); // ソート順を保持
             }
+
+            agg.QtyRaw += line.QtyRaw;
+
+            // 注番はカンマ区切りで併記（重複除外・順序保持）
+            if (!string.IsNullOrEmpty(line.OrderNo) && !orderNos[key].Contains(line.OrderNo))
+                orderNos[key].Add(line.OrderNo);
         }
+
+        // 合算後の生数量を最後に1回だけ切り上げ、注番を連結
+        foreach (var agg in result)
+        {
+            var key = string.Join("", agg.DateDisplay, agg.ManufacturingRoute, agg.ParentItemcode, agg.ChildItemcode);
+            agg.Quantity = ReportQuantityFormatter.FormatCeilingQuantity(agg.QtyRaw);
+            agg.OrderNo = string.Join(", ", orderNos[key]);
+        }
+
         return result;
     }
 
@@ -280,10 +359,19 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
                       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
                       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
+                      NULLIF((
+                        SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
+                        FROM ordertable s
+                        WHERE ot.parentordertableid IS NOT NULL
+                          AND s.parentordertableid = ot.parentordertableid
+                          AND TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')) <> ''
+                      ), ''),
                       ''
                     ) AS route_code,
                     COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
-                    COALESCE(ot.needdate, sol.planneddeliverydate) AS need_date
+                    COALESCE(ot.releasedate, sol.planneddeliverydate) AS need_date,
+                    COALESCE(pu.unitname, '') AS parent_unit,
+                    COALESCE(pwh.warehousename, pwh.warehousecode, '') AS parent_warehouse
                   FROM ordertable ot
                   LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                   LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
@@ -292,6 +380,8 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                   LEFT JOIN item sol_i ON TRIM(sol_i.itemcode) = TRIM(COALESCE(NULLIF(TRIM(sol.itemcode), ''), ''))
                   LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassificationcode
                     AND mid.middleclassificationcode = parent_i.middleclassificationcode
+                  LEFT JOIN unit pu ON pu.unitcode = parent_i.unitcode0
+                  LEFT JOIN warehouses pwh ON TRIM(COALESCE(pwh.warehousecode, '')) = TRIM(COALESCE(parent_i.warehousecode, ''))
                   WHERE ot.ordertableid = ANY(@ids)
                 )
                 SELECT
@@ -304,7 +394,9 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                   b.middle_class_name,
                   COALESCE(NULLIF(TRIM(COALESCE(ds.slotname, '')), ''), b.route_code) AS mfg_route,
                   b.planned_delivery,
-                  b.need_date
+                  b.need_date,
+                  b.parent_unit,
+                  b.parent_warehouse
                 FROM base b
                 LEFT JOIN deliveryslot ds ON ds.slotcode = b.route_code
                 ORDER BY b.ordertableid
@@ -328,7 +420,9 @@ WHERE COALESCE(ot.needdate, sol.planneddeliverydate) = {date.Value}
                     MiddleClassName = reader.GetString(6),
                     MfgRoute = reader.GetString(7),
                     PlannedDeliveryDate = ReadDateNullable(reader, 8),
-                    NeedDate = ReadDateNullable(reader, 9)
+                    NeedDate = ReadDateNullable(reader, 9),
+                    ParentUnit = reader.GetString(10),
+                    ParentWarehouse = reader.GetString(11)
                 });
             }
             return list;
@@ -415,6 +509,8 @@ public sealed class CutPreparationPdfLineModel
     public string ChildItemcode { get; set; } = "";
     public string ChildItemname { get; set; } = "";
     public string Quantity { get; set; } = "";
+    /// <summary>集約用の生数量（切り上げ前）。日付×製造便×親品目×子品目で合算してから最後に1回切り上げる。</summary>
+    internal decimal QtyRaw { get; set; }
     public string Unit { get; set; } = "";
     public string WarehouseName { get; set; } = "";
     public string OrderNo { get; set; } = "";
@@ -432,4 +528,8 @@ internal sealed class CutPreparationLineHeaderRow
     public string MfgRoute { get; set; } = "";
     public DateOnly? PlannedDeliveryDate { get; set; }
     public DateOnly? NeedDate { get; set; }
+    /// <summary>親品目の単位名（親品目が50/51/53でBOM子品目が無い場合の親単独行で使用）。</summary>
+    public string ParentUnit { get; set; } = "";
+    /// <summary>親品目の保管場所名（同上）。</summary>
+    public string ParentWarehouse { get; set; } = "";
 }

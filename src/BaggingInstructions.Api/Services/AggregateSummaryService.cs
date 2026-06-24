@@ -53,7 +53,7 @@ public sealed class AggregateSummaryService
         var rows = await _db.Database
             .SqlQuery<AggregateSummarySqlRow>($@"
 SELECT
-  TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD') AS ""ShipDate"",
+  TO_CHAR(COALESCE(ot_first.releasedate, sol.planneddeliverydate), 'YYYYMMDD') AS ""ShipDate"",
   COALESCE(mc.majorclassificationcode, '') AS ""MajorCode"",
   COALESCE(mc.majorclassificationname, '') AS ""MajorName"",
   COALESCE(mid.middleclassificationcode, '') AS ""MiddleCode"",
@@ -62,7 +62,7 @@ SELECT
 FROM salesorderline sol
 INNER JOIN item i ON i.itemcode = sol.itemcode
 LEFT JOIN LATERAL (
-  SELECT needdate
+  SELECT releasedate
   FROM ordertable
   WHERE salesorderlineid = sol.salesorderlineid
   ORDER BY ordertableid
@@ -72,12 +72,12 @@ LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassifi
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
   AND mid.middleclassificationcode = i.middleclassificationcode
 LEFT JOIN bom b ON b.parentitemcode = i.itemcode
-WHERE COALESCE(ot_first.needdate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
+WHERE COALESCE(ot_first.releasedate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ({majorList.Length} = 0 OR mc.majorclassificationcode = ANY ({majorList}))
   AND ({middleList.Length} = 0 OR mid.middleclassificationcode = ANY ({middleList}))
 GROUP BY
-  TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD'),
+  TO_CHAR(COALESCE(ot_first.releasedate, sol.planneddeliverydate), 'YYYYMMDD'),
   mc.majorclassificationcode,
   mc.majorclassificationname,
   mid.middleclassificationcode,
@@ -144,7 +144,7 @@ SELECT sol.salesorderlineid AS ""SalesOrderLineId""
 FROM salesorderline sol
 INNER JOIN item i ON i.itemcode = sol.itemcode
 LEFT JOIN LATERAL (
-  SELECT needdate
+  SELECT releasedate
   FROM ordertable
   WHERE salesorderlineid = sol.salesorderlineid
   ORDER BY ordertableid
@@ -153,8 +153,8 @@ LEFT JOIN LATERAL (
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
 LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassificationcode
   AND midt.middleclassificationcode = i.middleclassificationcode
-WHERE COALESCE(ot_first.needdate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
-  AND TO_CHAR(COALESCE(ot_first.needdate, sol.planneddeliverydate), 'YYYYMMDD') = {key.ShipDate}
+WHERE COALESCE(ot_first.releasedate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
+  AND TO_CHAR(COALESCE(ot_first.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.ShipDate}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}
