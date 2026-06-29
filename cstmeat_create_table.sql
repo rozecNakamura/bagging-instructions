@@ -26,4 +26,5 @@ CREATE TABLE cstmeat (
     info19 text,
     info20 text,
     info21 text,
+    info22 text,  -- 取消区分（"9" = 取消）
 );

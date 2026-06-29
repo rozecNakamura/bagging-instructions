@@ -76,4 +76,8 @@ public class Cstmeat
 
     [Column("info21")]
     public string? Info21 { get; set; }
+
+    /// <summary>取消区分（"9" = 取消レコード）。CstmeatDbContext のグローバルクエリフィルタで除外される。</summary>
+    [Column("info22")]
+    public string? Info22 { get; set; }
 }
