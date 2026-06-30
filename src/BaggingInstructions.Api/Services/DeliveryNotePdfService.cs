@@ -49,7 +49,6 @@ public class DeliveryNotePdfService
         var custCd = loc?.LocationCode ?? locationCode ?? "";
         var address1 = loc?.Address1 ?? "";
         var address2 = loc?.Address2 ?? "";
-        var customerLoc = (address1 + (address2 ?? "")).Trim();
         var customerNm = loc?.LocationName ?? "";
         var customerTel = loc?.PhoneNumber ?? "";
 
@@ -238,7 +237,8 @@ public class DeliveryNotePdfService
             for (var f = 0; f < FormsPerSheet; f++)
             {
                 tags[$"CUSTOMERCD_{f}"] = custCd;
-                tags[$"CUSTOMERLOC_{f}"] = customerLoc;
+                tags[$"CUSTOMERLOC_{f}"] = address1;
+                tags[$"CUSTOMERLOC_{f}{f}"] = address2;
                 tags[$"CUSTOMERNM_{f}"] = customerNm;
                 tags[$"CUSTOMERTEL_{f}"] = customerTel;
                 tags[$"YEAR_{f}"] = year;
