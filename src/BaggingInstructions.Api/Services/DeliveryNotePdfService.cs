@@ -251,6 +251,11 @@ public class DeliveryNotePdfService
                 if (customerType == "catering")
                     tags[$"SUMCOUNT_{f}"] = sumCountTotal.ToString(CultureInfo.InvariantCulture);
             }
+            if (customerType == "catering")
+            {
+                tags["Label2"] = "";
+                tags["Label21"] = "";
+            }
         }
 
         var totalItems = grouped.Count;
