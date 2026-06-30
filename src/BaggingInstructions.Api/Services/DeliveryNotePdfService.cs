@@ -214,7 +214,9 @@ public class DeliveryNotePdfService
 
                 var note = customerType == "personal" && riceAmountByMealTime.TryGetValue(info04, out var riceAmt)
                     ? $"{riceAmt}g"
-                    : Info19Display(info19);
+                    : customerType == "personal" && tankaCdName == "御飯なし"
+                        ? ""
+                        : Info19Display(info19);
 
                 return new
                 {
