@@ -49,7 +49,6 @@ public class DeliveryNotePdfService
         var custCd = loc?.LocationCode ?? locationCode ?? "";
         var address1 = loc?.Address1 ?? "";
         var address2 = loc?.Address2 ?? "";
-        var customerLoc = (address1 + (address2 ?? "")).Trim();
         var customerNm = loc?.LocationName ?? "";
         var customerTel = loc?.PhoneNumber ?? "";
 
@@ -215,7 +214,9 @@ public class DeliveryNotePdfService
 
                 var note = customerType == "personal" && riceAmountByMealTime.TryGetValue(info04, out var riceAmt)
                     ? $"{riceAmt}g"
-                    : Info19Display(info19);
+                    : customerType == "personal" && tankaCdName == "御飯なし"
+                        ? ""
+                        : Info19Display(info19);
 
                 return new
                 {
@@ -238,7 +239,8 @@ public class DeliveryNotePdfService
             for (var f = 0; f < FormsPerSheet; f++)
             {
                 tags[$"CUSTOMERCD_{f}"] = custCd;
-                tags[$"CUSTOMERLOC_{f}"] = customerLoc;
+                tags[$"CUSTOMERLOC_{f}"] = address1;
+                tags[$"CUSTOMERLOC_{f}{f}"] = address2;
                 tags[$"CUSTOMERNM_{f}"] = customerNm;
                 tags[$"CUSTOMERTEL_{f}"] = customerTel;
                 tags[$"YEAR_{f}"] = year;
@@ -248,6 +250,11 @@ public class DeliveryNotePdfService
                 tags[$"SUMPRICE_{f}"] = sumPriceTotal != 0 ? sumPriceTotal.ToString(CultureInfo.InvariantCulture) : "";
                 if (customerType == "catering")
                     tags[$"SUMCOUNT_{f}"] = sumCountTotal.ToString(CultureInfo.InvariantCulture);
+            }
+            if (customerType == "catering")
+            {
+                tags["Label2"] = "";
+                tags["Label21"] = "";
             }
         }
 
