@@ -65,7 +65,8 @@ LEFT JOIN LATERAL (
   SELECT releasedate
   FROM ordertable
   WHERE salesorderlineid = sol.salesorderlineid
-  ORDER BY ordertableid
+  -- [DEDUP-productno] 明細内で最新 ordertableid の行を採用（MRP重複対策）
+  ORDER BY ordertableid DESC
   LIMIT 1
 ) ot_first ON TRUE
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
@@ -147,7 +148,8 @@ LEFT JOIN LATERAL (
   SELECT releasedate
   FROM ordertable
   WHERE salesorderlineid = sol.salesorderlineid
-  ORDER BY ordertableid
+  -- [DEDUP-productno] 明細内で最新 ordertableid の行を採用（MRP重複対策）
+  ORDER BY ordertableid DESC
   LIMIT 1
 ) ot_first ON TRUE
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode

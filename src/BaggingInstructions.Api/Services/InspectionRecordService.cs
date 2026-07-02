@@ -174,6 +174,15 @@ public sealed class InspectionRecordService
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'PO'
                   AND ot.needdate = @needDate
                   AND (NOT @filterBySupplier OR ot.suppliercode = ANY(@supplierCodes))
+                  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                  AND (
+                    COALESCE(TRIM(ot.productno), '') = ''
+                    OR ot.ordertableid = (
+                      SELECT MAX(o2.ordertableid) FROM ordertable o2
+                      WHERE TRIM(o2.productno) = TRIM(ot.productno)
+                        AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
+                    )
+                  )
                 ORDER BY ot.ordertableid
                 """, conn);
 
@@ -271,6 +280,15 @@ public sealed class InspectionRecordService
                 LEFT JOIN supplier s ON s.suppliercode = ot.suppliercode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'PO'
+                  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                  AND (
+                    COALESCE(TRIM(ot.productno), '') = ''
+                    OR ot.ordertableid = (
+                      SELECT MAX(o2.ordertableid) FROM ordertable o2
+                      WHERE TRIM(o2.productno) = TRIM(ot.productno)
+                        AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
+                    )
+                  )
                 ORDER BY ot.ordertableid
                 """, conn);
             cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array)

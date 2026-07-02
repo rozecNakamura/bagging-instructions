@@ -31,6 +31,12 @@ public class ScalesLinkService
             where (ai.Addinfo06 ?? "").Trim() != ""
                   && (releaseDateFrom == null || o.ReleaseDate >= releaseDateFrom)
                   && (releaseDateTo == null || o.ReleaseDate <= releaseDateTo)
+                  // [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                  && ((o.ProductNo ?? "").Trim() == ""
+                      || !_db.OrderTables.Any(o2 =>
+                          (o2.ProductNo ?? "").Trim() == (o.ProductNo ?? "").Trim()
+                          && (o2.ReleaseDate ?? o2.NeedDate) == (o.ReleaseDate ?? o.NeedDate)
+                          && (o2.OrderTableId ?? 0L) > (o.OrderTableId ?? 0L)))
             orderby o.ReleaseDate, o.OrderTableId ?? o.SalesOrderLineId
             select new ScalesLinkOrderRowDto
             {
@@ -165,6 +171,12 @@ public class ScalesLinkService
                 where (aiParent.Addinfo06 ?? "").Trim() != ""
                       && (releaseDateFrom == null || o.ReleaseDate >= releaseDateFrom)
                       && (releaseDateTo == null || o.ReleaseDate <= releaseDateTo)
+                      // [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                      && ((o.ProductNo ?? "").Trim() == ""
+                          || !_db.OrderTables.Any(o2 =>
+                              (o2.ProductNo ?? "").Trim() == (o.ProductNo ?? "").Trim()
+                              && (o2.ReleaseDate ?? o2.NeedDate) == (o.ReleaseDate ?? o.NeedDate)
+                              && (o2.OrderTableId ?? 0L) > (o.OrderTableId ?? 0L)))
                 orderby o.ReleaseDate, o.OrderTableId ?? o.SalesOrderLineId, b.ChildItemCd
                 select new OrderCsvRow(
                     o.OrderTableId ?? o.SalesOrderLineId,
