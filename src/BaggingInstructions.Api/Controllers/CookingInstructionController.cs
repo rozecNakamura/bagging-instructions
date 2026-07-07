@@ -120,8 +120,10 @@ public class CookingInstructionController : ControllerBase
             var ws = wb.Worksheets.Add("調理指示書");
             ws.Cell(1, 1).Value = "品目コード";
             ws.Cell(1, 2).Value = "品目名";
-            ws.Cell(1, 3).Value = "納期";
-            ws.Cell(1, 4).Value = "便";
+            ws.Cell(1, 3).Value = "数量";
+            ws.Cell(1, 4).Value = "単位";
+            ws.Cell(1, 5).Value = "納期";
+            ws.Cell(1, 6).Value = "便";
             var headerRow = ws.Row(1);
             headerRow.Style.Font.Bold = true;
             headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
@@ -132,8 +134,10 @@ public class CookingInstructionController : ControllerBase
                 var row = i + 2;
                 ws.Cell(row, 1).Value = r.ItemCode;
                 ws.Cell(row, 2).Value = r.ItemName;
-                ws.Cell(row, 3).Value = r.NeedDate;
-                ws.Cell(row, 4).Value = r.SlotDisplay;
+                ws.Cell(row, 3).Value = r.QuantityDisplay;
+                ws.Cell(row, 4).Value = r.UnitName;
+                ws.Cell(row, 5).Value = r.NeedDate;
+                ws.Cell(row, 6).Value = r.SlotDisplay;
             }
 
             ws.Columns().AdjustToContents();

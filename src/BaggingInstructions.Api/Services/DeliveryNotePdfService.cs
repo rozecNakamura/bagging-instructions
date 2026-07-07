@@ -213,10 +213,7 @@ public class DeliveryNotePdfService
                     tankaCdName, info17, info06, seikyuKubunByCd);
 
                 var note = customerType == "personal" && riceAmountByMealTime.TryGetValue(info04, out var riceAmt)
-                    ? $"{riceAmt}g"
-                    : customerType == "personal" && tankaCdName == "御飯なし"
-                        ? ""
-                        : Info19Display(info19);
+                    ? $"{riceAmt}g" : "";
 
                 return new
                 {

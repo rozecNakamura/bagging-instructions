@@ -69,7 +69,8 @@ public class SearchService
                 .ThenInclude(i => i!.Unit0)
             .Include(l => l.SalesOrder)
             .Where(l => l.ProductDate == prddtDate)
-            .Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.StartsWith("40"));
+            .Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.StartsWith("40"))
+            .Where(l => l.SalesOrder.Status != "cancelled");
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
