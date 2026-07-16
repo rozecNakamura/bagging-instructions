@@ -98,6 +98,7 @@ SELECT
   COALESCE(info06, '') AS ""MajorClassCode""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
   AND ({mealTime.Length} = 0 OR info04 = {mealTime})
   AND info01 = ANY ({custCodes})
 ")
@@ -124,6 +125,7 @@ WHERE info03 = {dateStr}
 SELECT DISTINCT TRIM(COALESCE(info02, '')) AS ""LocationCode""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
   AND ({mealTime.Length} = 0 OR info04 = {mealTime})
   AND info01 = ANY ({custCodes})
   AND info02 IS NOT NULL AND TRIM(info02) <> ''

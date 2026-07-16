@@ -352,6 +352,7 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
 ")
                 .ToListAsync(ct);
 

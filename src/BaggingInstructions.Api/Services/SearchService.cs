@@ -1199,6 +1199,7 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
   AND TRIM(COALESCE(info14, '')) = {info14Filter}
 ";
             else
@@ -1212,6 +1213,7 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
 ";
             var rows = await _otherDb.Database
                 .SqlQuery<CstmeatDetailSqlRow>(sql)
@@ -1266,6 +1268,7 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
   AND TRIM(COALESCE(info14, '')) = {info14Filter}
 ";
             else
@@ -1278,6 +1281,7 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
+  AND (info22 IS NULL OR info22 <> '9')
 ";
             var rows = await _otherDb.Database
                 .SqlQuery<CstmeatQuantitySqlRow>(sql)
