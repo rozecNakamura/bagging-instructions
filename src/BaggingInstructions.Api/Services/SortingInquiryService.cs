@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using BaggingInstructions.Api.Core;
@@ -352,7 +352,7 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND (info22 IS NULL OR info22 <> '9')
+  AND info22 = '1'
 ")
                 .ToListAsync(ct);
 
@@ -508,6 +508,9 @@ WHERE priority_order IS NOT NULL
 
         var itemNameByCode = new Dictionary<string, string>(StringComparer.Ordinal);
         var aggregates = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
+        // cstmeat 食数は (得意先・納入場所・喫食時間・食種) 単位の合計値なので、
+        // 同一品目・同一列で同じキーが複数明細に現れても 1 回だけ計上する（明細本数ぶんの多重計上を防ぐ）。
+        var countedCstmeatKeys = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -530,8 +533,24 @@ WHERE priority_order IS NOT NULL
                 aggregates[itemCode] = byColumn;
             }
 
-            var displayQty = line.CstmeatFoodCount ?? line.Quantity;
-            byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + displayQty;
+            if (line.CstmeatFoodCount.HasValue)
+            {
+                // cstmeat 一致分: (品目・列・喫食時間・食種) で重複排除し、キーごとに 1 回だけ加算。
+                // colKey に得意先・納入場所が含まれるため、これで (得意先・納入場所・喫食時間・食種) 単位となる。
+                var dedupKey = string.Join(
+                    DeliveryColumnKeySeparator,
+                    itemCode,
+                    colKey,
+                    (line.MealTime ?? "").Trim(),
+                    (line.Addinfo02 ?? "").Trim());
+                if (countedCstmeatKeys.Add(dedupKey))
+                    byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + line.CstmeatFoodCount.Value;
+            }
+            else
+            {
+                // cstmeat 未一致分は従来どおり明細数量をそのまま加算する。
+                byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + line.Quantity;
+            }
         }
 
         var rows = aggregates

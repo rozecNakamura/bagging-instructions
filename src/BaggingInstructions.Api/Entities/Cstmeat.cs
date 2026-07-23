@@ -77,7 +77,7 @@ public class Cstmeat
     [Column("info21")]
     public string? Info21 { get; set; }
 
-    /// <summary>取消区分（"9" = 取消レコード）。CstmeatDbContext のグローバルクエリフィルタで除外される。</summary>
+    /// <summary>状態区分（"1" = 確定 / "0" = 予定 / "9" = 取消）。CstmeatDbContext のグローバルクエリフィルタで確定（"1"）のみ対象とする。</summary>
     [Column("info22")]
     public string? Info22 { get; set; }
 }

@@ -543,4 +543,93 @@ public class SortingInquiryServiceTests
         var k = SiCol("200", "LOC1");
         Assert.Equal(15, row.QuantitiesByStore[k]);
     }
+
+    /// <summary>
+    /// cstmeat 食数は (得意先・納入場所・喫食時間・食種) 単位の合計値なので、
+    /// 同一品目・同一食種の明細が複数あっても 1 回だけ計上する（明細本数ぶんの多重計上をしない）。
+    /// また確定レコード（info22="1"）のみを対象とし、予定（"0"）・取消（"9"）・NULL は集計対象外とする。
+    /// </summary>
+    [Fact]
+    public async Task SearchAsync_Cstmeat_food_count_counted_once_per_key_and_confirmed_only()
+    {
+        await using var app = CreateAppDb();
+        await using var cstmeat = CreateCstmeatDb();
+
+        var d = new DateOnly(2026, 7, 20);
+
+        // 確定: (200, LOC1, 朝=1, FT1) の食数 = 10
+        cstmeat.Cstmeats.Add(new Cstmeat
+        {
+            CstmeatId = 1,
+            Info01 = "200", Info02 = "LOC1", Info03 = "20260720",
+            Info04 = "1", Info05 = "FT1", Info06 = "1", Info07 = "10",
+            Info22 = "1"
+        });
+        // 取消: 同一キーに食数 99 があるが info22="9" のため除外される
+        cstmeat.Cstmeats.Add(new Cstmeat
+        {
+            CstmeatId = 2,
+            Info01 = "200", Info02 = "LOC1", Info03 = "20260720",
+            Info04 = "1", Info05 = "FT1", Info06 = "1", Info07 = "99",
+            Info22 = "9"
+        });
+        // 予定: 同一キーに食数 77 があるが info22="0"（予定）のため除外される
+        cstmeat.Cstmeats.Add(new Cstmeat
+        {
+            CstmeatId = 3,
+            Info01 = "200", Info02 = "LOC1", Info03 = "20260720",
+            Info04 = "1", Info05 = "FT1", Info06 = "1", Info07 = "77",
+            Info22 = "0"
+        });
+        await cstmeat.SaveChangesAsync();
+
+        app.Customers.Add(new Customer { CustomerCode = "200", CustomerName = "越智クリニック" });
+        app.CustomerDeliveryLocations.Add(new CustomerDeliveryLocation
+        {
+            DeliveryLocationId = 1,
+            CustomerCode = "200",
+            LocationCode = "LOC1",
+            LocationName = "越智クリニック"
+        });
+        app.SalesOrders.Add(new SalesOrder
+        {
+            SalesOrderId = 1,
+            CustomerCode = "200",
+            CustomerDeliveryLocationCode = "LOC1"
+        });
+        app.Items.Add(new Item { ItemId = 1, ItemCd = "ITEM1", ItemName = "茹・ブロッコリー冷", ActiveFlag = true });
+
+        // 同一品目・同一食種(FT1)・同一喫食時間の明細が2本 → cstmeat 食数(10)は1回だけ計上
+        app.SalesOrderLines.Add(new SalesOrderLine
+        {
+            SalesOrderLineId = 1, SalesOrderId = 1, LineNo = 1,
+            ItemCd = "ITEM1", Quantity = 4, QtyUni0 = 4,
+            PlannedDeliveryDate = d, SlotCode = "S1"
+        });
+        app.SalesOrderLines.Add(new SalesOrderLine
+        {
+            SalesOrderLineId = 2, SalesOrderId = 1, LineNo = 2,
+            ItemCd = "ITEM1", Quantity = 2, QtyUni0 = 2,
+            PlannedDeliveryDate = d, SlotCode = "S1"
+        });
+        app.SalesOrderLineAddinfos.Add(new SalesOrderLineAddinfo
+        {
+            SalesOrderLineAddinfoId = 1, SalesOrderLineId = 1,
+            Addinfo02 = "FT1", Addinfo02Name = "常菜", Addinfo05 = "1"
+        });
+        app.SalesOrderLineAddinfos.Add(new SalesOrderLineAddinfo
+        {
+            SalesOrderLineAddinfoId = 2, SalesOrderLineId = 2,
+            Addinfo02 = "FT1", Addinfo02Name = "常菜", Addinfo05 = "1"
+        });
+        await app.SaveChangesAsync();
+
+        var svc = new SortingInquiryService(app, cstmeat);
+        var res = await svc.SearchAsync("20260720", Array.Empty<string>());
+
+        var k = SiCol("200", "LOC1");
+        Assert.Single(res.Rows);
+        // cstmeat 食数 10 を1回だけ計上（明細2本ぶんの 20 でも、取消込みの 109 でもない）。
+        Assert.Equal(10m, res.Rows[0].QuantitiesByStore[k]);
+    }
 }

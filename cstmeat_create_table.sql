@@ -26,5 +26,5 @@ CREATE TABLE cstmeat (
     info19 text,
     info20 text,
     info21 text,
-    info22 text,  -- 取消区分（"9" = 取消）
+    info22 text,  -- 状態区分（"1" = 確定 / "0" = 予定 / "9" = 取消。帳票・画面は確定のみ対象）
 );

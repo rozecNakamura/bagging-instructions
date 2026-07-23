@@ -19,10 +19,10 @@ public class CstmeatDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // 取消レコード（info22 = "9"）は cstmeat を参照する全クエリから除外する。
+        // cstmeat は info22 で状態を持つ（"1" = 確定 / "0" = 予定 / "9" = 取消）。
+        // 帳票・画面では確定レコード（info22 = "1"）のみを対象とし、予定・取消・NULL は除外する。
         // FromSql を含む全 LINQ クエリに自動適用される（EF Core 9）。
-        // info22 が NULL の通常レコードは残す（C# null セマンティクス）。
-        modelBuilder.Entity<Cstmeat>().HasQueryFilter(c => c.Info22 != "9");
+        modelBuilder.Entity<Cstmeat>().HasQueryFilter(c => c.Info22 == "1");
 
         modelBuilder.Entity<Foodtype>().HasKey(f => f.Foodtypeid);
         modelBuilder.Entity<Eattime>().HasKey(e => e.Eattimecd);
