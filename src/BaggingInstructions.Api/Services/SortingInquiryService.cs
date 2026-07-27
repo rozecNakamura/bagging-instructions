@@ -141,6 +141,7 @@ FROM (
          OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
          OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
     AND s0.customercode = ANY ({customerCodes})
+    AND (s0.status IS NULL OR s0.status <> 'cancelled')
     AND ({mealTimeStr.Length} = 0 OR COALESCE(s1.addinfo05, '') = {mealTimeStr})
 ) x
 WHERE x.custcode <> ''
@@ -169,6 +170,7 @@ GROUP BY x.custcode
                 .ThenInclude(so => so!.Customer)
             .Include(l => l.Addinfo)
             .Where(l => l.PlannedDeliveryDate == plannedDate)
+            .Where(l => l.SalesOrder != null && l.SalesOrder.Status != "cancelled")
             .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)
@@ -248,6 +250,7 @@ WHERE s.planneddeliverydate = {plannedDate}
        OR NULLIF(TRIM(COALESCE(s.slotcode, '')), '') IS NULL
        OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
   AND s0.customercode = ANY ({customerCodes})
+  AND (s0.status IS NULL OR s0.status <> 'cancelled')
   AND ({mealTimeStr.Length} = 0 OR COALESCE(s1.addinfo05, '') = {mealTimeStr})
 ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 ")
@@ -292,6 +295,7 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
                 .ThenInclude(i => i!.AdditionalInformation)
             .Include(l => l.Addinfo)
             .Where(l => l.PlannedDeliveryDate == plannedDate)
+            .Where(l => l.SalesOrder != null && l.SalesOrder.Status != "cancelled")
             .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)
@@ -352,7 +356,11 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND info22 = '1'
+  AND (
+    info22 = '1'
+    OR (info22 = '0' AND NOT EXISTS (
+         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
+  )
 ")
                 .ToListAsync(ct);
 
@@ -546,14 +554,11 @@ WHERE priority_order IS NOT NULL
                 if (countedCstmeatKeys.Add(dedupKey))
                     byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + line.CstmeatFoodCount.Value;
             }
-            else
-            {
-                // cstmeat 未一致分は従来どおり明細数量をそのまま加算する。
-                byColumn[colKey] = byColumn.GetValueOrDefault(colKey) + line.Quantity;
-            }
+            // cstmeat が拾えなかった明細は食数に換算できないため検索対象外とする（明細数量では計上しない）。
         }
 
         var rows = aggregates
+            .Where(a => a.Value.Count > 0)
             .OrderBy(a => a.Key, StringComparer.Ordinal)
             .Select(a => new SortingInquirySearchRowDto
             {

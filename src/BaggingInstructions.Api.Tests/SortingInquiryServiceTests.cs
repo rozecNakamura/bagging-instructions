@@ -26,6 +26,28 @@ public class SortingInquiryServiceTests
         return new CstmeatDbContext(options);
     }
 
+    /// <summary>
+    /// 仕分け照会の食数照合用に確定(info22="1")の cstmeat 行を追加する。
+    /// キーは (得意先=info01, 納入場所=info02, 喫食時間=info04, 食種=info05)。
+    /// 明細側のキーは (SalesOrder.CustomerCode, 納入場所, Addinfo05, Addinfo02) に対応する。
+    /// </summary>
+    private static void AddCstmeat(
+        CstmeatDbContext cstmeat, int id, string date,
+        string cust, string loc, string? mealTime, string? foodType, decimal qty)
+    {
+        cstmeat.Cstmeats.Add(new Cstmeat
+        {
+            CstmeatId = id,
+            Info01 = cust,
+            Info02 = loc,
+            Info03 = date,
+            Info04 = mealTime,
+            Info05 = foodType,
+            Info07 = qty.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Info22 = "1"
+        });
+    }
+
     [Fact]
     public async Task SearchAsync_InvalidDate_ThrowsArgumentException()
     {
@@ -54,6 +76,7 @@ public class SortingInquiryServiceTests
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "LOC1"
@@ -105,6 +128,9 @@ public class SortingInquiryServiceTests
         });
         await app.SaveChangesAsync();
 
+        AddCstmeat(cstmeat, 1, "20250710", "200", "LOC1", null, "FT1", 6m);
+        await cstmeat.SaveChangesAsync();
+
         var svc = new SortingInquiryService(app, cstmeat);
 
         var k = SiCol("200", "LOC1");
@@ -149,12 +175,14 @@ public class SortingInquiryServiceTests
 
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "LOC1"
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 2,
             CustomerCode = "210",
             CustomerDeliveryLocationCode = "cus0991"
@@ -196,6 +224,10 @@ public class SortingInquiryServiceTests
             SlotCode = "S1"
         });
         await app.SaveChangesAsync();
+
+        AddCstmeat(cstmeat, 1, "20250710", "200", "LOC1", null, null, 3m);
+        AddCstmeat(cstmeat, 2, "20250710", "210", "cus0991", null, null, 5m);
+        await cstmeat.SaveChangesAsync();
 
         var svc = new SortingInquiryService(app, cstmeat);
         var res = await svc.SearchAsync("20250710", Array.Empty<string>());
@@ -241,12 +273,14 @@ public class SortingInquiryServiceTests
 
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "cus0991"
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 2,
             CustomerCode = "210",
             CustomerDeliveryLocationCode = null
@@ -276,6 +310,10 @@ public class SortingInquiryServiceTests
             SlotCode = "S1"
         });
         await app.SaveChangesAsync();
+
+        AddCstmeat(cstmeat, 1, "20260330", "200", "cus0991", null, null, 7m);
+        AddCstmeat(cstmeat, 2, "20260330", "210", "", null, null, 9m);
+        await cstmeat.SaveChangesAsync();
 
         var svc = new SortingInquiryService(app, cstmeat);
         var res = await svc.SearchAsync("20260330", Array.Empty<string>());
@@ -327,12 +365,14 @@ public class SortingInquiryServiceTests
 
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "L_A"
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 2,
             CustomerCode = "210",
             CustomerDeliveryLocationCode = "L_B"
@@ -362,6 +402,10 @@ public class SortingInquiryServiceTests
             SlotCode = null
         });
         await app.SaveChangesAsync();
+
+        AddCstmeat(cstmeat, 1, "20250801", "200", "L_A", null, null, 1m);
+        AddCstmeat(cstmeat, 2, "20250801", "210", "L_B", null, null, 2m);
+        await cstmeat.SaveChangesAsync();
 
         var svc = new SortingInquiryService(app, cstmeat);
         var res = await svc.SearchAsync("20250801", new[] { "S1" });
@@ -406,12 +450,14 @@ public class SortingInquiryServiceTests
 
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "L1"
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 2,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "L2"
@@ -440,6 +486,10 @@ public class SortingInquiryServiceTests
             SlotCode = "S1"
         });
         await app.SaveChangesAsync();
+
+        AddCstmeat(cstmeat, 1, "20250901", "200", "L1", null, null, 2m);
+        AddCstmeat(cstmeat, 2, "20250901", "200", "L2", null, null, 3m);
+        await cstmeat.SaveChangesAsync();
 
         var svc = new SortingInquiryService(app, cstmeat);
         var res = await svc.SearchAsync("20250901", Array.Empty<string>());
@@ -487,6 +537,7 @@ public class SortingInquiryServiceTests
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "LOC1"
@@ -529,6 +580,10 @@ public class SortingInquiryServiceTests
             Addinfo02Name = "昼食"
         });
         await app.SaveChangesAsync();
+
+        AddCstmeat(cstmeat, 1, "20251001", "200", "LOC1", null, "FT_A", 10m);
+        AddCstmeat(cstmeat, 2, "20251001", "200", "LOC1", null, "FT_B", 5m);
+        await cstmeat.SaveChangesAsync();
 
         var svc = new SortingInquiryService(app, cstmeat);
         var res = await svc.SearchAsync("20251001", Array.Empty<string>());
@@ -593,6 +648,7 @@ public class SortingInquiryServiceTests
         });
         app.SalesOrders.Add(new SalesOrder
         {
+            Status = "confirmed",
             SalesOrderId = 1,
             CustomerCode = "200",
             CustomerDeliveryLocationCode = "LOC1"

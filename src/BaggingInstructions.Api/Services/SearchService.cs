@@ -140,6 +140,7 @@ public class SearchService
             .Include(l => l.Addinfo)
             .Include(l => l.Item)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
+            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
             .Where(l => l.SalesOrder != null
                 && (l.SalesOrder.CustomerCode == "200" || l.SalesOrder.CustomerCode == "210"))
             .Where(l => l.Item != null
@@ -361,6 +362,7 @@ FROM m_shokushu";
             .Include(l => l.Addinfo)
             .Include(l => l.Item!)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
+            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
             .Where(l => l.Item != null
                 && l.Item.ItemCd != null
                 && (l.Item.ItemCd.StartsWith("3010")
@@ -446,7 +448,8 @@ FROM m_shokushu";
             .Include(l => l.OrderTable)
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.AdditionalInformation)
-            .Where(l => l.PlannedDeliveryDate == delvedtDate);
+            .Where(l => l.PlannedDeliveryDate == delvedtDate)
+            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed");
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
@@ -523,6 +526,7 @@ FROM m_shokushu";
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.AdditionalInformation)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
+            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
             .Where(l => l.Item != null
                 && l.Item.ItemCd != null
                 && (l.Item.ItemCd.StartsWith("3010")
@@ -1199,7 +1203,11 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND info22 = '1'
+  AND (
+    info22 = '1'
+    OR (info22 = '0' AND NOT EXISTS (
+         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
+  )
   AND TRIM(COALESCE(info14, '')) = {info14Filter}
 ";
             else
@@ -1213,7 +1221,11 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND info22 = '1'
+  AND (
+    info22 = '1'
+    OR (info22 = '0' AND NOT EXISTS (
+         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
+  )
 ";
             var rows = await _otherDb.Database
                 .SqlQuery<CstmeatDetailSqlRow>(sql)
@@ -1268,7 +1280,11 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND info22 = '1'
+  AND (
+    info22 = '1'
+    OR (info22 = '0' AND NOT EXISTS (
+         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
+  )
   AND TRIM(COALESCE(info14, '')) = {info14Filter}
 ";
             else
@@ -1281,7 +1297,11 @@ SELECT
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
 FROM cstmeat
 WHERE info03 = {dateStr}
-  AND info22 = '1'
+  AND (
+    info22 = '1'
+    OR (info22 = '0' AND NOT EXISTS (
+         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
+  )
 ";
             var rows = await _otherDb.Database
                 .SqlQuery<CstmeatQuantitySqlRow>(sql)

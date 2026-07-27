@@ -90,6 +90,7 @@ public class DeliveryNotePdfService
                 .AsNoTracking()
                 .Include(so => so.SalesOrderLines)
                 .Where(so =>
+                    so.Status == "confirmed" &&
                     so.CustomerCode == custCodeTrimmed &&
                     so.CustomerDeliveryLocationCode == locCodeTrimmed)
                 .ToList();
@@ -114,6 +115,7 @@ public class DeliveryNotePdfService
                 .Include(l => l.Addinfo)
                 .Where(l =>
                     l.SalesOrder != null &&
+                    l.SalesOrder.Status == "confirmed" &&
                     l.SalesOrder.CustomerCode == custCodeTrimmed &&
                     l.SalesOrder.CustomerDeliveryLocationCode == locCode)
                 .ToList()
