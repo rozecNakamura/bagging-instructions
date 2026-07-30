@@ -9,7 +9,8 @@ using BaggingInstructions.Api.DTOs;
 namespace BaggingInstructions.Api.Services;
 
 /// <summary>
-/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。食数は quantity÷addinfo01（端数切捨て）、総量は 食数×addinfo01 で算出。
+/// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。
+/// 食数は ⌈(quantity ÷ (itemadditionalinformation.addinfo04/100)) ÷ salesorderlineaddinfo.addinfo01⌉（切り上げ。addinfo04 は％入力。空・0・非数値の除数はスキップ）。
 /// </summary>
 public sealed class AcceptanceRecordService
 {
@@ -154,12 +155,23 @@ public sealed class AcceptanceRecordService
                   COALESCE(MIN(TRIM(COALESCE(a.addinfo05, ''))), ''),
                   COALESCE(MIN(TRIM(COALESCE(a.addinfo02, ''))), ''),
                   SUM(
-                    CASE
-                      WHEN NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') IS NULL
-                        OR CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric) = 0
-                      THEN sol.quantity
-                      ELSE CEILING(sol.quantity / CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric))
-                    END
+                    CEILING(
+                      (
+                        CASE
+                          WHEN NULLIF(TRIM(COALESCE(ia.addinfo04, '')), '') IS NULL
+                            OR CAST(NULLIF(TRIM(COALESCE(ia.addinfo04, '')), '') AS numeric) = 0
+                          THEN sol.quantity
+                          ELSE sol.quantity / (CAST(NULLIF(TRIM(COALESCE(ia.addinfo04, '')), '') AS numeric) / 100)
+                        END
+                      )
+                      /
+                      CASE
+                        WHEN NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') IS NULL
+                          OR CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric) = 0
+                        THEN 1
+                        ELSE CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric)
+                      END
+                    )
                   )
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
@@ -170,6 +182,7 @@ public sealed class AcceptanceRecordService
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sol.slotcode
                 LEFT JOIN salesorderlineaddinfo a ON a.salesorderlineid = sol.salesorderlineid
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 WHERE sol.plannedshipdate = @shipDate
                   AND (@deliveryStr = '' OR TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD') = @deliveryStr)
                   AND (@customerStr = '' OR TRIM(COALESCE(so.customercode, '')) = @customerStr)
@@ -396,7 +409,7 @@ public sealed class AcceptanceRecordService
             {
                 var rows = g.OrderBy(x => x.SalesOrderLineId).ToList();
                 var totalQty = rows.Sum(x => x.LineQuantity);
-                var mealCount = rows.Sum(x => ComputeMealCount(x.LineQuantity, x.Addinfo01));
+                var mealCount = rows.Sum(x => ComputeMealCount(x.LineQuantity, x.Addinfo01, x.ItemAddinfo04));
                 var head = rows[0];
 
                 // itemadditionalinformation.addinfo04 は %入力。÷100 して総量を割る
@@ -504,12 +517,30 @@ public sealed class AcceptanceRecordService
         return Math.Ceiling(totalQty).ToString("0", CultureInfo.InvariantCulture);
     }
 
-    private static decimal ComputeMealCount(decimal quantity, string addinfo01)
+    /// <summary>
+    /// 食数 = ⌈ (quantity ÷ (addinfo04/100)) ÷ addinfo01 ⌉。
+    /// itemadditionalinformation.addinfo04 は％入力（÷100 して割る）。
+    /// addinfo04・addinfo01 が空・0・非数値のときは、その除算をスキップする。切り上げ。
+    /// </summary>
+    private static decimal ComputeMealCount(decimal quantity, string addinfo01, string addinfo04)
     {
-        if (string.IsNullOrWhiteSpace(addinfo01)) return quantity;
-        if (!decimal.TryParse(addinfo01.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var portion) || portion == 0)
-            return quantity;
-        return Math.Ceiling(quantity / portion);
+        var value = quantity;
+
+        if (!string.IsNullOrWhiteSpace(addinfo04)
+            && decimal.TryParse(addinfo04.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var pct)
+            && pct != 0)
+        {
+            value /= pct / 100m;
+        }
+
+        if (!string.IsNullOrWhiteSpace(addinfo01)
+            && decimal.TryParse(addinfo01.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var portion)
+            && portion != 0)
+        {
+            value /= portion;
+        }
+
+        return Math.Ceiling(value);
     }
 }
 

@@ -82,12 +82,13 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   ) <> ''
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -213,12 +214,13 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND ({class3Codes.Length} = 0 OR TRIM(COALESCE(i.classification3code, '')) = ANY ({class3Codes}))
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '55'
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -489,12 +491,13 @@ ORDER BY i.itemname, COALESCE(
                 LEFT JOIN classification3 c3 ON TRIM(c3.classification3code) = TRIM(i.classification3code)
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
-                  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
                   AND (
                     COALESCE(TRIM(ot.productno), '') = ''
                     OR ot.ordertableid = (
                       SELECT MAX(o2.ordertableid) FROM ordertable o2
                       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+                        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
                         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
                     )
                   )

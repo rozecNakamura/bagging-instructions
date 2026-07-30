@@ -68,12 +68,13 @@ WITH mfg AS (
   LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
   LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
   LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   WHERE (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -172,12 +173,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
       ))
   AND ({itemF} = '' OR TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) ILIKE '%' || {itemF} || '%')
   AND ot.ordertableid IS NOT NULL
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -401,12 +403,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                   LEFT JOIN unit pu ON pu.unitcode = parent_i.unitcode0
                   LEFT JOIN warehouses pwh ON TRIM(COALESCE(pwh.warehousecode, '')) = TRIM(COALESCE(parent_i.warehousecode, ''))
                   WHERE ot.ordertableid = ANY(@ids)
-                    -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                    -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
                     AND (
                       COALESCE(TRIM(ot.productno), '') = ''
                       OR ot.ordertableid = (
                         SELECT MAX(o2.ordertableid) FROM ordertable o2
                         WHERE TRIM(o2.productno) = TRIM(ot.productno)
+                          AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
                           AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
                       )
                     )

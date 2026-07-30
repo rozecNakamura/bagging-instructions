@@ -52,7 +52,10 @@ public class OrderTable
     [Column("workcentercode")]
     public string? WorkCenterCode { get; set; }
 
-    /// <summary>製造便等を含む「|」区切り文字列。同一値の重複行は最新 ordertableid のみ採用する（MRP重複対策）。</summary>
+    /// <summary>
+    /// 製造便等を含む「|」区切り文字列。BOM 展開ツリー内の各オーダー（製品・中間品・調味液…）が同じ値を共有するため、
+    /// MRP 重複排除は productno 単独ではなく <c>itemcode</c> と組み合わせて判定する（同一品目・同一 productno・同一実効日付なら最新 ordertableid のみ採用）。
+    /// </summary>
     [Column("productno")]
     public string? ProductNo { get; set; }
 

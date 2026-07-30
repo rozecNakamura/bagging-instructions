@@ -124,12 +124,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
     ''
   ) <> ''
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -243,12 +244,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ({majorCodes.Length} = 0 OR TRIM(COALESCE(i.majorclassificationcode, '')) = ANY ({majorCodes}))
   AND ({middleCodeFilter} = '' OR TRIM(COALESCE(i.middleclassificationcode, '')) = {middleCodeFilter})
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -344,12 +346,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
       ))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ot.ordertableid IS NOT NULL
-  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
@@ -655,12 +658,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     ''
                   )
                 WHERE ot.ordertableid = ANY(@ids)
-                  -- [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+                  -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
                   AND (
                     COALESCE(TRIM(ot.productno), '') = ''
                     OR ot.ordertableid = (
                       SELECT MAX(o2.ordertableid) FROM ordertable o2
                       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+                        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
                         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
                     )
                   )

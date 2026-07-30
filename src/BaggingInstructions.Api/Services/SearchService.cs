@@ -822,12 +822,13 @@ FROM m_shokushu";
                 sql.AppendLine("AND wh.warehouseid = @warehouseId");
                 cmd.Parameters.AddWithValue("warehouseId", warehouseId!.Value);
             }
-            // [DEDUP-productno] 同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
+            // [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
             sql.AppendLine(@"AND (
     COALESCE(TRIM(ot.productno), '') = ''
     OR ot.ordertableid = (
       SELECT MAX(o2.ordertableid) FROM ordertable o2
       WHERE TRIM(o2.productno) = TRIM(ot.productno)
+        AND TRIM(o2.itemcode) = TRIM(ot.itemcode)
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )");

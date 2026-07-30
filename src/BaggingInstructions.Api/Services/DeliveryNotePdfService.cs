@@ -69,7 +69,10 @@ public class DeliveryNotePdfService
             .Where(c => c.Info18 == eatingDateYyyymmdd && (c.Info02 ?? "") == locationCode && (c.Info01 ?? "") == customerCode);
         if (!string.IsNullOrEmpty(deliveryRoute))
             cstmeatQuery = cstmeatQuery.Where(c => c.Info19 == deliveryRoute);
-        var cstmeatRows = cstmeatQuery.ToList();
+        // 数量（info07）が0（0食）のレコードは出力対象外
+        var cstmeatRows = cstmeatQuery.ToList()
+            .Where(c => ParseQuantity(c.Info07) != 0)
+            .ToList();
 
         // RECEPTNO: info03（喫食日 YYYYMMDD）→ salesorderline.planneddeliverydate でマッチして salesorderid を取得
         var info03Dates = cstmeatRows
@@ -227,6 +230,7 @@ public class DeliveryNotePdfService
                     Note = note
                 };
             })
+            .Where(x => x.Count != 0)  // 数量0（0食）の明細は印字しない
             .OrderBy(x => x.ItemNm)
             .ToList();
 
@@ -411,6 +415,10 @@ public class DeliveryNotePdfService
         }
         return locs.FirstOrDefault(l => (l.LocationCode ?? "").Trim().Equals(locCode, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>info07（数量）を数値化。数値として解釈できない場合は0扱い。</summary>
+    private static decimal ParseQuantity(string? info07) =>
+        decimal.TryParse((info07 ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m;
 
     private static string NormalizeCode(string? s)
     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
 using Microsoft.EntityFrameworkCore;
@@ -41,10 +42,16 @@ public class DeliveryNoteService
         if (!string.IsNullOrEmpty(deliveryRoute))
             query = query.Where(c => c.Info19 == deliveryRoute);
 
-        var rows = await query
+        var fetched = await query
+            .Select(c => new { c.Info01, c.Info02, c.Info18, c.Info07 })
+            .ToListAsync(ct);
+
+        // 数量（info07）が0（0食）のレコードは検索対象外
+        var rows = fetched
+            .Where(c => ParseQuantity(c.Info07) != 0)
             .Select(c => new { c.Info01, c.Info02, c.Info18 })
             .Distinct()
-            .ToListAsync(ct);
+            .ToList();
 
         if (rows.Count == 0)
             return new List<DeliveryNoteSearchResultDto>();
@@ -106,6 +113,10 @@ public class DeliveryNoteService
             "hospital" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "310" },
             _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         };
+
+    /// <summary>info07（数量）を数値化。数値として解釈できない場合は0扱い。</summary>
+    private static decimal ParseQuantity(string? info07) =>
+        decimal.TryParse((info07 ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m;
 
     /// <summary>先頭ゼロを除いたコード（空の場合は "0"）</summary>
     private static string NormalizeCode(string? s)
