@@ -140,7 +140,7 @@ public class SearchService
             .Include(l => l.Addinfo)
             .Include(l => l.Item)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
-            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
+            .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Line)
             .Where(l => l.SalesOrder != null
                 && (l.SalesOrder.CustomerCode == "200" || l.SalesOrder.CustomerCode == "210"))
             .Where(l => l.Item != null
@@ -362,7 +362,7 @@ FROM m_shokushu";
             .Include(l => l.Addinfo)
             .Include(l => l.Item!)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
-            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
+            .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Line)
             .Where(l => l.Item != null
                 && l.Item.ItemCd != null
                 && (l.Item.ItemCd.StartsWith("3010")
@@ -449,7 +449,7 @@ FROM m_shokushu";
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.AdditionalInformation)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
-            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed");
+            .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Line);
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
@@ -526,7 +526,7 @@ FROM m_shokushu";
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.AdditionalInformation)
             .Where(l => l.PlannedDeliveryDate == delvedtDate)
-            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
+            .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Line)
             .Where(l => l.Item != null
                 && l.Item.ItemCd != null
                 && (l.Item.ItemCd.StartsWith("3010")

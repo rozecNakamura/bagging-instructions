@@ -456,7 +456,7 @@ public class PersonalDeliveryPdfService
             .Include(l => l.Item!)
                 .ThenInclude(i => i!.AdditionalInformation)
             .Where(l => l.PlannedDeliveryDate == date)
-            .Where(l => l.SalesOrder != null && l.SalesOrder.Status == "confirmed")
+            .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Line)
             .Where(l => l.SalesOrder != null && customerCodes.Contains(l.SalesOrder.CustomerCode ?? ""))
             .ToListAsync(ct);
     }
