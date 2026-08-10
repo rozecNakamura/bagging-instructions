@@ -10,7 +10,9 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 検収の記録簿：salesorderline 基準の検索・PDF 行生成。
-/// 食数は ⌈(quantity ÷ (itemadditionalinformation.addinfo04/100)) ÷ salesorderlineaddinfo.addinfo01⌉（切り上げ。addinfo04 は％入力。空・0・非数値の除数はスキップ）。
+/// 食数は <c>salesorderlineaddinfo.addinfo08</c> の値をそのまま使い、集計単位で合計する。
+/// 未登録（NULL・空）は 0 として扱う（旧来の quantity からの逆算は行わない）。
+/// 数量（総量）の表示は従来どおり itemadditionalinformation.addinfo04（％入力）で割り戻す。
 /// </summary>
 public sealed class AcceptanceRecordService
 {
@@ -155,22 +157,9 @@ public sealed class AcceptanceRecordService
                   COALESCE(MIN(TRIM(COALESCE(a.addinfo05, ''))), ''),
                   COALESCE(MIN(TRIM(COALESCE(a.addinfo02, ''))), ''),
                   SUM(
-                    CEILING(
-                      (
-                        CASE
-                          WHEN NULLIF(TRIM(COALESCE(ia.addinfo04, '')), '') IS NULL
-                            OR CAST(NULLIF(TRIM(COALESCE(ia.addinfo04, '')), '') AS numeric) = 0
-                          THEN sol.quantity
-                          ELSE sol.quantity / (CAST(NULLIF(TRIM(COALESCE(ia.addinfo04, '')), '') AS numeric) / 100)
-                        END
-                      )
-                      /
-                      CASE
-                        WHEN NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') IS NULL
-                          OR CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric) = 0
-                        THEN 1
-                        ELSE CAST(NULLIF(TRIM(COALESCE(a.addinfo01, '')), '') AS numeric)
-                      END
+                    COALESCE(
+                      CAST(NULLIF(TRIM(COALESCE(a.addinfo08, '')), '') AS numeric),
+                      0
                     )
                   )
                 FROM salesorderline sol
@@ -289,7 +278,8 @@ public sealed class AcceptanceRecordService
                   COALESCE(TRIM(COALESCE(a.addinfo02, '')), '') AS addinfo02,
                   COALESCE(TRIM(sol.makecomment), '') AS makecomment,
                   COALESCE(TRIM(sol.registercomment), '') AS registercomment,
-                  COALESCE(TRIM(ia.addinfo04), '') AS ia_addinfo04
+                  COALESCE(TRIM(ia.addinfo04), '') AS ia_addinfo04,
+                  COALESCE(TRIM(a.addinfo08), '') AS addinfo08
                 FROM salesorderline sol
                 INNER JOIN salesorder so ON so.salesorderid = sol.salesorderid
                 LEFT JOIN customerdeliverylocation cdl
@@ -320,6 +310,7 @@ public sealed class AcceptanceRecordService
                 var itemName = reader.IsDBNull(6) ? "" : reader.GetString(6);
                 var lineQty = reader.GetDecimal(8);
                 var addinfo01 = reader.IsDBNull(9) ? "" : reader.GetString(9);
+                var addinfo08 = reader.IsDBNull(17) ? "" : reader.GetString(17);
 
                 var childText = string.IsNullOrEmpty(itemCode)
                     ? itemName
@@ -336,11 +327,12 @@ public sealed class AcceptanceRecordService
                     EatDateDisplay = needDate?.ToString("MM/dd", CultureInfo.InvariantCulture) ?? "",
                     SlotDisplay = reader.IsDBNull(4) ? "" : reader.GetString(4),
                     ChildItemText = childText,
-                    MealCountDisplay = lineQty.ToString("0.###", CultureInfo.InvariantCulture),
+                    MealCountDisplay = ParseMealCount(addinfo08).ToString("0.###", CultureInfo.InvariantCulture),
                     TotalQtyDisplay = lineQty.ToString("0.###", CultureInfo.InvariantCulture),
                     UnitName = reader.GetString(7),
                     LineQuantity = lineQty,
                     Addinfo01 = addinfo01,
+                    Addinfo08 = addinfo08,
                     CustomerCode = reader.IsDBNull(10) ? "" : reader.GetString(10),
                     LocationCode = reader.IsDBNull(11) ? "" : reader.GetString(11),
                     Addinfo05 = reader.IsDBNull(12) ? "" : reader.GetString(12),
@@ -409,7 +401,8 @@ public sealed class AcceptanceRecordService
             {
                 var rows = g.OrderBy(x => x.SalesOrderLineId).ToList();
                 var totalQty = rows.Sum(x => x.LineQuantity);
-                var mealCount = rows.Sum(x => ComputeMealCount(x.LineQuantity, x.Addinfo01, x.ItemAddinfo04));
+                // 食数は salesorderlineaddinfo.addinfo08 の合計。未登録の明細は 0 として扱う
+                var mealCount = rows.Sum(x => ParseMealCount(x.Addinfo08));
                 var head = rows[0];
 
                 // itemadditionalinformation.addinfo04 は %入力。÷100 して総量を割る
@@ -431,6 +424,7 @@ public sealed class AcceptanceRecordService
                     UnitName = head.UnitName ?? "",
                     LineQuantity = mealCount,
                     Addinfo01 = "",
+                    Addinfo08 = mealCount.ToString("0.###", CultureInfo.InvariantCulture),
                     CustomerCode = head.CustomerCode ?? "",
                     LocationCode = head.LocationCode ?? "",
                     Addinfo05 = head.Addinfo05 ?? "",
@@ -518,29 +512,14 @@ public sealed class AcceptanceRecordService
     }
 
     /// <summary>
-    /// 食数 = ⌈ (quantity ÷ (addinfo04/100)) ÷ addinfo01 ⌉。
-    /// itemadditionalinformation.addinfo04 は％入力（÷100 して割る）。
-    /// addinfo04・addinfo01 が空・0・非数値のときは、その除算をスキップする。切り上げ。
+    /// 食数（<c>salesorderlineaddinfo.addinfo08</c>）を数値化する。
+    /// 未登録（NULL・空）および非数値は 0 として扱う。
     /// </summary>
-    private static decimal ComputeMealCount(decimal quantity, string addinfo01, string addinfo04)
+    private static decimal ParseMealCount(string? addinfo08)
     {
-        var value = quantity;
-
-        if (!string.IsNullOrWhiteSpace(addinfo04)
-            && decimal.TryParse(addinfo04.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var pct)
-            && pct != 0)
-        {
-            value /= pct / 100m;
-        }
-
-        if (!string.IsNullOrWhiteSpace(addinfo01)
-            && decimal.TryParse(addinfo01.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var portion)
-            && portion != 0)
-        {
-            value /= portion;
-        }
-
-        return Math.Ceiling(value);
+        var s = (addinfo08 ?? "").Trim();
+        if (s.Length == 0) return 0m;
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m;
     }
 }
 

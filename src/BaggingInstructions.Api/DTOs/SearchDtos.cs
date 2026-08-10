@@ -612,6 +612,13 @@ public class DeliveryNoteSearchResultDto
 
     [JsonPropertyName("customer_code")]
     public string? CustomerCode { get; set; }
+
+    /// <summary>納品便（cstmeat.info19）。1=朝, 2=昼, 3=夜</summary>
+    [JsonPropertyName("delivery_route")]
+    public string? DeliveryRoute { get; set; }
+
+    [JsonPropertyName("delivery_route_name")]
+    public string? DeliveryRouteName { get; set; }
 }
 
 /// <summary>納品書検索APIレスポンス</summary>

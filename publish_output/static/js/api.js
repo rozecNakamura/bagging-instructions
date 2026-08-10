@@ -799,6 +799,21 @@ export async function fetchAggregateMiddleClassifications(majorCode) {
     return await response.json();
 }
 
+/**
+ * 現品票用：中分類マスタ一覧（大分類ID指定時はその配下のみ、未指定時は全件）
+ * @param {number|string|null} [majorClassificationId]
+ * @returns {Promise<{ id: number, code: string, name: string, majorCode: string }[]>}
+ */
+export async function fetchProductLabelMiddleClassifications(majorClassificationId) {
+    const params = new URLSearchParams();
+    if (majorClassificationId != null && String(majorClassificationId).trim() !== '')
+        params.set('majorclassificationid', String(majorClassificationId));
+    const qs = params.toString();
+    const response = await fetch(`${API_BASE_URL}/product-label/middle-classifications${qs ? `?${qs}` : ''}`);
+    if (!response.ok) throw new Error(`中分類取得エラー: ${response.status}`);
+    return await response.json();
+}
+
 export async function fetchProductLabelWorkcenters() {
     const response = await fetch(`${API_BASE_URL}/product-label/workcenters`);
     if (!response.ok) throw new Error(`作業区取得エラー: ${response.status}`);
@@ -812,6 +827,48 @@ export async function fetchProductLabelWarehouses() {
 }
 
 /**
+ * 現品票：親品目コード一覧を子品目条件で絞り込む（調味液配合表ルート用）。
+ * 子品目条件が未指定の場合はサーバ側で絞り込みなしとなり、入力がそのまま返る。
+ * @param {object} params
+ * @param {string[]} params.itemCodes - 親品目コード一覧
+ * @param {string|null} [params.childItemCode]
+ * @param {number|string|null} [params.childMajorClassificationId]
+ * @param {number|string|null} [params.childMiddleClassificationId]
+ * @param {number|string|null} [params.childWarehouseId]
+ * @returns {Promise<string[]>} 条件に一致した親品目コード
+ */
+export async function filterProductLabelByChild({
+    itemCodes,
+    childItemCode,
+    childMajorClassificationId,
+    childMiddleClassificationId,
+    childWarehouseId,
+} = {}) {
+    const body = { item_codes: Array.isArray(itemCodes) ? itemCodes : [] };
+    if (childItemCode && childItemCode.trim() !== '')
+        body.childitemcode = childItemCode.trim();
+    if (childMajorClassificationId != null && String(childMajorClassificationId).trim() !== '')
+        body.childmajorclassificationid = Number(childMajorClassificationId);
+    if (childMiddleClassificationId != null && String(childMiddleClassificationId).trim() !== '')
+        body.childmiddleclassificationid = Number(childMiddleClassificationId);
+    if (childWarehouseId != null && String(childWarehouseId).trim() !== '')
+        body.childwarehouseid = Number(childWarehouseId);
+
+    const response = await fetch(`${API_BASE_URL}/product-label/filter-by-child`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        let detail = '';
+        try { const b = await response.json(); detail = b.detail ? ` - ${b.detail}` : ''; } catch (_) { /* ignore */ }
+        throw new Error(`絞り込みエラー: ${response.status}${detail}`);
+    }
+    const json = await response.json();
+    return json.item_codes || [];
+}
+
+/**
  * 現品票検索（MO品目かつBOM最上位品目のみ）
  * @param {object} params
  * @param {string} params.needDate - YYYY-MM-DD または YYYYMMDD（必須）
@@ -819,8 +876,22 @@ export async function fetchProductLabelWarehouses() {
  * @param {string|null} [params.itemCode]
  * @param {number|null} [params.workcenterId]
  * @param {number|null} [params.warehouseId]
+ * @param {string|null} [params.childItemCode] - 子品目コード（部分一致）
+ * @param {number|string|null} [params.childMajorClassificationId] - 子品目の大分類
+ * @param {number|string|null} [params.childMiddleClassificationId] - 子品目の中分類
+ * @param {number|string|null} [params.childWarehouseId] - 子品目の倉庫
  */
-export async function searchProductLabel({ needDate, majorClassificationId, itemCode, workcenterId, warehouseId } = {}) {
+export async function searchProductLabel({
+    needDate,
+    majorClassificationId,
+    itemCode,
+    workcenterId,
+    warehouseId,
+    childItemCode,
+    childMajorClassificationId,
+    childMiddleClassificationId,
+    childWarehouseId,
+} = {}) {
     let needdateStr = needDate;
     if (needDate && needDate.includes('-')) needdateStr = needDate.replace(/-/g, '');
     const p = new URLSearchParams({ needdate: needdateStr });
@@ -832,6 +903,14 @@ export async function searchProductLabel({ needDate, majorClassificationId, item
         p.set('workcenterid', String(workcenterId));
     if (warehouseId != null && String(warehouseId).trim() !== '')
         p.set('warehouseid', String(warehouseId));
+    if (childItemCode && childItemCode.trim() !== '')
+        p.set('childitemcode', childItemCode.trim());
+    if (childMajorClassificationId != null && String(childMajorClassificationId).trim() !== '')
+        p.set('childmajorclassificationid', String(childMajorClassificationId));
+    if (childMiddleClassificationId != null && String(childMiddleClassificationId).trim() !== '')
+        p.set('childmiddleclassificationid', String(childMiddleClassificationId));
+    if (childWarehouseId != null && String(childWarehouseId).trim() !== '')
+        p.set('childwarehouseid', String(childWarehouseId));
 
     const response = await fetch(`${API_BASE_URL}/product-label/search?${p}`);
     if (!response.ok) {

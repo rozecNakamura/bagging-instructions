@@ -76,6 +76,35 @@ public class ProductLabelFromSalesOrderLinesRequestDto
     public string CutMode { get; set; } = "no_cut";
 }
 
+/// <summary>
+/// 現品票：既に取得済みの親品目コード一覧へ子品目条件を後掛けするときのリクエスト。
+/// 調味液配合表（親大分類55）の検索ルートで使用する。
+/// </summary>
+public class ProductLabelChildFilterRequestDto
+{
+    [JsonPropertyName("item_codes")]
+    public List<string> ItemCodes { get; set; } = new();
+
+    [JsonPropertyName("childitemcode")]
+    public string? ChildItemCode { get; set; }
+
+    [JsonPropertyName("childmajorclassificationid")]
+    public long? ChildMajorClassificationId { get; set; }
+
+    [JsonPropertyName("childmiddleclassificationid")]
+    public long? ChildMiddleClassificationId { get; set; }
+
+    [JsonPropertyName("childwarehouseid")]
+    public long? ChildWarehouseId { get; set; }
+}
+
+public class ProductLabelChildFilterResponseDto
+{
+    /// <summary>子品目条件に一致した親品目コード（リクエストの並び順を維持）。</summary>
+    [JsonPropertyName("item_codes")]
+    public List<string> ItemCodes { get; set; } = new();
+}
+
 public class ProductLabelSearchResponseDto
 {
     [JsonPropertyName("total")]

@@ -1,6 +1,7 @@
 using System.Globalization;
 using BaggingInstructions.Api.Core;
 using BaggingInstructions.Api.DTOs;
+using BaggingInstructions.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace BaggingInstructions.Api.Services;
@@ -43,13 +44,13 @@ public class DeliveryNoteService
             query = query.Where(c => c.Info19 == deliveryRoute);
 
         var fetched = await query
-            .Select(c => new { c.Info01, c.Info02, c.Info18, c.Info07 })
+            .Select(c => new { c.Info01, c.Info02, c.Info18, c.Info19, c.Info07 })
             .ToListAsync(ct);
 
         // 数量（info07）が0（0食）のレコードは検索対象外
         var rows = fetched
             .Where(c => ParseQuantity(c.Info07) != 0)
-            .Select(c => new { c.Info01, c.Info02, c.Info18 })
+            .Select(c => new { c.Info01, c.Info02, c.Info18, Info19 = (c.Info19 ?? "").Trim() })
             .Distinct()
             .ToList();
 
@@ -65,10 +66,11 @@ public class DeliveryNoteService
             if (normalized.Length > 0) locationCodesFromCstmeat.Add(normalized);
         }
 
-        // 全納入場所を Customer 込みで取得し、メモリ上でコード一致（Trim・正規化対応）
+        // 全納入場所を Customer・Addinfo 込みで取得し、メモリ上でコード一致（Trim・正規化対応）
         var allLocations = await _appDb.CustomerDeliveryLocations
             .AsNoTracking()
             .Include(l => l.Customer)
+            .Include(l => l.Addinfo)
             .ToListAsync(ct);
         var locList = allLocations
             .Where(l => l.LocationCode != null && (
@@ -76,34 +78,86 @@ public class DeliveryNoteService
                 locationCodesFromCstmeat.Contains(NormalizeCode(l.LocationCode))))
             .ToList();
 
-        // (CustomerCode, LocationCode) の複数表記で LocationName を引けるようにする（Trim / 大文字小文字 / 先頭ゼロ正規化）
-        var locationNameByKey = new Dictionary<(string, string), string>(new KeyComparer());
-        var locationNameByLocCodeOnly = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // (CustomerCode, LocationCode) の複数表記で納入場所を引けるようにする（Trim / 大文字小文字 / 先頭ゼロ正規化）
+        var locationByKey = new Dictionary<(string, string), CustomerDeliveryLocation>(new KeyComparer());
+        var locationByLocCodeOnly = new Dictionary<string, CustomerDeliveryLocation>(StringComparer.OrdinalIgnoreCase);
         foreach (var l in locList)
         {
             var locCode = (l.LocationCode ?? "").Trim();
             var custCode = (l.Customer?.CustomerCode ?? "").Trim();
-            var name = l.LocationName ?? "";
             if (string.IsNullOrEmpty(locCode)) continue;
 
-            AddKeyVariants(locationNameByKey, custCode, locCode, name);
-            if (!locationNameByLocCodeOnly.ContainsKey(locCode))
-                locationNameByLocCodeOnly[locCode] = name;
+            AddKeyVariants(locationByKey, custCode, locCode, l);
+            if (!locationByLocCodeOnly.ContainsKey(locCode))
+                locationByLocCodeOnly[locCode] = l;
         }
 
+        // 納品便（info19）ごとに customerdeliverylocationaddinfo のコース・配送順で並べ替える
+        // 朝(1)=addinfo01/02、昼(2)=addinfo03/04、夜(3)=addinfo05/06。未設定は各便の末尾。
         return rows
-            .Select(r => new DeliveryNoteSearchResultDto
+            .Select(r =>
             {
-                EatingDate = r.Info18,
-                LocationCode = r.Info02,
-                CustomerCode = r.Info01,
-                LocationName = GetLocationName(r.Info01, r.Info02, locationNameByKey, locationNameByLocCodeOnly)
+                var loc = ResolveLocation(r.Info01, r.Info02, locationByKey, locationByLocCodeOnly);
+                if (loc == null) return null;
+
+                var (course, deliveryOrder) = PersonalDeliveryHelper.ResolveCourseAndOrder(r.Info19, loc.Addinfo);
+                return new SortableRow
+                {
+                    Course = course,
+                    DeliveryOrder = deliveryOrder,
+                    Dto = new DeliveryNoteSearchResultDto
+                    {
+                        EatingDate = r.Info18,
+                        LocationCode = r.Info02,
+                        CustomerCode = r.Info01,
+                        LocationName = loc.LocationName,
+                        DeliveryRoute = r.Info19,
+                        DeliveryRouteName = DeliveryRouteDisplay(r.Info19)
+                    }
+                };
             })
-            .Where(x => !string.IsNullOrEmpty(x.LocationName))
-            .OrderBy(x => x.EatingDate)
-            .ThenBy(x => x.LocationCode)
+            .Where(x => x != null)
+            .Select(x => x!)
+            .OrderBy(x => x.Dto.EatingDate)
+            .ThenBy(x => GetDeliveryRouteRank(x.Dto.DeliveryRoute))
+            .ThenBy(x => x.HasSortKey ? 0 : 1)
+            .ThenBy(x => x.Course, DeliveryOrderComparer.Instance)
+            .ThenBy(x => x.DeliveryOrder, DeliveryOrderComparer.Instance)
+            .ThenBy(x => x.Dto.LocationCode)
+            .Select(x => x.Dto)
             .ToList();
     }
+
+    /// <summary>並べ替え用の中間データ（コース・配送順は納品便に応じた addinfo から解決済み）</summary>
+    private sealed class SortableRow
+    {
+        public string Course { get; init; } = "";
+        public string DeliveryOrder { get; init; } = "";
+        public DeliveryNoteSearchResultDto Dto { get; init; } = new();
+
+        /// <summary>コース・配送順のいずれかが設定されているか（未設定は末尾に回す）</summary>
+        public bool HasSortKey => Course.Length > 0 || DeliveryOrder.Length > 0;
+    }
+
+    /// <summary>納品便（info19）の並び順。朝→昼→夜、それ以外（未設定含む）は末尾。</summary>
+    private static int GetDeliveryRouteRank(string? info19) =>
+        (info19 ?? "").Trim() switch
+        {
+            "1" => 1,
+            "2" => 2,
+            "3" => 3,
+            _ => 9
+        };
+
+    /// <summary>納品便（info19）の表示名。画面の納品便プルダウンと同じ表記。</summary>
+    private static string DeliveryRouteDisplay(string? info19) =>
+        (info19 ?? "").Trim() switch
+        {
+            "1" => "出荷朝便",
+            "2" => "出荷昼便",
+            "3" => "出荷夜便",
+            var s => s
+        };
 
     private static HashSet<string> GetCustomerCodes(string? customerType) =>
         customerType switch
@@ -127,7 +181,7 @@ public class DeliveryNoteService
         return trimmed.Length == 0 ? "0" : trimmed;
     }
 
-    private static void AddKeyVariants(Dictionary<(string, string), string> dict, string custCode, string locCode, string name)
+    private static void AddKeyVariants<T>(Dictionary<(string, string), T> dict, string custCode, string locCode, T value)
     {
         var custN = NormalizeCode(custCode);
         var locN = NormalizeCode(locCode);
@@ -145,14 +199,14 @@ public class DeliveryNoteService
         {
             if (string.IsNullOrEmpty(key.Item1) && string.IsNullOrEmpty(key.Item2)) continue;
             if (!dict.ContainsKey(key))
-                dict[key] = name;
+                dict[key] = value;
         }
     }
 
-    /// <summary>cstmeat.info02 と customerdeliverylocation.locationcode で結合し、locationname を取得。対応する納入場所が見つかった場合のみ名前を返し、見つからなければ null（結果に含めない）。</summary>
-    private static string? GetLocationName(string? info01, string? info02,
-        Dictionary<(string, string), string> locationNameByKey,
-        Dictionary<string, string> locationNameByLocCodeOnly)
+    /// <summary>cstmeat.info02 と customerdeliverylocation.locationcode で結合し、納入場所を取得。locationname が取れた場合のみ返し、見つからなければ null（結果に含めない）。</summary>
+    private static CustomerDeliveryLocation? ResolveLocation(string? info01, string? info02,
+        Dictionary<(string, string), CustomerDeliveryLocation> locationByKey,
+        Dictionary<string, CustomerDeliveryLocation> locationByLocCodeOnly)
     {
         if (string.IsNullOrEmpty(info02)) return null;
         var c = (info01 ?? "").Trim();
@@ -160,10 +214,10 @@ public class DeliveryNoteService
         if (l.Length == 0) return null;
 
         // 1) info02 = locationcode で結合 → customerdeliverylocation.locationname
-        if (locationNameByLocCodeOnly.TryGetValue(l, out var nameByCode) && !string.IsNullOrEmpty(nameByCode))
-            return nameByCode;
-        if (locationNameByLocCodeOnly.TryGetValue(NormalizeCode(l), out var nameByCodeNorm) && !string.IsNullOrEmpty(nameByCodeNorm))
-            return nameByCodeNorm;
+        if (locationByLocCodeOnly.TryGetValue(l, out var locByCode) && !string.IsNullOrEmpty(locByCode.LocationName))
+            return locByCode;
+        if (locationByLocCodeOnly.TryGetValue(NormalizeCode(l), out var locByCodeNorm) && !string.IsNullOrEmpty(locByCodeNorm.LocationName))
+            return locByCodeNorm;
 
         // 2) (得意先, 納入場所) で検索（複数表記）
         var toTry = new[] {
@@ -178,12 +232,20 @@ public class DeliveryNoteService
         };
         foreach (var key in toTry)
         {
-            if (locationNameByKey.TryGetValue(key, out var name) && !string.IsNullOrEmpty(name))
-                return name;
+            if (locationByKey.TryGetValue(key, out var loc) && !string.IsNullOrEmpty(loc.LocationName))
+                return loc;
         }
 
         return null;
     }
+}
+
+/// <summary>配送順・コースの比較。数値として解釈できる場合は数値比較、できない場合は文字列比較。</summary>
+internal sealed class DeliveryOrderComparer : IComparer<string>
+{
+    public static readonly DeliveryOrderComparer Instance = new();
+
+    public int Compare(string? x, string? y) => PersonalDeliveryHelper.CompareDeliveryOrder(x, y);
 }
 
 /// <summary>(string, string) の大文字小文字を無視する比較</summary>

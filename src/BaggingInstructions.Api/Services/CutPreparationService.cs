@@ -51,10 +51,17 @@ WITH mfg AS (
     COALESCE(ot.releasedate, sol.planneddeliverydate) AS needdate_combined,
     TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode)) AS item_code,
     COALESCE(
+      -- 自オーダーが製番品ならその便
       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
-      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
-      -- 自分・親・祖父にproductnoが無い場合、同じ親を持つ兄弟受注の製造便を継承
+      -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
+      -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら祖父は見ない（無関係な先祖の便を拾わない）。
+      CASE WHEN COALESCE(TRIM(p.productno), '') <> ''
+           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), '')
+      END,
+      CASE WHEN COALESCE(TRIM(p.productno), '') <> '' AND COALESCE(TRIM(gp.productno), '') <> ''
+           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), '')
+      END,
+      -- 先祖から取れない場合、同じ親を持つ兄弟受注の製造便を継承（切込予定表のみの仕様）
       NULLIF((
         SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
         FROM ordertable s
@@ -153,9 +160,16 @@ LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
 WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(
+        -- 自オーダーが製番品ならその便
         NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
-        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
+        -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
+        CASE WHEN COALESCE(TRIM(p.productno), '') <> ''
+             THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), '')
+        END,
+        CASE WHEN COALESCE(TRIM(p.productno), '') <> '' AND COALESCE(TRIM(gp.productno), '') <> ''
+             THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), '')
+        END,
+        -- 先祖から取れない場合、同じ親を持つ兄弟受注の製造便を継承（切込予定表のみの仕様）
         NULLIF((
           SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
           FROM ordertable s
@@ -376,9 +390,16 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     END AS final_product_name,
                     COALESCE(mid.middleclassificationname, '') AS middle_class_name,
                     COALESCE(
+                      -- 自オーダーが製番品ならその便
                       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-                      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), ''),
-                      NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), ''),
+                      -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
+                      CASE WHEN COALESCE(TRIM(p.productno), '') <> ''
+                           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), '')
+                      END,
+                      CASE WHEN COALESCE(TRIM(p.productno), '') <> '' AND COALESCE(TRIM(gp.productno), '') <> ''
+                           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), '')
+                      END,
+                      -- 先祖から取れない場合、同じ親を持つ兄弟受注の製造便を継承（切込予定表のみの仕様）
                       NULLIF((
                         SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
                         FROM ordertable s

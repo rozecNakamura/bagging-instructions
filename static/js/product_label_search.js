@@ -3,9 +3,11 @@
  */
 import {
     fetchMajorClassifications,
+    fetchProductLabelMiddleClassifications,
     fetchProductLabelWorkcenters,
     fetchProductLabelWarehouses,
     searchProductLabel,
+    filterProductLabelByChild,
     fetchProductionInstructionSlots,
     searchProductionInstruction,
 } from './api.js';
@@ -20,49 +22,50 @@ function formatDateYyyymmdd(yyyymmdd) {
     return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 }
 
-async function loadSelect(selectId, fetcher, labelFn, errorText) {
-    const sel = document.getElementById(selectId);
-    if (!sel) return;
+/** マスタ一覧を1回だけ取得し、指定した複数の select に同じ選択肢を流し込む。 */
+async function loadSelect(selectIds, fetcher, labelFn, errorText) {
+    const ids = Array.isArray(selectIds) ? selectIds : [selectIds];
+    const sels = ids.map(id => document.getElementById(id)).filter(Boolean);
+    if (sels.length === 0) return;
     try {
         const list = await fetcher();
-        sel.innerHTML = '';
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '指定なし（すべて）';
-        sel.appendChild(empty);
-        for (const item of list) {
-            const opt = document.createElement('option');
-            opt.value = String(item.id);
-            opt.textContent = labelFn(item);
-            sel.appendChild(opt);
+        for (const sel of sels) {
+            sel.innerHTML = '';
+            const empty = document.createElement('option');
+            empty.value = '';
+            empty.textContent = '指定なし（すべて）';
+            sel.appendChild(empty);
+            for (const item of list) {
+                const opt = document.createElement('option');
+                opt.value = String(item.id);
+                opt.dataset.code = item.code || '';
+                opt.textContent = labelFn(item);
+                sel.appendChild(opt);
+            }
         }
     } catch (e) {
-        sel.innerHTML = `<option value="">${errorText}</option>`;
+        for (const sel of sels) sel.innerHTML = `<option value="">${errorText}</option>`;
         console.error(e);
     }
 }
 
 async function loadMajorClassifications() {
-    const sel = document.getElementById('productLabelMajorClass');
-    if (!sel) return;
-    try {
-        const list = await fetchMajorClassifications();
-        sel.innerHTML = '';
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '指定なし（すべて）';
-        sel.appendChild(empty);
-        for (const item of list) {
-            const opt = document.createElement('option');
-            opt.value = String(item.id);
-            opt.dataset.code = item.code || '';
-            opt.textContent = (`${item.code ? item.code + ' ' : ''}${item.name || ''}`).trim() || String(item.id);
-            sel.appendChild(opt);
-        }
-    } catch (e) {
-        sel.innerHTML = `<option value="">大分類の取得に失敗しました</option>`;
-        console.error(e);
-    }
+    await loadSelect(
+        ['productLabelMajorClass', 'productLabelChildMajorClass'],
+        fetchMajorClassifications,
+        (m) => (`${m.code ? m.code + ' ' : ''}${m.name || ''}`).trim() || String(m.id),
+        '大分類の取得に失敗しました'
+    );
+}
+
+/** 子品目の中分類：子品目大分類が選択されていればその配下のみ、未選択なら全件。 */
+async function loadChildMiddleClassifications(majorId) {
+    await loadSelect(
+        'productLabelChildMiddleClass',
+        () => fetchProductLabelMiddleClassifications(majorId || undefined),
+        (m) => (`${m.code ? m.code + ' ' : ''}${m.name || ''}`).trim() || String(m.id),
+        '中分類の取得に失敗しました'
+    );
 }
 
 async function loadWorkcenters() {
@@ -76,7 +79,7 @@ async function loadWorkcenters() {
 
 async function loadWarehouses() {
     await loadSelect(
-        'productLabelWarehouse',
+        ['productLabelWarehouse', 'productLabelChildWarehouse'],
         fetchProductLabelWarehouses,
         (w) => `${w.code ? w.code + ' ' : ''}${w.name || ''}`.trim() || String(w.id),
         '倉庫の取得に失敗しました'
@@ -153,15 +156,43 @@ function setAllProductLabelCheckboxes(checked) {
     document.querySelectorAll('.product-label-row-check').forEach((el) => { el.checked = checked; });
 }
 
+/** 子品目の検索条件をまとめて取得。 */
+function getChildConditions() {
+    return {
+        childItemCode: document.getElementById('productLabelChildItemCode')?.value || undefined,
+        childMajorClassificationId: document.getElementById('productLabelChildMajorClass')?.value || undefined,
+        childMiddleClassificationId: document.getElementById('productLabelChildMiddleClass')?.value || undefined,
+        childWarehouseId: document.getElementById('productLabelChildWarehouse')?.value || undefined,
+    };
+}
+
+function hasChildConditions(cond) {
+    return Object.values(cond).some(v => v != null && String(v).trim() !== '');
+}
+
 document.getElementById('productLabelSearchBtn').addEventListener('click', async () => {
     const needDate = document.getElementById('productLabelNeedDate').value;
     if (!needDate) { alert('納期を入力してください'); return; }
+
+    const childCond = getChildConditions();
 
     if (isSeasoningSelected()) {
         const slotCodes = Array.from(plSelectedSlotCodes);
         try {
             const res = await searchProductionInstruction(needDate, [], slotCodes);
-            productLabelRows = (res.rows || []).map(r => ({
+            let rows = res.rows || [];
+
+            // 調味液配合表ルートは製造指示書検索を使うため、子品目条件はサーバへ後掛けで問い合わせて絞り込む
+            if (rows.length > 0 && hasChildConditions(childCond)) {
+                const matched = await filterProductLabelByChild({
+                    itemCodes: rows.map(r => r.itemCode).filter(Boolean),
+                    ...childCond,
+                });
+                const allowed = new Set(matched);
+                rows = rows.filter(r => allowed.has((r.itemCode || '').trim()));
+            }
+
+            productLabelRows = rows.map(r => ({
                 order_table_ids: [r.orderTableId],
                 release_date: r.needDate,
                 item_code: r.itemCode,
@@ -189,6 +220,7 @@ document.getElementById('productLabelSearchBtn').addEventListener('click', async
             itemCode: itemCode || undefined,
             workcenterId: workcenterId || undefined,
             warehouseId: warehouseId || undefined,
+            ...childCond,
         });
         productLabelRows = res.rows || [];
         displayProductLabelResults(productLabelRows);
@@ -263,8 +295,15 @@ function displayProductLabelResults(rows) {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadMajorClassifications();
+    loadChildMiddleClassifications('');
     loadWorkcenters();
     loadWarehouses();
+
+    // 子品目大分類を変えたら中分類を絞り直す（選択済み中分類はクリア）
+    const childMajorSel = document.getElementById('productLabelChildMajorClass');
+    childMajorSel?.addEventListener('change', () => {
+        loadChildMiddleClassifications(childMajorSel.value || '');
+    });
 
     const plNeedDateInput = document.getElementById('productLabelNeedDate');
     const onPlNeedDateChanged = () => loadPlSlots(plNeedDateInput?.value || '');

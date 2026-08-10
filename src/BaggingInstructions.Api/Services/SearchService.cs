@@ -746,6 +746,8 @@ FROM m_shokushu";
     /// 現品票：ordertable を納期で明細検索。
     /// 対象はMO品目かつBOM childitemcodeに存在しない品目（親品目が存在しない品目）のみ。
     /// 大分類・品目コード・作業区・倉庫で絞り込み可能（すべて任意）。
+    /// 子品目条件（子品目コード部分一致・子品目大分類・子品目中分類・子品目倉庫）を指定した場合は、
+    /// BOM を再帰探索（最大10階層）して条件に一致する子品目を持つ親のみを抽出する。
     /// </summary>
     public async Task<List<ProductLabelRowDto>> SearchProductLabelAsync(
         string needdateYyyymmdd,
@@ -753,6 +755,10 @@ FROM m_shokushu";
         string? itemCode = null,
         long? workcenterId = null,
         long? warehouseId = null,
+        string? childItemCode = null,
+        long? childMajorClassificationId = null,
+        long? childMiddleClassificationId = null,
+        long? childWarehouseId = null,
         CancellationToken ct = default)
     {
         var date = ParseProductDate(needdateYyyymmdd);
@@ -770,13 +776,60 @@ FROM m_shokushu";
                 return new List<ProductLabelRowDto>();
         }
 
+        // 子品目条件のマスタ ID → コード解決（該当マスタなしの場合は結果0件）
+        var childCriteria = await ResolveProductLabelChildCriteriaAsync(
+            childItemCode, childMajorClassificationId, childMiddleClassificationId, childWarehouseId, ct);
+        if (childCriteria.NoMatch)
+            return new List<ProductLabelRowDto>();
+
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
         var shouldClose = conn.State != ConnectionState.Open;
         if (shouldClose) await conn.OpenAsync(ct);
         try
         {
             var joinWh = warehouseId.HasValue && warehouseId.Value > 0;
-            var sql = new StringBuilder("""
+
+            await using var cmd = new NpgsqlCommand("", conn);
+            cmd.Parameters.AddWithValue("needDate", date.Value);
+
+            // 子品目の絞り込み条件（すべて同一の子品目に対して AND 判定）
+            var childConds = BuildProductLabelChildConditions(childCriteria, cmd);
+
+            var sql = new StringBuilder();
+            if (childConds.Count > 0)
+            {
+                // [CHILD-FILTER] 納期・MO のオーダ品目を起点に BOM を再帰探索し、
+                // 条件に一致する子品目（全階層）を持つ親品目コードを matched_root に集約する。
+                sql.AppendLine($"""
+                    WITH RECURSIVE bom_desc AS (
+                      SELECT DISTINCT
+                        ot0.itemcode AS root_itemcode,
+                        ot0.itemcode AS current_itemcode,
+                        0            AS depth
+                      FROM ordertable ot0
+                      WHERE ot0.releasedate = @needDate
+                        AND TRIM(COALESCE(ot0.ordertype, '')) = 'MO'
+                      UNION ALL
+                      SELECT
+                        d0.root_itemcode,
+                        b0.childitemcode,
+                        d0.depth + 1
+                      FROM bom_desc d0
+                      INNER JOIN bom b0 ON b0.parentitemcode = d0.current_itemcode
+                        AND b0.childitemcode IS NOT NULL
+                      WHERE d0.depth < 10
+                    ),
+                    matched_root AS (
+                      SELECT DISTINCT d.root_itemcode
+                      FROM bom_desc d
+                      LEFT JOIN item ci ON ci.itemcode = d.current_itemcode
+                      WHERE d.depth > 0
+                        AND {string.Join("\n    AND ", childConds)}
+                    )
+                    """);
+            }
+
+            sql.AppendLine("""
                 SELECT
                   ot.ordertableid,
                   ot.releasedate,
@@ -799,8 +852,8 @@ FROM m_shokushu";
             sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
             sql.AppendLine("AND NOT EXISTS (SELECT 1 FROM bom b2 WHERE b2.childitemcode = ot.itemcode)");
 
-            await using var cmd = new NpgsqlCommand("", conn);
-            cmd.Parameters.AddWithValue("needDate", date.Value);
+            if (childConds.Count > 0)
+                sql.AppendLine("AND ot.itemcode IN (SELECT root_itemcode FROM matched_root)");
 
             if (majorCode != null)
             {
@@ -876,6 +929,180 @@ FROM m_shokushu";
                 .ToList();
 
             return list;
+        }
+        finally
+        {
+            if (shouldClose && conn.State == ConnectionState.Open)
+                await conn.CloseAsync();
+        }
+    }
+
+    /// <summary>現品票の子品目絞り込み条件（マスタ ID をコードへ解決した状態）。</summary>
+    private sealed class ProductLabelChildCriteria
+    {
+        public string? ItemCode { get; init; }
+        public string? MajorCode { get; init; }
+        public string? MiddleCode { get; init; }
+        public string? WarehouseCode { get; init; }
+
+        /// <summary>指定されたマスタが存在せず、結果が0件で確定していることを示す。</summary>
+        public bool NoMatch { get; init; }
+
+        public bool HasAny =>
+            !string.IsNullOrWhiteSpace(ItemCode) || MajorCode != null || MiddleCode != null || WarehouseCode != null;
+    }
+
+    /// <summary>子品目条件のマスタ ID をコードへ解決する。該当マスタなしの場合は NoMatch=true。</summary>
+    private async Task<ProductLabelChildCriteria> ResolveProductLabelChildCriteriaAsync(
+        string? childItemCode,
+        long? childMajorClassificationId,
+        long? childMiddleClassificationId,
+        long? childWarehouseId,
+        CancellationToken ct)
+    {
+        string? childMajorCode = null;
+        if (childMajorClassificationId.HasValue && childMajorClassificationId.Value > 0)
+        {
+            childMajorCode = await _db.MajorClassifications.AsNoTracking()
+                .Where(m => m.MajorClassificationId == childMajorClassificationId.Value)
+                .Select(m => m.MajorClassificationCode)
+                .FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(childMajorCode))
+                return new ProductLabelChildCriteria { NoMatch = true };
+        }
+
+        string? childMiddleCode = null;
+        if (childMiddleClassificationId.HasValue && childMiddleClassificationId.Value > 0)
+        {
+            childMiddleCode = await _db.MiddleClassifications.AsNoTracking()
+                .Where(m => m.MiddleClassificationId == childMiddleClassificationId.Value)
+                .Select(m => m.MiddleClassificationCode)
+                .FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(childMiddleCode))
+                return new ProductLabelChildCriteria { NoMatch = true };
+        }
+
+        string? childWarehouseCode = null;
+        if (childWarehouseId.HasValue && childWarehouseId.Value > 0)
+        {
+            childWarehouseCode = await _db.Warehouses.AsNoTracking()
+                .Where(w => w.WarehouseId == childWarehouseId.Value)
+                .Select(w => w.WarehouseCode)
+                .FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(childWarehouseCode))
+                return new ProductLabelChildCriteria { NoMatch = true };
+        }
+
+        return new ProductLabelChildCriteria
+        {
+            ItemCode = string.IsNullOrWhiteSpace(childItemCode) ? null : childItemCode.Trim(),
+            MajorCode = childMajorCode,
+            MiddleCode = childMiddleCode,
+            WarehouseCode = childWarehouseCode,
+        };
+    }
+
+    /// <summary>
+    /// 子品目条件を bom_desc（別名 d）／item（別名 ci）に対する WHERE 条件へ展開し、cmd にパラメータを追加する。
+    /// </summary>
+    private static List<string> BuildProductLabelChildConditions(ProductLabelChildCriteria criteria, NpgsqlCommand cmd)
+    {
+        var conds = new List<string>();
+        if (!string.IsNullOrWhiteSpace(criteria.ItemCode))
+        {
+            conds.Add("d.current_itemcode ILIKE @childItemCodePattern");
+            cmd.Parameters.AddWithValue("childItemCodePattern", $"%{criteria.ItemCode}%");
+        }
+        if (criteria.MajorCode != null)
+        {
+            conds.Add("TRIM(COALESCE(ci.majorclassificationcode, '')) = TRIM(@childMajorCode)");
+            cmd.Parameters.AddWithValue("childMajorCode", criteria.MajorCode.Trim());
+        }
+        if (criteria.MiddleCode != null)
+        {
+            conds.Add("TRIM(COALESCE(ci.middleclassificationcode, '')) = TRIM(@childMiddleCode)");
+            cmd.Parameters.AddWithValue("childMiddleCode", criteria.MiddleCode.Trim());
+        }
+        if (criteria.WarehouseCode != null)
+        {
+            conds.Add("TRIM(COALESCE(ci.warehousecode, '')) = TRIM(@childWarehouseCode)");
+            cmd.Parameters.AddWithValue("childWarehouseCode", criteria.WarehouseCode.Trim());
+        }
+        return conds;
+    }
+
+    /// <summary>
+    /// 現品票：与えられた親品目コードのうち、子品目条件に一致する子品目（BOM全階層・最大10階層）を持つものだけを返す。
+    /// 調味液配合表（親大分類55）のように別ルートで検索した結果へ子品目条件を後掛けするために使用する。
+    /// 子品目条件が未指定の場合は入力をそのまま返す（絞り込みなし）。
+    /// </summary>
+    public async Task<List<string>> FilterProductLabelParentsByChildAsync(
+        IReadOnlyList<string> parentItemCodes,
+        string? childItemCode = null,
+        long? childMajorClassificationId = null,
+        long? childMiddleClassificationId = null,
+        long? childWarehouseId = null,
+        CancellationToken ct = default)
+    {
+        var codes = (parentItemCodes ?? Array.Empty<string>())
+            .Select(c => (c ?? "").Trim())
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (codes.Length == 0)
+            return new List<string>();
+
+        var criteria = await ResolveProductLabelChildCriteriaAsync(
+            childItemCode, childMajorClassificationId, childMiddleClassificationId, childWarehouseId, ct);
+        if (criteria.NoMatch)
+            return new List<string>();
+        if (!criteria.HasAny)
+            return codes.ToList();
+
+        var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var shouldClose = conn.State != ConnectionState.Open;
+        if (shouldClose) await conn.OpenAsync(ct);
+        try
+        {
+            await using var cmd = new NpgsqlCommand("", conn);
+            cmd.Parameters.Add(new NpgsqlParameter("itemCodes", NpgsqlDbType.Text | NpgsqlDbType.Array) { Value = codes });
+            var childConds = BuildProductLabelChildConditions(criteria, cmd);
+
+            // [CHILD-FILTER] 与えられた親品目コードを起点に BOM を再帰探索し、条件一致の子品目を持つ親のみ返す。
+            cmd.CommandText = $"""
+                WITH RECURSIVE bom_desc AS (
+                  SELECT
+                    c.itemcode AS root_itemcode,
+                    c.itemcode AS current_itemcode,
+                    0          AS depth
+                  FROM UNNEST(@itemCodes) AS c(itemcode)
+                  UNION ALL
+                  SELECT
+                    d0.root_itemcode,
+                    b0.childitemcode,
+                    d0.depth + 1
+                  FROM bom_desc d0
+                  INNER JOIN bom b0 ON b0.parentitemcode = d0.current_itemcode
+                    AND b0.childitemcode IS NOT NULL
+                  WHERE d0.depth < 10
+                )
+                SELECT DISTINCT d.root_itemcode
+                FROM bom_desc d
+                LEFT JOIN item ci ON ci.itemcode = d.current_itemcode
+                WHERE d.depth > 0
+                  AND {string.Join("\n  AND ", childConds)}
+                """;
+
+            var matched = new HashSet<string>(StringComparer.Ordinal);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                if (!reader.IsDBNull(0))
+                    matched.Add(reader.GetString(0));
+            }
+
+            // 入力順を維持して返す
+            return codes.Where(matched.Contains).ToList();
         }
         finally
         {
@@ -1142,6 +1369,40 @@ FROM m_shokushu";
                 Id = m.MajorClassificationId,
                 Code = m.MajorClassificationCode ?? "",
                 Name = m.MajorClassificationName ?? ""
+            })
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// 中分類マスタ一覧（現品票の子品目中分類プルダウン用）。
+    /// majorClassificationId 指定時はその大分類に紐づく中分類のみ、未指定時は全件。
+    /// </summary>
+    public async Task<List<MiddleClassificationOptionDto>> ListMiddleClassificationsAsync(
+        long? majorClassificationId,
+        CancellationToken ct = default)
+    {
+        var query = _db.MiddleClassifications.AsNoTracking();
+
+        if (majorClassificationId.HasValue && majorClassificationId.Value > 0)
+        {
+            var majorCode = await _db.MajorClassifications.AsNoTracking()
+                .Where(m => m.MajorClassificationId == majorClassificationId.Value)
+                .Select(m => m.MajorClassificationCode)
+                .FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(majorCode))
+                return new List<MiddleClassificationOptionDto>();
+            query = query.Where(m => m.MajorClassificationCode == majorCode);
+        }
+
+        return await query
+            .OrderBy(m => m.MajorClassificationCode ?? "")
+            .ThenBy(m => m.MiddleClassificationCode ?? "")
+            .Select(m => new MiddleClassificationOptionDto
+            {
+                Id = m.MiddleClassificationId,
+                Code = m.MiddleClassificationCode ?? "",
+                Name = m.MiddleClassificationName ?? "",
+                MajorCode = m.MajorClassificationCode ?? ""
             })
             .ToListAsync(ct);
     }

@@ -94,6 +94,9 @@ public sealed class AcceptanceRecordPdfLineModel
     /// <summary><c>salesorderlineaddinfo.addinfo01</c>（1人あたり分量・総量計算用）。</summary>
     public string Addinfo01 { get; set; } = "";
 
+    /// <summary><c>salesorderlineaddinfo.addinfo08</c>（食数）。未登録は 0 として扱う。</summary>
+    public string Addinfo08 { get; set; } = "";
+
     /// <summary>cstmeat 結合キー用：得意先コード（salesorder.customercode）。</summary>
     public string CustomerCode { get; set; } = "";
 

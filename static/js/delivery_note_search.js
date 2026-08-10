@@ -86,6 +86,7 @@ function renderDeliveryNoteRows(items) {
         row.innerHTML = `
             <td><input type="checkbox" class="delivery-note-item-checkbox" data-index="${originalIndex}"></td>
             <td>${formatDate(item.eating_date) || '-'}</td>
+            <td>${escapeHtml(item.delivery_route_name) || '-'}</td>
             <td>${escapeHtml(item.location_name) || '-'}</td>
         `;
         row.style.cursor = 'pointer';
@@ -127,6 +128,8 @@ document.getElementById('deliveryNoteDeselectAllBtn').addEventListener('click', 
 
 /**
  * 選択された行データを取得（PDF印刷・納品書.rxz テンプレート用）
+ * 印刷順は検索結果の並び順（納品便 → コース → 配送順）に従う。
+ * 納品便は行ごとの値を使用（納品便「全て」でも便単位で出力するため）。
  */
 export function getSelectedDeliveryNoteRows() {
     const deliveryRoute = document.getElementById('deliveryNoteDeliveryRoute')?.value || '';
@@ -138,6 +141,6 @@ export function getSelectedDeliveryNoteRows() {
             eating_date: item.eating_date || '',
             location_code: item.location_code || '',
             customer_code: item.customer_code ?? '',
-            delivery_route: deliveryRoute
+            delivery_route: item.delivery_route || deliveryRoute
         }));
 }

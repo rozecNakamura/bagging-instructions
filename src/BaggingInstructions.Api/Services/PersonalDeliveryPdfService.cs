@@ -170,9 +170,9 @@ public class PersonalDeliveryPdfService
         var locations = await LoadLocationsAsync(customerCodes, locationCodes, ct);
         var salesLines = await LoadSalesOrderLinesAsync(date, customerCodes, ct);
         var lineIndex = BuildSalesLineIndex(salesLines, requireAddinfo08: true);
-        var minorClassNameMap = await LoadMinorClassificationNameMapAsync(salesLines, ct);
+        var minorClassResolver = await LoadMinorClassificationResolverAsync(salesLines, ct);
 
-        return BuildDetailLines(cstmeatRows, addinfoMap, locations, lineIndex, minorClassNameMap, foodTypeNameMap, mealTime, course);
+        return BuildDetailLines(cstmeatRows, addinfoMap, locations, lineIndex, minorClassResolver, foodTypeNameMap, mealTime, course);
     }
 
     private async Task<List<PersonalDeliverySummaryLine>> LoadSummaryLinesAsync(
@@ -299,7 +299,7 @@ public class PersonalDeliveryPdfService
         IReadOnlyDictionary<(string CustomerCode, string LocationCode), CustomerDeliveryLocationAddinfo> addinfoMap,
         IReadOnlyDictionary<string, CustomerDeliveryLocation> locations,
         IReadOnlyDictionary<(string LocCode, string MealTime, string FoodType), List<SalesOrderLine>> lineIndex,
-        IReadOnlyDictionary<string, string> minorClassNameMap,
+        MinorClassificationNameResolver minorClassResolver,
         IReadOnlyDictionary<string, string> foodTypeNameMap,
         string mealTime,
         string course)
@@ -342,7 +342,7 @@ public class PersonalDeliveryPdfService
                 CustomerAddress2 = location?.Customer?.Address2 ?? "",
                 FoodTypeCode = foodTypeCode,
                 FoodType = ResolveFoodTypeDisplayName(displayLine, foodTypeCode, foodTypeNameMap),
-                RiceType = ResolveRiceTypeName(riceLine, minorClassNameMap),
+                RiceType = ResolveRiceTypeName(riceLine, minorClassResolver),
                 RiceAmount = riceLine?.Addinfo?.Addinfo01 ?? "",
                 HasRiceItem = riceLine != null,
                 Remarks = (cm.Info17 ?? "").Trim()
@@ -487,7 +487,7 @@ public class PersonalDeliveryPdfService
         return dict;
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> LoadMinorClassificationNameMapAsync(
+    private async Task<MinorClassificationNameResolver> LoadMinorClassificationResolverAsync(
         IReadOnlyList<SalesOrderLine> lines,
         CancellationToken ct)
     {
@@ -499,34 +499,25 @@ public class PersonalDeliveryPdfService
             .ToList();
 
         if (minorCodes.Count == 0)
-            return new Dictionary<string, string>(StringComparer.Ordinal);
+            return MinorClassificationNameResolver.Empty;
 
+        // 小分類コードで候補を絞り、大分類・中分類まで含めた階層一致は Resolver 側で判定する。
         var rows = await _appDb.MinorClassifications
             .AsNoTracking()
             .Where(m => m.MinorClassificationCode != null && minorCodes.Contains(m.MinorClassificationCode))
             .ToListAsync(ct);
 
-        return rows
-            .Where(m => !string.IsNullOrWhiteSpace(m.MinorClassificationCode))
-            .GroupBy(m => m.MinorClassificationCode!.Trim(), StringComparer.Ordinal)
-            .ToDictionary(
-                g => g.Key,
-                g => (g.First().MinorClassificationName ?? "").Trim(),
-                StringComparer.Ordinal);
+        return new MinorClassificationNameResolver(rows);
     }
 
     private static string ResolveRiceTypeName(
         SalesOrderLine? riceLine,
-        IReadOnlyDictionary<string, string> minorClassNameMap)
+        MinorClassificationNameResolver minorClassResolver)
     {
         if (riceLine == null || !PersonalDeliveryHelper.IsRiceItemCode(riceLine.Item?.ItemCd))
             return "";
 
-        var minorCode = (riceLine.Item?.MinorClassificationCode ?? "").Trim();
-        if (minorCode.Length == 0)
-            return "";
-
-        return minorClassNameMap.TryGetValue(minorCode, out var name) ? name : "";
+        return minorClassResolver.Resolve(riceLine.Item);
     }
 
     private async Task<IReadOnlyDictionary<string, string>> LoadFoodTypeNameMapAsync(CancellationToken ct)

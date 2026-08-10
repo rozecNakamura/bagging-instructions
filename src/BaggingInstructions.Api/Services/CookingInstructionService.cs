@@ -50,38 +50,32 @@ public sealed class CookingInstructionService
         var rows = await _db.Database
             .SqlQuery<CookingInstructionSlotSqlRow>($@"
 SELECT DISTINCT
-  COALESCE(
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-    ''
-  ) AS ""Code"",
-  COALESCE(
-    NULLIF(TRIM(ds.slotname), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-    ''
-  ) AS ""Name""
+  sc.slotcode AS ""Code"",
+  COALESCE(NULLIF(TRIM(ds.slotname), ''), NULLIF(sc.slotcode, ''), '') AS ""Name""
 FROM ordertable ot
 INNER JOIN item i ON i.itemcode = ot.itemcode
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
-LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+CROSS JOIN LATERAL (
+  SELECT COALESCE(
+    -- 自オーダーが製番品ならその便
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
+    -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
+    -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら製造便なし（''）として扱う。
+    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> ''
+         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), '')
+    END,
+    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> '' AND COALESCE(TRIM(gp_ot.productno), '') <> ''
+         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), '')
+    END,
     ''
-  )
+  ) AS slotcode
+) sc
+LEFT JOIN deliveryslot ds ON ds.slotcode = sc.slotcode
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(COALESCE(ot.releasedate, ot.needdate), 'YYYYMMDD') = {needDateYyyymmdd}
   AND LEFT(TRIM(COALESCE(ot.itemcode, '')), 2) <> '50'
-  AND COALESCE(
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-    ''
-  ) <> ''
+  AND sc.slotcode <> ''
   -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   AND (
     COALESCE(TRIM(ot.productno), '') = ''
@@ -130,7 +124,8 @@ ORDER BY 1
     }
 
     /// <summary>
-    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(needdate, releasedate)。作業区・便・作業名は未選択なら絞り込まない。
+    /// 1 行 = 1 ordertable（MO）。納期は COALESCE(releasedate, needdate)。作業区・便・作業名は未選択なら絞り込まない。
+    /// 便は自オーダーの productno 優先。自オーダーが MRP 品（productno 空）で親も productno 空なら便なし扱い（[SLOT-CHAIN]）。
     /// </summary>
     public async Task<List<CookingInstructionSearchRowDto>> SearchAsync(
         string needDate,
@@ -167,13 +162,7 @@ SELECT
     COALESCE(ot.releasedate, ot.needdate),
     'YYYYMMDD'
   ) AS ""NeedDate"",
-  COALESCE(
-    NULLIF(TRIM(ds.slotname), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-    ''
-  ) AS ""SlotDisplay"",
+  COALESCE(NULLIF(TRIM(ds.slotname), ''), NULLIF(sc.slotcode, ''), '') AS ""SlotDisplay"",
   COALESCE(ot.qty, 0) AS ""Qty"",
   COALESCE(u0.unitname, '') AS ""UnitName""
 FROM ordertable ot
@@ -181,23 +170,28 @@ INNER JOIN item i ON i.itemcode = ot.itemcode
 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
-LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+CROSS JOIN LATERAL (
+  SELECT COALESCE(
+    -- 自オーダーが製番品ならその便
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
+    -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
+    -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら製造便なし（''）として扱う。
+    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> ''
+         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), '')
+    END,
+    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> '' AND COALESCE(TRIM(gp_ot.productno), '') <> ''
+         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), '')
+    END,
     ''
-  )
+  ) AS slotcode
+) sc
+LEFT JOIN deliveryslot ds ON ds.slotcode = sc.slotcode
 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND TO_CHAR(
         COALESCE(ot.releasedate, ot.needdate),
         'YYYYMMDD'
       ) = {needDateYyyymmdd}
-  AND ({slots.Length} = 0 OR COALESCE(
-        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-        NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-        ''
-      ) = ANY ({slots}))
+  AND ({slots.Length} = 0 OR sc.slotcode = ANY ({slots}))
   AND ({wcIds.Length} = 0 OR (
         EXISTS (
           SELECT 1 FROM itemworkcentermapping m3
@@ -224,12 +218,7 @@ WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
-ORDER BY i.itemname, COALESCE(
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-    ''
-  ), ot.ordertableid
+ORDER BY i.itemname, sc.slotcode, ot.ordertableid
 ")
             .ToListAsync(ct);
 
@@ -465,13 +454,7 @@ ORDER BY i.itemname, COALESCE(
                   i.conversionvalue1 AS cv1,
                   i.conversionvalue2 AS cv2,
                   i.conversionvalue3 AS cv3,
-                  COALESCE(
-                    NULLIF(TRIM(ds.slotname), ''),
-                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
-                    ''
-                  ) AS slot_display,
+                  COALESCE(NULLIF(TRIM(ds.slotname), ''), NULLIF(sc.slotcode, ''), '') AS slot_display,
                   COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classification3code, ''))) AS work_name,
                   COALESCE(ot.releasedate, ot.needdate) AS need_date,
                   ot.ordertableid::text AS order_no_for_pdf
@@ -482,12 +465,22 @@ ORDER BY i.itemname, COALESCE(
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
                 LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
                 LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
-                LEFT JOIN deliveryslot ds ON ds.slotcode = COALESCE(
+                CROSS JOIN LATERAL (
+                  SELECT COALESCE(
+                    -- 自オーダーが製番品ならその便
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), ''),
-                    NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), ''),
+                    -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
+                    -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら製造便なし（''）として扱う。
+                    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> ''
+                         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), '')
+                    END,
+                    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> '' AND COALESCE(TRIM(gp_ot.productno), '') <> ''
+                         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), '')
+                    END,
                     ''
-                  )
+                  ) AS slotcode
+                ) sc
+                LEFT JOIN deliveryslot ds ON ds.slotcode = sc.slotcode
                 LEFT JOIN classification3 c3 ON TRIM(c3.classification3code) = TRIM(i.classification3code)
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build *)",
+      "Bash(PGPASSWORD=rozecAdmin psql -h localhost -U rozec -d craftlineax -c \"select 1 as ok\")",
+      "Bash(PGPASSWORD=rozecAdmin psql -h localhost -U rozec -d craftlineax -c \"SELECT releasedate, count\\(*\\) FROM ordertable WHERE TRIM\\(COALESCE\\(ordertype,''\\)\\)='MO' GROUP BY 1 ORDER BY 2 DESC LIMIT 5\")",
+      "Bash(PGPASSWORD=rozecAdmin psql -h localhost -U rozec -d craftlineax -f \"C:/Users/nakam/AppData/Local/Temp/claude/c--Source-bagging-instructions/4df47006-aa9f-44d8-af99-70973cc1c96c/scratchpad/test_child_filter.sql\")",
+      "Bash(PGPASSWORD=rozecAdmin psql -h localhost -U rozec -d craftlineax -c ' *)"
+    ]
+  }
+}
