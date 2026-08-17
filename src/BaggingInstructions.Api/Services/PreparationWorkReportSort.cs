@@ -4,7 +4,8 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 作業前準備書の帳票・CSV 明細の並び順。
-/// 帳票は改頁判定に合わせ、日付 → 職場コード → 製造便コード → 分類コード → 殺菌温度 → 注番号 → 親品目コード → 子品目コード。
+/// 帳票は改頁判定に合わせ、日付 → 職場コード → 製造便コード → 分類コード → 殺菌温度 → 注番号 → 親品目コード
+/// → レシピ並び順（<c>bom.productionorder</c>、NULL は末尾）→ 子品目コード。
 /// </summary>
 internal static class PreparationWorkReportSort
 {
@@ -21,6 +22,7 @@ internal static class PreparationWorkReportSort
             .ThenBy(l => l.TemperatureRange ?? "", StringComparer.Ordinal)
             .ThenBy(l => OrderNoSortKey(l.OrderNo))
             .ThenBy(l => l.ParentItemcode ?? "", StringComparer.Ordinal)
+            .ThenBy(l => ProductionOrderSortKey(l.ProductionOrder))
             .ThenBy(l => l.ChildItemcode ?? "", StringComparer.Ordinal)
             .ToList();
     }
@@ -35,9 +37,14 @@ internal static class PreparationWorkReportSort
             .ThenBy(r => r.SterilizationTemperatureRange ?? "", StringComparer.Ordinal)
             .ThenBy(r => OrderNoSortKey(r.OrderNo))
             .ThenBy(r => r.ParentItemcode ?? "", StringComparer.Ordinal)
+            .ThenBy(r => ProductionOrderSortKey(r.ProductionOrder))
             .ThenBy(r => r.ChildItemcode ?? "", StringComparer.Ordinal)
             .ToList();
     }
+
+    /// <summary>レシピ並び順。NULL は末尾（<c>ORDER BY productionorder NULLS LAST</c> と同義）。</summary>
+    private static decimal ProductionOrderSortKey(decimal? productionOrder)
+        => productionOrder ?? decimal.MaxValue;
 
     /// <summary>0 = 数値として解釈可能、1 = 空以外の非数値、2 = 空（最後）。</summary>
     private static int TemperatureKind(string? s)

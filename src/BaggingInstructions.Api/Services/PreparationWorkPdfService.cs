@@ -55,7 +55,8 @@ public class PreparationWorkPdfService
                     first.MiddleClassificationName ?? "",
                     first.DateDisplay ?? "",
                     first.WorkplaceName ?? "",
-                    first.TemperatureRange ?? "");
+                    first.TemperatureRange ?? "",
+                    first.SlotDisplay ?? "");
                 JuicePdfService.AddPrintTags(tags, printNow, pageNum, totalPages);
                 tags["PRINTPAGE"] = $"{pageNum}/{totalPages}";
                 pages.Add(tags);
@@ -122,17 +123,18 @@ public class PreparationWorkPdfService
         }
     }
 
-    private static Dictionary<string, string> BuildPageTagValues(
+    public static Dictionary<string, string> BuildPageTagValues(
         IReadOnlyList<PreparationPdfLineModel> chunk,
         string middleClassificationName,
         string dateDisplay,
         string workplaceName,
-        string temperatureRange)
+        string temperatureRange,
+        string slotDisplay)
     {
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         tags["LOCATIONFROM01"] = workplaceName;
         tags["GENRE01"] = middleClassificationName;
-        tags["ITEMTYPE01"] = chunk[0].HasProductNo ? "袋品" : "その他";
+        tags["ITEMTYPE01"] = slotDisplay;                               // 製造便：（袋品/その他は表示しない）
         tags["DATE01"] = dateDisplay;
         tags["TEMP"] = temperatureRange;
 

@@ -223,6 +223,7 @@ public class DeliveryNotePdfService
                 return new
                 {
                     ItemNm = itemNm,
+                    Info06 = info06,
                     Count = cnt,
                     UnitPrice = unitPrice,
                     Price = price,
@@ -231,7 +232,9 @@ public class DeliveryNotePdfService
                 };
             })
             .Where(x => x.Count != 0)  // 数量0（0食）の明細は印字しない
-            .OrderBy(x => x.ItemNm)
+            // 区分（info06）1:通常品 → 2:検食 → 3:検体 の順。同一区分内は明細名の昇順。
+            .OrderBy(x => GetInfo06SortOrder(x.Info06))
+            .ThenBy(x => x.ItemNm)
             .ToList();
 
         var sumPriceTotal = grouped.Sum(x => x.Price);
@@ -360,6 +363,16 @@ public class DeliveryNotePdfService
             }
         }
     }
+
+    /// <summary>明細の並び順に使う区分（info06）のランク。1:通常品 → 2:検食 → 3:検体、それ以外（未設定含む）は末尾。</summary>
+    private static int GetInfo06SortOrder(string? info06) =>
+        (info06 ?? "").Trim() switch
+        {
+            "1" => 1,
+            "2" => 2,
+            "3" => 3,
+            _ => 9
+        };
 
     private static string Info06Display(string? info06) =>
         (info06 ?? "").Trim() switch

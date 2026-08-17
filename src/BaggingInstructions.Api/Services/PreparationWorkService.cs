@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -363,9 +363,11 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
         var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
         var rows = new List<PreparationCsvRow>();
 
-        // 同一製造便・同一品目のオーダーを集約して数量を合算
+        // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
+        // 製番区分（productno の有無）をキーに含めるのは、製番品（袋品）とMRP品の合算を防ぐため。
+        // MRP品の製造便は親からの継承値であり、製番品の便と一致しても同一オーダー群とは言えない。
         var groups = headers
-            .GroupBy(h => (h.ManufacturingRouteCode, h.ParentItemcode))
+            .GroupBy(BuildAggregationKey)
             .ToList();
 
         foreach (var grp in groups)
@@ -397,7 +399,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     ChildItemname = "",
                     WarehouseDisplay = "",
                     Quantity = "",
-                    Unit = ""
+                    Unit = "",
+                    ProductionOrder = null
                 });
                 continue;
             }
@@ -420,7 +423,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     ChildItemname = b.ChildItemname ?? "",
                     WarehouseDisplay = FormatWarehouseDisplay(b.ChildWarehouseCode, b.ChildWarehouseName),
                     Quantity = qtyDisplay,
-                    Unit = b.ChildUnitname ?? ""
+                    Unit = b.ChildUnitname ?? "",
+                    ProductionOrder = b.ProductionOrder
                 });
             }
         }
@@ -437,9 +441,11 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
         var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
         var lines = new List<PreparationPdfLineModel>();
 
-        // 同一製造便・同一品目のオーダーを集約して数量を合算
+        // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
+        // 製番区分（productno の有無）をキーに含めるのは、製番品（袋品）とMRP品の合算を防ぐため。
+        // MRP品の製造便は親からの継承値であり、製番品の便と一致しても同一オーダー群とは言えない。
         var groups = headers
-            .GroupBy(h => (h.ManufacturingRouteCode, h.ParentItemcode))
+            .GroupBy(BuildAggregationKey)
             .ToList();
 
         foreach (var grp in groups)
@@ -447,7 +453,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             var first = grp.First();
             var totalMfgQty = grp.Sum(h => h.MfgQty);
             var mergedOrderNo = string.Join("・", grp.Select(h => h.Ordertableid));
-            var hasProductNo = grp.Any(h => !string.IsNullOrWhiteSpace(h.ProductNo));
+            var hasProductNo = grp.Key.HasProductNo;
             var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
             if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
@@ -465,6 +471,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     WorkplaceName = first.WorkplaceNames,
                     WorkplaceCode = first.WorkplaceCode,
                     ManufacturingRouteCode = first.ManufacturingRouteCode,
+                    SlotDisplay = first.SlotDisplay,
                     MiddleClassificationCode = first.MiddleClassificationCode,
                     OrderNo = mergedOrderNo,
                     ParentItemcode = first.ParentItemcode,
@@ -476,7 +483,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     Quantity = "",
                     Unit = "",
                     WarehouseName = "",
-                    HasProductNo = hasProductNo
+                    HasProductNo = hasProductNo,
+                    ProductionOrder = null
                 });
                 continue;
             }
@@ -493,6 +501,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     WorkplaceName = first.WorkplaceNames,
                     WorkplaceCode = first.WorkplaceCode,
                     ManufacturingRouteCode = first.ManufacturingRouteCode,
+                    SlotDisplay = first.SlotDisplay,
                     MiddleClassificationCode = first.MiddleClassificationCode,
                     OrderNo = mergedOrderNo,
                     ParentItemcode = first.ParentItemcode,
@@ -504,13 +513,26 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     Quantity = qtyDisplay,
                     Unit = b.ChildUnitname ?? "",
                     WarehouseName = b.ChildWarehouseName ?? "",
-                    HasProductNo = hasProductNo
+                    HasProductNo = hasProductNo,
+                    ProductionOrder = b.ProductionOrder
                 });
             }
         }
 
         return lines;
     }
+
+    /// <summary>製番区分。<c>ordertable.productno</c> があれば製番品（袋品）、無ければMRP品。</summary>
+    internal static bool HasProductNoValue(PreparationLineHeaderRow header)
+        => !string.IsNullOrWhiteSpace(header.ProductNo);
+
+    /// <summary>
+    /// 数量合算の単位（製造便コード・親品目コード・製番区分）。
+    /// 製番区分を含めないと、親から便を継承したMRP品が同一便の製番品と合算される。
+    /// </summary>
+    internal static (string ManufacturingRouteCode, string ParentItemcode, bool HasProductNo) BuildAggregationKey(
+        PreparationLineHeaderRow header)
+        => (header.ManufacturingRouteCode, header.ParentItemcode, HasProductNoValue(header));
 
     private static string FormatWarehouseDisplay(string? code, string? name)
     {
@@ -719,7 +741,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     ELSE TO_CHAR(ia.steritemprange, 'FM999999990.###')
                   END AS child_steritemprange,
                   COALESCE(wh_child.warehousecode, '') AS child_warehouse_code,
-                  COALESCE(wh_child.warehousename, '') AS child_warehouse_name
+                  COALESCE(wh_child.warehousename, '') AS child_warehouse_name,
+                  b.productionorder
                 FROM bom b
                 LEFT JOIN item ci ON TRIM(ci.itemcode) = TRIM(b.childitemcode)
                 LEFT JOIN warehouses wh_child ON wh_child.warehousecode = ci.warehousecode
@@ -748,7 +771,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     ChildStd = reader.GetString(6),
                     ChildSteriTempRange = reader.GetString(7),
                     ChildWarehouseCode = reader.GetString(8),
-                    ChildWarehouseName = reader.GetString(9)
+                    ChildWarehouseName = reader.GetString(9),
+                    ProductionOrder = reader.IsDBNull(10) ? null : reader.GetDecimal(10)
                 });
             }
 
@@ -787,6 +811,9 @@ public sealed class PreparationCsvRow
     public string WarehouseDisplay { get; set; } = "";
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
+
+    /// <summary>並び順用: レシピ（BOM）の並び順（<c>bom.productionorder</c>）。NULL は末尾。CSV の列には出力しない。</summary>
+    public decimal? ProductionOrder { get; set; }
 }
 
 public sealed class PreparationPdfLineModel
@@ -796,6 +823,8 @@ public sealed class PreparationPdfLineModel
     public string WorkplaceName { get; set; } = "";
     public string WorkplaceCode { get; set; } = "";
     public string ManufacturingRouteCode { get; set; } = "";
+    /// <summary>製造便の表示名（<c>deliveryslot.slotname</c>、無ければ slotcode）。</summary>
+    public string SlotDisplay { get; set; } = "";
     public string MiddleClassificationCode { get; set; } = "";
     public string DisplayOrder { get; set; } = "";
     public string OrderNo { get; set; } = "";
@@ -808,8 +837,11 @@ public sealed class PreparationPdfLineModel
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
     public string WarehouseName { get; set; } = "";
-    /// <summary>ordertable.productno が存在するか（true=袋品, false=その他）。</summary>
+    /// <summary>ordertable.productno が存在するか（true=袋品, false=その他）。改頁判定・並び順のみに使用し、帳票には表示しない。</summary>
     public bool HasProductNo { get; set; }
+
+    /// <summary>並び順用: レシピ（BOM）の並び順（<c>bom.productionorder</c>）。NULL は末尾。</summary>
+    public decimal? ProductionOrder { get; set; }
 }
 
 internal sealed class PreparationLineHeaderRow
@@ -850,4 +882,7 @@ internal sealed class PreparationBomSqlRow
     public string? ChildWarehouseCode { get; set; }
     /// <summary>子品目の保管倉庫名（<c>item.warehousecode</c> → <c>warehouses.warehousename</c>）。</summary>
     public string? ChildWarehouseName { get; set; }
+
+    /// <summary>レシピ（BOM）の並び順（<c>bom.productionorder</c>）。NULL は末尾。</summary>
+    public decimal? ProductionOrder { get; set; }
 }
