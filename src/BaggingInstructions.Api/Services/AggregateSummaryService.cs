@@ -73,6 +73,10 @@ LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassifi
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
   AND mid.middleclassificationcode = i.middleclassificationcode
 LEFT JOIN bom b ON b.parentitemcode = i.itemcode
+  -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = COALESCE(NULLIF(TRIM(BOTH FROM sol.facilitycode), ''), {BomFacility.Default})
+  AND (b.startdate IS NULL OR b.startdate <= COALESCE(ot_first.releasedate, sol.planneddeliverydate))
+  AND (b.enddate IS NULL OR b.enddate >= COALESCE(ot_first.releasedate, sol.planneddeliverydate))
 WHERE COALESCE(ot_first.releasedate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ({majorList.Length} = 0 OR mc.majorclassificationcode = ANY ({majorList}))

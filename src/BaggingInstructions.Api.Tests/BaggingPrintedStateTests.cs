@@ -195,6 +195,8 @@ public class BaggingPrintedStateTests
         appDb.Boms.Add(new Bom
         {
             BomId = 1,
+            // BOM は受注明細の工場コード（未設定なら MATSUYAMA）で絞り込まれる
+            FacilityCode = BomFacility.Default,
             ParentItemCd = "401001",
             ChildItemCd = "700001",
             ChildItem = child,

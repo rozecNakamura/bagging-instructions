@@ -46,8 +46,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SalesOrderLine>().Property(e => e.PlannedDeliveryDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<SalesOrderLine>().Property(e => e.ProductDate).HasConversion(dateOnlyNullableConverter);
         modelBuilder.Entity<SalesOrder>().Property(e => e.OrderDate).HasConversion(dateOnlyNullableConverter);
-        modelBuilder.Entity<Bom>().Property(e => e.StartDate).HasConversion(dateOnlyNullableConverter);
-        modelBuilder.Entity<Bom>().Property(e => e.EndDate).HasConversion(dateOnlyNullableConverter);
+        // bom.startdate / bom.enddate は date 型。DateOnly をそのまま date にマップする
+        // （DateTime へ変換すると WHERE 条件のパラメータが timestamptz と推論されて実行時エラーになる）
+        modelBuilder.Entity<Bom>().Property(e => e.StartDate).HasColumnType("date");
+        modelBuilder.Entity<Bom>().Property(e => e.EndDate).HasColumnType("date");
 
         // Unit（主キー unitcode）
         modelBuilder.Entity<Unit>().HasKey(u => u.UnitCode);

@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -360,7 +360,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             return new List<PreparationCsvRow>();
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
-        var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
         var rows = new List<PreparationCsvRow>();
 
         // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
@@ -377,10 +377,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             var mergedOrderNo = string.Join("・", grp.Select(h => h.Ordertableid));
             var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-            if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
+            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            var facility = BomFacility.Resolve(first.FacilityCode);
+            var bomKey = (first.ParentItemcode, facility);
+            if (!bomCache.TryGetValue(bomKey, out var boms))
             {
-                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, ct);
-                bomCache[first.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, facility, ct);
+                bomCache[bomKey] = boms;
             }
 
             if (boms.Count == 0)
@@ -438,7 +441,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             return new List<PreparationPdfLineModel>();
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
-        var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
         var lines = new List<PreparationPdfLineModel>();
 
         // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
@@ -456,10 +459,13 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             var hasProductNo = grp.Key.HasProductNo;
             var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-            if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
+            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            var facility = BomFacility.Resolve(first.FacilityCode);
+            var bomKey = (first.ParentItemcode, facility);
+            if (!bomCache.TryGetValue(bomKey, out var boms))
             {
-                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, ct);
-                bomCache[first.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, facility, ct);
+                bomCache[bomKey] = boms;
             }
 
             if (boms.Count == 0)
@@ -636,7 +642,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                   ) AS workplace_code,
                   sc.slotcode AS manufacturing_route_code,
                   COALESCE(mid.middleclassificationcode, '') AS middle_class_code,
-                  ot.productno
+                  ot.productno,
+                  COALESCE(sol.facilitycode, '') AS facility_code
                 FROM ordertable ot
                 LEFT JOIN workcenter wc_ord ON (
                      wc_ord.workcentercode = TRIM(BOTH FROM ot.workcentercode)
@@ -705,7 +712,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     WorkplaceCode = reader.GetString(12),
                     ManufacturingRouteCode = reader.GetString(13),
                     MiddleClassificationCode = reader.GetString(14),
-                    ProductNo = reader.IsDBNull(15) ? null : reader.GetString(15)
+                    ProductNo = reader.IsDBNull(15) ? null : reader.GetString(15),
+                    FacilityCode = reader.IsDBNull(16) ? null : reader.GetString(16)
                 });
             }
 
@@ -718,7 +726,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
         }
     }
 
-    private async Task<List<PreparationBomSqlRow>> FetchBomsForParentAsync(string parentItemcode, DateOnly asOf, CancellationToken ct)
+    private async Task<List<PreparationBomSqlRow>> FetchBomsForParentAsync(string parentItemcode, DateOnly asOf, string facilityCode, CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
         var shouldClose = conn.State != ConnectionState.Open;
@@ -750,12 +758,14 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                 LEFT JOIN itemadditionalinformation ia ON TRIM(ia.itemcode) = TRIM(b.childitemcode)
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
                   AND (b.enddate IS NULL OR b.enddate >= @asof)
                 ORDER BY b.productionorder NULLS LAST, b.childitemcode
                 """, conn);
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
+            cmd.Parameters.AddWithValue("facility", facilityCode);
             var list = new List<PreparationBomSqlRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
@@ -864,6 +874,9 @@ internal sealed class PreparationLineHeaderRow
     public DateOnly? NeedDate { get; set; }
     /// <summary>ordertable.productno（null の場合はその他、値があれば袋品）。</summary>
     public string? ProductNo { get; set; }
+
+    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    public string? FacilityCode { get; set; }
 }
 
 internal sealed class PreparationBomSqlRow

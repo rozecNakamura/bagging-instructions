@@ -14,6 +14,10 @@ public class SalesOrderLine
     [Column("lineno")]
     public int LineNo { get; set; }
 
+    /// <summary>工場コード（facility.facilitycode）。NULL の場合の既定は MATSUYAMA（BomFacility.Default）。</summary>
+    [Column("facilitycode")]
+    public string? FacilityCode { get; set; }
+
     /// <summary>品目コード（item.itemcode へ FK）。</summary>
     [Column("itemcode")]
     public string? ItemCd { get; set; }

@@ -42,10 +42,13 @@ public class PersonalDeliveryHelperTests
         Assert.Equal(expected, PersonalDeliveryHelper.IsRiceItemCode(itemCode));
 
     [Theory]
+    [InlineData("3010001", PersonalDeliveryHelper.SummaryItemCategory.StapleFood)]
     [InlineData("3011001", PersonalDeliveryHelper.SummaryItemCategory.StapleFood)]
+    [InlineData("3111001", PersonalDeliveryHelper.SummaryItemCategory.StapleFood)]
+    [InlineData("3411001", PersonalDeliveryHelper.SummaryItemCategory.StapleFood)]
     [InlineData("305001", PersonalDeliveryHelper.SummaryItemCategory.Soup)]
     [InlineData("4011001", PersonalDeliveryHelper.SummaryItemCategory.MainDish)]
-    [InlineData("3111001", PersonalDeliveryHelper.SummaryItemCategory.MainDish)]
+    [InlineData("3020001", PersonalDeliveryHelper.SummaryItemCategory.MainDish)]
     public void ResolveSummaryItemCategory_classifies_items(string itemCode, PersonalDeliveryHelper.SummaryItemCategory expected) =>
         Assert.Equal(expected, PersonalDeliveryHelper.ResolveSummaryItemCategory(itemCode));
 

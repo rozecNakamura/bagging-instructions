@@ -346,7 +346,7 @@ FROM m_shokushu";
             .ToList();
     }
 
-    /// <summary>弁当箱・ご飯：得意先240/300/310、addinfo08=1、info14=1、品目3010/3011/3111/3411。</summary>
+    /// <summary>弁当箱・ご飯：得意先240/300/310、addinfo08=1、info15=1、品目3010/3011/3111/3411。</summary>
     private async Task<List<BentoSearchGroupDto>> SearchBentoGohanGroupedAsync(string delvedt, string? itemcd, CancellationToken ct)
     {
         var delvedtDate = ParseProductDate(delvedt);
@@ -381,7 +381,7 @@ FROM m_shokushu";
             .Where(l => BentoSearchFilter.IsTargetGohanItemCode(l.Item?.ItemCd))
             .ToList();
 
-        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, info14Filter: "1");
+        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info15);
 
         var items = new List<JobordItemDto>();
         foreach (var l in lines)
@@ -468,8 +468,8 @@ FROM m_shokushu";
             }).ToList();
         }
 
-        // info14='1' のcstmeat行のみを対象とし、マップにない行は弁当箱の出力対象外とする
-        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, info14Filter: "1");
+        // info15='1' のcstmeat行のみを対象とし、マップにない行は弁当箱の出力対象外とする
+        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info15);
 
         var result = new List<JobordItemDto>();
         foreach (var l in linesBento)
@@ -555,7 +555,7 @@ FROM m_shokushu";
             }).ToList();
         }
 
-        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, info14Filter: "1");
+        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info14);
 
         var result = new List<JobordItemDto>();
         foreach (var l in linesGohan)
@@ -630,7 +630,11 @@ FROM m_shokushu";
         return grouped;
     }
 
-    /// <summary>salesorderlineid で受注明細を取得（全リレーション付き）。Bom は parentitemcode で別取得。</summary>
+    /// <summary>BOM 有効期間判定の基準日。受注明細の納品予定日→生産日→当日の順で採用。</summary>
+    private static DateOnly ResolveBomAsOf(SalesOrderLine line)
+        => line.PlannedDeliveryDate ?? line.ProductDate ?? DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>salesorderlineid で受注明細を取得（全リレーション付き）。Bom は parentitemcode＋工場コードで別取得。</summary>
     public async Task<List<BaggingDetailRow>> SearchDetailByPrkeysAsync(IReadOnlyList<long> prkeys, CancellationToken ct = default)
     {
         if (prkeys == null || prkeys.Count == 0)
@@ -662,12 +666,21 @@ FROM m_shokushu";
         if (lines.Count == 0)
             return new List<BaggingDetailRow>();
 
-        var itemCds = lines.Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd)).Select(l => l.Item!.ItemCd!).Distinct().ToList();
-        var bomsByParent = new Dictionary<string, List<(Bom b, Item? child, Unit? unit)>>();
-        foreach (var itemCd in itemCds)
+        // BOM は「親品目コード＋受注明細の工場コード＋基準日の有効期間」で取得する。
+        // 工場コードが受注明細に無い場合は MATSUYAMA の BOM を使用（BomFacility.Default）。
+        var bomKeys = lines
+            .Where(l => l.Item != null && !string.IsNullOrEmpty(l.Item.ItemCd))
+            .Select(l => (ItemCd: l.Item!.ItemCd!, Facility: BomFacility.Resolve(l.FacilityCode), AsOf: ResolveBomAsOf(l)))
+            .Distinct()
+            .ToList();
+        var bomsByParent = new Dictionary<(string ItemCd, string Facility, DateOnly AsOf), List<(Bom b, Item? child, Unit? unit)>>();
+        foreach (var key in bomKeys)
         {
             var boms = await _db.Boms.AsNoTracking()
-                .Where(b => b.ParentItemCd == itemCd)
+                .Where(b => b.ParentItemCd == key.ItemCd
+                            && (b.FacilityCode ?? "").Trim() == key.Facility
+                            && (b.StartDate == null || b.StartDate <= key.AsOf)
+                            && (b.EndDate == null || b.EndDate >= key.AsOf))
                 .OrderBy(b => b.ProductionOrder ?? decimal.MaxValue)
                 .ThenBy(b => b.ChildItemCd)
                 .Include(b => b.ChildItem)
@@ -676,7 +689,7 @@ FROM m_shokushu";
                     .ThenInclude(c => c!.AdditionalInformation)
                 .ToListAsync(ct);
             var list = boms.Select(b => (b, b.ChildItem, b.ChildItem?.Unit0)).ToList();
-            bomsByParent[itemCd] = list;
+            bomsByParent[key] = list;
         }
 
         var rows = new List<BaggingDetailRow>();
@@ -693,7 +706,8 @@ FROM m_shokushu";
 
             var seasoningBoms = new List<SeasoningBomRow>();
             var bomListResolved = new List<(Bom b, Item? child, Unit? unit)>();
-            if (item != null && bomsByParent.TryGetValue(item.ItemCd ?? "", out var bomList))
+            var bomLookupKey = (item?.ItemCd ?? "", BomFacility.Resolve(l.FacilityCode), ResolveBomAsOf(l));
+            if (item != null && bomsByParent.TryGetValue(bomLookupKey, out var bomList))
             {
                 bomListResolved = bomList;
                 foreach (var (b, child, unit) in bomList)
@@ -805,18 +819,25 @@ FROM m_shokushu";
                       SELECT DISTINCT
                         ot0.itemcode AS root_itemcode,
                         ot0.itemcode AS current_itemcode,
+                        -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+                        {BomFacility.SqlResolve("sol0.facilitycode")} AS facilitycode,
                         0            AS depth
                       FROM ordertable ot0
+                      LEFT JOIN salesorderline sol0 ON sol0.salesorderlineid = ot0.salesorderlineid
                       WHERE ot0.releasedate = @needDate
                         AND TRIM(COALESCE(ot0.ordertype, '')) = 'MO'
                       UNION ALL
                       SELECT
                         d0.root_itemcode,
                         b0.childitemcode,
+                        d0.facilitycode,
                         d0.depth + 1
                       FROM bom_desc d0
                       INNER JOIN bom b0 ON b0.parentitemcode = d0.current_itemcode
                         AND b0.childitemcode IS NOT NULL
+                        AND TRIM(BOTH FROM COALESCE(b0.facilitycode, '')) = d0.facilitycode
+                        AND (b0.startdate IS NULL OR b0.startdate <= @needDate)
+                        AND (b0.enddate IS NULL OR b0.enddate >= @needDate)
                       WHERE d0.depth < 10
                     ),
                     matched_root AS (
@@ -829,7 +850,7 @@ FROM m_shokushu";
                     """);
             }
 
-            sql.AppendLine("""
+            sql.AppendLine($"""
                 SELECT
                   ot.ordertableid,
                   ot.releasedate,
@@ -837,9 +858,14 @@ FROM m_shokushu";
                   COALESCE(i.itemname, ''),
                   COALESCE(ot.qty, 0),
                   COALESCE(w.workcentername, ''),
-                  (SELECT COUNT(*) FROM bom b WHERE b.parentitemcode = ot.itemcode)
+                  (SELECT COUNT(*) FROM bom b
+                    WHERE b.parentitemcode = ot.itemcode
+                      AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {BomFacility.SqlResolve("sol.facilitycode")}
+                      AND (b.startdate IS NULL OR b.startdate <= @needDate)
+                      AND (b.enddate IS NULL OR b.enddate >= @needDate))
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN workcenter w ON (
                   w.workcentercode = TRIM(BOTH FROM ot.workcentercode)
                   OR w.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
@@ -850,7 +876,15 @@ FROM m_shokushu";
 
             sql.AppendLine("WHERE ot.releasedate = @needDate");
             sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
-            sql.AppendLine("AND NOT EXISTS (SELECT 1 FROM bom b2 WHERE b2.childitemcode = ot.itemcode)");
+            sql.AppendLine($"""
+                AND NOT EXISTS (
+                  SELECT 1 FROM bom b2
+                  WHERE b2.childitemcode = ot.itemcode
+                    AND TRIM(BOTH FROM COALESCE(b2.facilitycode, '')) = {BomFacility.SqlResolve("sol.facilitycode")}
+                    AND (b2.startdate IS NULL OR b2.startdate <= @needDate)
+                    AND (b2.enddate IS NULL OR b2.enddate >= @needDate)
+                )
+                """);
 
             if (childConds.Count > 0)
                 sql.AppendLine("AND ot.itemcode IN (SELECT root_itemcode FROM matched_root)");
@@ -1084,6 +1118,10 @@ FROM m_shokushu";
                   FROM bom_desc d0
                   INNER JOIN bom b0 ON b0.parentitemcode = d0.current_itemcode
                     AND b0.childitemcode IS NOT NULL
+                    -- 品目コードのみが入力で受注明細を特定できないため、既定工場（MATSUYAMA）・当日基準で判定する
+                    AND TRIM(BOTH FROM COALESCE(b0.facilitycode, '')) = '{BomFacility.Default}'
+                    AND (b0.startdate IS NULL OR b0.startdate <= CURRENT_DATE)
+                    AND (b0.enddate IS NULL OR b0.enddate >= CURRENT_DATE)
                   WHERE d0.depth < 10
                 )
                 SELECT DISTINCT d.root_itemcode
@@ -1132,7 +1170,7 @@ FROM m_shokushu";
         try
         {
             await using var cmd = new NpgsqlCommand(
-                """
+                $"""
                 SELECT
                   ot.ordertableid,
                   ot.releasedate,
@@ -1157,7 +1195,12 @@ FROM m_shokushu";
                   w.workcentercode = TRIM(BOTH FROM ot.workcentercode)
                   OR w.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
                 )
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN bom b ON b.parentitemcode = ot.itemcode
+                  -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {BomFacility.SqlResolve("sol.facilitycode")}
+                  AND (b.startdate IS NULL OR b.startdate <= COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE))
+                  AND (b.enddate IS NULL OR b.enddate >= COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE))
                 LEFT JOIN item ci ON ci.itemcode = b.childitemcode
                 LEFT JOIN unit cu ON cu.unitcode = ci.unitcode0
                 WHERE ot.ordertableid = ANY(@ids)
@@ -1227,8 +1270,12 @@ FROM m_shokushu";
                 ot.itemcode        AS root_itemcode,
                 ot.qty             AS accumulated_qty,
                 ot.itemcode        AS current_itemcode,
+                -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+                {BomFacility.SqlResolve("sol.facilitycode")} AS facilitycode,
+                COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE) AS bom_asof,
                 0                  AS depth
               FROM ordertable ot
+              LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
               WHERE ot.ordertableid = ANY(@ids)
               UNION ALL
               SELECT
@@ -1240,10 +1287,15 @@ FROM m_shokushu";
                   ELSE COALESCE(b.inputqty, 0::numeric)
                 END,
                 b.childitemcode,
+                bt.facilitycode,
+                bt.bom_asof,
                 bt.depth + 1
               FROM bom_tree bt
               INNER JOIN bom b ON b.parentitemcode = bt.current_itemcode
                 AND b.childitemcode IS NOT NULL
+                AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = bt.facilitycode
+                AND (b.startdate IS NULL OR b.startdate <= bt.bom_asof)
+                AND (b.enddate IS NULL OR b.enddate >= bt.bom_asof)
               WHERE bt.depth < 10
             )
             SELECT DISTINCT ON (bt.ordertableid, bt.current_itemcode)
@@ -1441,21 +1493,55 @@ FROM m_shokushu";
         return result;
     }
 
+    /// <summary>cstmeat の対象行を絞り込む区分列。</summary>
+    private enum CstmeatFlagColumn
+    {
+        /// <summary>区分による絞り込みを行わない（全件）。</summary>
+        None,
+        /// <summary>info14='1' のみ（ご飯盛り付け指示書）。</summary>
+        Info14,
+        /// <summary>info15='1' のみ（弁当箱盛り付け指示書）。</summary>
+        Info15
+    }
+
     /// <summary>
-    /// craftlineaxother.cstmeat から喫食日の食数マップを取得する。
-    /// キー: (得意先コード, 納入場所コード, 喫食時間, 食種コード) → 食数。
+    /// cstmeat の WHERE 句を組み立てる。喫食日は {0} パラメータ。
+    /// 確定（info22='1'）を優先し、その喫食日に確定が 1 件も無ければ予定（info22='0'）を対象とする。
     /// </summary>
-    /// <param name="info14Filter">null = 全件、"1" = info14='1' のみ（弁当箱ご飯用）</param>
+    private static string CstmeatWhereClause(CstmeatFlagColumn flagColumn) => @"
+WHERE info03 = {0}
+  AND (
+    info22 = '1'
+    OR (info22 = '0' AND NOT EXISTS (
+         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {0} AND cf.info22 = '1'))
+  )" + flagColumn switch
+    {
+        CstmeatFlagColumn.Info14 => "\n  AND TRIM(COALESCE(info14, '')) = '1'",
+        CstmeatFlagColumn.Info15 => "\n  AND TRIM(COALESCE(info15, '')) = '1'",
+        _ => ""
+    };
+
+    /// <summary>cstmeat の区分列による絞り込みを LINQ 側に適用する（非リレーショナル用）。</summary>
+    private static IQueryable<Cstmeat> ApplyCstmeatFlagFilter(IQueryable<Cstmeat> query, CstmeatFlagColumn flagColumn) =>
+        flagColumn switch
+        {
+            CstmeatFlagColumn.Info14 => query.Where(c => (c.Info14 ?? "").Trim() == "1"),
+            CstmeatFlagColumn.Info15 => query.Where(c => (c.Info15 ?? "").Trim() == "1"),
+            _ => query
+        };
+
+    /// <summary>
+    /// craftlineaxother.cstmeat から喫食日の明細行を取得する。
+    /// </summary>
+    /// <param name="flagColumn">対象行を絞り込む区分列（None = 全件）</param>
     private async Task<List<CstmeatDetailRow>> LoadCstmeatDetailRowsAsync(
-        DateOnly date, CancellationToken ct, string? info14Filter = null)
+        DateOnly date, CancellationToken ct, CstmeatFlagColumn flagColumn = CstmeatFlagColumn.None)
     {
         var dateStr = date.ToString("yyyyMMdd");
 
         if (_otherDb.Database.IsRelational())
         {
-            FormattableString sql;
-            if (info14Filter != null)
-                sql = $@"
+            var sql = @"
 SELECT
   TRIM(COALESCE(info01, '')) AS ""CustCode"",
   TRIM(COALESCE(info02, '')) AS ""LocCode"",
@@ -1463,34 +1549,10 @@ SELECT
   TRIM(COALESCE(info05, '')) AS ""FoodType"",
   TRIM(COALESCE(info17, '')) AS ""Info17"",
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
-FROM cstmeat
-WHERE info03 = {dateStr}
-  AND (
-    info22 = '1'
-    OR (info22 = '0' AND NOT EXISTS (
-         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
-  )
-  AND TRIM(COALESCE(info14, '')) = {info14Filter}
-";
-            else
-                sql = $@"
-SELECT
-  TRIM(COALESCE(info01, '')) AS ""CustCode"",
-  TRIM(COALESCE(info02, '')) AS ""LocCode"",
-  TRIM(COALESCE(info04, '')) AS ""MealTime"",
-  TRIM(COALESCE(info05, '')) AS ""FoodType"",
-  TRIM(COALESCE(info17, '')) AS ""Info17"",
-  COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
-FROM cstmeat
-WHERE info03 = {dateStr}
-  AND (
-    info22 = '1'
-    OR (info22 = '0' AND NOT EXISTS (
-         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
-  )
-";
+FROM cstmeat" + CstmeatWhereClause(flagColumn);
+
             var rows = await _otherDb.Database
-                .SqlQuery<CstmeatDetailSqlRow>(sql)
+                .SqlQueryRaw<CstmeatDetailSqlRow>(sql, dateStr)
                 .ToListAsync(ct);
             return rows.Select(r => new CstmeatDetailRow
             {
@@ -1503,10 +1565,8 @@ WHERE info03 = {dateStr}
             }).ToList();
         }
 
-        IQueryable<Cstmeat> q = _otherDb.Cstmeats.AsNoTracking()
-            .Where(c => c.Info03 == dateStr);
-        if (info14Filter != null)
-            q = q.Where(c => (c.Info14 ?? "").Trim() == info14Filter);
+        var q = ApplyCstmeatFlagFilter(
+            _otherDb.Cstmeats.AsNoTracking().Where(c => c.Info03 == dateStr), flagColumn);
         var entities = await q.ToListAsync(ct);
         return entities.Select(c => new CstmeatDetailRow
         {
@@ -1523,50 +1583,25 @@ WHERE info03 = {dateStr}
     /// craftlineaxother.cstmeat から喫食日の食数マップを取得する。
     /// キー: (得意先コード, 納入場所コード, 喫食時間, 食種コード) → 食数。
     /// </summary>
-    /// <param name="info14Filter">null = 全件、"1" = info14='1' のみ（弁当箱ご飯用）</param>
+    /// <param name="flagColumn">対象行を絞り込む区分列（None = 全件）</param>
     private async Task<IReadOnlyDictionary<(string CustCode, string LocCode, string MealTime, string FoodType), decimal>>
-        LoadCstmeatQuantityMapAsync(DateOnly date, CancellationToken ct, string? info14Filter = null)
+        LoadCstmeatQuantityMapAsync(DateOnly date, CancellationToken ct, CstmeatFlagColumn flagColumn = CstmeatFlagColumn.None)
     {
         var dateStr = date.ToString("yyyyMMdd");
 
         if (_otherDb.Database.IsRelational())
         {
-            FormattableString sql;
-            if (info14Filter != null)
-                sql = $@"
+            var sql = @"
 SELECT
   TRIM(COALESCE(info01, '')) AS ""CustCode"",
   TRIM(COALESCE(info02, '')) AS ""LocCode"",
   TRIM(COALESCE(info04, '')) AS ""MealTime"",
   TRIM(COALESCE(info05, '')) AS ""FoodType"",
   COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
-FROM cstmeat
-WHERE info03 = {dateStr}
-  AND (
-    info22 = '1'
-    OR (info22 = '0' AND NOT EXISTS (
-         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
-  )
-  AND TRIM(COALESCE(info14, '')) = {info14Filter}
-";
-            else
-                sql = $@"
-SELECT
-  TRIM(COALESCE(info01, '')) AS ""CustCode"",
-  TRIM(COALESCE(info02, '')) AS ""LocCode"",
-  TRIM(COALESCE(info04, '')) AS ""MealTime"",
-  TRIM(COALESCE(info05, '')) AS ""FoodType"",
-  COALESCE(CAST(NULLIF(TRIM(COALESCE(info07, '')), '') AS DECIMAL), 0) AS ""Qty""
-FROM cstmeat
-WHERE info03 = {dateStr}
-  AND (
-    info22 = '1'
-    OR (info22 = '0' AND NOT EXISTS (
-         SELECT 1 FROM cstmeat cf WHERE cf.info03 = {dateStr} AND cf.info22 = '1'))
-  )
-";
+FROM cstmeat" + CstmeatWhereClause(flagColumn);
+
             var rows = await _otherDb.Database
-                .SqlQuery<CstmeatQuantitySqlRow>(sql)
+                .SqlQueryRaw<CstmeatQuantitySqlRow>(sql, dateStr)
                 .ToListAsync(ct);
 
             return rows
@@ -1575,10 +1610,8 @@ WHERE info03 = {dateStr}
         }
         else
         {
-            IQueryable<Cstmeat> q = _otherDb.Cstmeats.AsNoTracking()
-                .Where(c => c.Info03 == dateStr);
-            if (info14Filter != null)
-                q = q.Where(c => (c.Info14 ?? "").Trim() == info14Filter);
+            var q = ApplyCstmeatFlagFilter(
+                _otherDb.Cstmeats.AsNoTracking().Where(c => c.Info03 == dateStr), flagColumn);
             var entities = await q.ToListAsync(ct);
 
             return entities

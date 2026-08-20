@@ -5,9 +5,9 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>個人配送指示書の共通判定・コース/配送順解決。</summary>
 public static class PersonalDeliveryHelper
 {
-    private static readonly string[] DetailRiceItemCodePrefixes = ["3010", "3011", "3111", "3411"];
+    /// <summary>ご飯（主食）品目コード先頭4桁。ご飯盛り付け指示書（GohanSearchFilter）と同じ判定。</summary>
+    private static readonly string[] RiceItemCodePrefixes = ["3010", "3011", "3111", "3411"];
     public const string TargetCustomerCode = "300";
-    public const string StapleFoodItemCodePrefix = "3011";
     public const string SoupItemCodePrefix = "305";
 
     public static readonly string[] SummaryTargetCustomerCodes = ["300", "310"];
@@ -23,14 +23,11 @@ public static class PersonalDeliveryHelper
     {
         var code = (itemCode ?? "").Trim();
         if (code.Length < 4) return false;
-        return DetailRiceItemCodePrefixes.Contains(code[..4]);
+        return RiceItemCodePrefixes.Contains(code[..4]);
     }
 
-    public static bool IsStapleFoodSummaryItemCode(string? itemCode)
-    {
-        var code = (itemCode ?? "").Trim();
-        return code.Length >= 4 && code[..4] == StapleFoodItemCodePrefix;
-    }
+    /// <summary>集計の主食判定。明細のご飯判定（3010 / 3011 / 3111 / 3411）と同じ範囲を対象とする。</summary>
+    public static bool IsStapleFoodSummaryItemCode(string? itemCode) => IsRiceItemCode(itemCode);
 
     public static bool IsSoupItemCode(string? itemCode)
     {

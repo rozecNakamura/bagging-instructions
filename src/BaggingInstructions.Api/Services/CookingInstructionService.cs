@@ -251,16 +251,19 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
         if (headers.Count == 0)
             return new List<CookingInstructionPdfLineModel>();
 
-        var bomCache = new Dictionary<string, List<CookingInstructionBomSqlRow>>(StringComparer.Ordinal);
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<CookingInstructionBomSqlRow>>();
 
         var lines = new List<CookingInstructionPdfLineModel>();
         foreach (var h in headers)
         {
             var asof = h.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            if (!bomCache.TryGetValue(h.ParentItemcode, out var boms))
+            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            var facility = BomFacility.Resolve(h.FacilityCode);
+            var bomKey = (h.ParentItemcode, facility);
+            if (!bomCache.TryGetValue(bomKey, out var boms))
             {
-                boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, ct);
-                bomCache[h.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, facility, ct);
+                bomCache[bomKey] = boms;
             }
 
             var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
@@ -457,9 +460,11 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
                   COALESCE(NULLIF(TRIM(ds.slotname), ''), NULLIF(sc.slotcode, ''), '') AS slot_display,
                   COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classification3code, ''))) AS work_name,
                   COALESCE(ot.releasedate, ot.needdate) AS need_date,
-                  ot.ordertableid::text AS order_no_for_pdf
+                  ot.ordertableid::text AS order_no_for_pdf,
+                  COALESCE(sol.facilitycode, '') AS facility_code
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
@@ -527,7 +532,8 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
                     SlotDisplay = reader.GetString(17),
                     WorkName = reader.GetString(18),
                     NeedDate = ReadDateNullable(reader, 19),
-                    OrderNo = reader.GetString(20)
+                    OrderNo = reader.GetString(20),
+                    FacilityCode = reader.IsDBNull(21) ? null : reader.GetString(21)
                 });
             }
 
@@ -543,6 +549,7 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
     private async Task<List<CookingInstructionBomSqlRow>> FetchBomsForParentAsync(
         string parentItemcode,
         DateOnly asOf,
+        string facilityCode,
         CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
@@ -568,12 +575,14 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
                 LEFT JOIN itemadditionalinformation ia ON TRIM(ia.itemcode) = TRIM(b.childitemcode)
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
                   AND (b.enddate IS NULL OR b.enddate >= @asof)
                 ORDER BY b.productionorder NULLS LAST, b.childitemcode
                 """, conn);
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
+            cmd.Parameters.AddWithValue("facility", facilityCode);
 
             var list = new List<CookingInstructionBomSqlRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -687,6 +696,9 @@ internal sealed class CookingInstructionLineHeaderRow
     public DateOnly? NeedDate { get; set; }
     /// <summary>PDF 注番: ordertable.ordertableid（文字列）。</summary>
     public string OrderNo { get; set; } = "";
+
+    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    public string? FacilityCode { get; set; }
 }
 
 internal sealed class CookingInstructionBomSqlRow

@@ -105,8 +105,13 @@ public class ScalesLinkService
     {
         // bom は親・子とも item に存在する行のみ対象。
         // PITEMCD/CITEMCD は addinfo06 があればそれを使い、無ければ itemcode（計量器未登録でも BOM を出力する）
+        // 受注明細を伴わないマスタ出力のため、工場は既定（MATSUYAMA）・有効期間は当日基準で判定する。
+        var today = DateOnly.FromDateTime(DateTime.Today);
         var rows = await (
                 from b in _db.Boms.AsNoTracking()
+                    .Where(x => (x.FacilityCode ?? "").Trim() == BomFacility.Default
+                                && (x.StartDate == null || x.StartDate <= today)
+                                && (x.EndDate == null || x.EndDate >= today))
                 join ip in _db.Items.AsNoTracking() on b.ParentItemCd equals ip.ItemCd
                 join ic in _db.Items.AsNoTracking() on b.ChildItemCd equals ic.ItemCd
                 join aip in _db.ItemAdditionalInformations.AsNoTracking()
@@ -158,6 +163,9 @@ public class ScalesLinkService
                 from o in _db.OrderTables.AsNoTracking()
                 join aiParent in _db.ItemAdditionalInformations.AsNoTracking()
                     on o.ItemCode equals aiParent.ItemCd
+                join solFac in _db.SalesOrderLines.AsNoTracking()
+                    on o.SalesOrderLineId equals solFac.SalesOrderLineId into solFacGrp
+                from solFac in solFacGrp.DefaultIfEmpty()
                 join b in _db.Boms.AsNoTracking()
                     on o.ItemCode equals b.ParentItemCd
                 join aiChild in _db.ItemAdditionalInformations.AsNoTracking()
@@ -172,6 +180,15 @@ public class ScalesLinkService
                 where (aiParent.Addinfo06 ?? "").Trim() != ""
                       && (releaseDateFrom == null || o.ReleaseDate >= releaseDateFrom)
                       && (releaseDateTo == null || o.ReleaseDate <= releaseDateTo)
+                      // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）＋有効期間チェック
+                      && (b.FacilityCode ?? "").Trim() ==
+                         ((solFac == null || (solFac.FacilityCode ?? "").Trim() == "")
+                            ? BomFacility.Default
+                            : (solFac.FacilityCode ?? "").Trim())
+                      && (b.StartDate == null || (o.ReleaseDate ?? o.NeedDate) == null
+                          || b.StartDate <= (o.ReleaseDate ?? o.NeedDate))
+                      && (b.EndDate == null || (o.ReleaseDate ?? o.NeedDate) == null
+                          || b.EndDate >= (o.ReleaseDate ?? o.NeedDate))
                       // [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
                       && ((o.ProductNo ?? "").Trim() == ""
                           || !_db.OrderTables.Any(o2 =>

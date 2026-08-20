@@ -43,15 +43,18 @@ public sealed class BaggingPreparationExcelService
             : prddt;
 
         var headers = await FetchHeadersAsync(salesOrderLineIds, ct);
-        var bomCache = new Dictionary<string, List<BaggingPrepBomRow>>(StringComparer.OrdinalIgnoreCase);
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<BaggingPrepBomRow>>();
         var dataRows = new List<BaggingPrepExcelRow>();
 
         foreach (var h in headers)
         {
-            if (!bomCache.TryGetValue(h.ParentItemcode, out var boms))
+            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            var facility = BomFacility.Resolve(h.FacilityCode);
+            var bomKey = (h.ParentItemcode, facility);
+            if (!bomCache.TryGetValue(bomKey, out var boms))
             {
-                boms = await FetchBomsAsync(h.ParentItemcode, asOf, ct);
-                bomCache[h.ParentItemcode] = boms;
+                boms = await FetchBomsAsync(h.ParentItemcode, asOf, facility, ct);
+                bomCache[bomKey] = boms;
             }
 
             if (boms.Count == 0)
@@ -209,7 +212,8 @@ public sealed class BaggingPreparationExcelService
                   CASE
                     WHEN ia.steritemprange IS NULL THEN ''
                     ELSE TO_CHAR(ia.steritemprange, 'FM999999990.###')
-                  END                                                         AS parent_steri_temprange
+                  END                                                         AS parent_steri_temprange,
+                  COALESCE(sol.facilitycode, '')                              AS facility_code
                 FROM salesorderline sol
                 LEFT JOIN item i             ON TRIM(i.itemcode)          = TRIM(sol.itemcode)
                 LEFT JOIN workcenter wc      ON TRIM(wc.workcentercode)   = TRIM(i.workcentercode)
@@ -236,6 +240,7 @@ public sealed class BaggingPreparationExcelService
                     WorkplaceName = reader.GetString(4),
                     MfgRouteName = reader.GetString(5),
                     ParentSteriTempRange = reader.GetString(6),
+                    FacilityCode = reader.IsDBNull(7) ? null : reader.GetString(7),
                 });
             }
             return list;
@@ -247,7 +252,7 @@ public sealed class BaggingPreparationExcelService
         }
     }
 
-    private async Task<List<BaggingPrepBomRow>> FetchBomsAsync(string parentItemcode, DateOnly asOf, CancellationToken ct)
+    private async Task<List<BaggingPrepBomRow>> FetchBomsAsync(string parentItemcode, DateOnly asOf, string facilityCode, CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
         var shouldClose = conn.State != ConnectionState.Open;
@@ -272,12 +277,14 @@ public sealed class BaggingPreparationExcelService
                 LEFT JOIN itemadditionalinformation ia ON TRIM(ia.itemcode) = TRIM(b.childitemcode)
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
                   AND (b.enddate   IS NULL OR b.enddate   >= @asof)
                 ORDER BY b.productionorder NULLS LAST, b.childitemcode
                 """, conn);
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
+            cmd.Parameters.AddWithValue("facility", facilityCode);
 
             var list = new List<BaggingPrepBomRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -323,6 +330,9 @@ public sealed class BaggingPreparationExcelService
         public string WorkplaceName { get; set; } = "";
         public string MfgRouteName { get; set; } = "";
         public string ParentSteriTempRange { get; set; } = "";
+
+        /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+        public string? FacilityCode { get; set; }
     }
 
     private sealed class BaggingPrepBomRow

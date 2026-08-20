@@ -288,7 +288,7 @@ ORDER BY 1
         if (headers.Count == 0)
             return new List<ProductionInstructionPdfLineModel>();
 
-        var bomCache = new Dictionary<string, List<ProductionInstructionBomSqlRow>>(StringComparer.Ordinal);
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<ProductionInstructionBomSqlRow>>();
         var lines = new List<ProductionInstructionPdfLineModel>();
 
         // 同一製造便・同一品目のオーダーを集約して数量を合算
@@ -301,10 +301,13 @@ ORDER BY 1
             var first = group.First();
             var asof = first.NeedDate ?? first.ReleaseDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-            if (!bomCache.TryGetValue(first.ParentItemcode, out var boms))
+            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            var facility = BomFacility.Resolve(first.FacilityCode);
+            var bomKey = (first.ParentItemcode, facility);
+            if (!bomCache.TryGetValue(bomKey, out var boms))
             {
-                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, ct);
-                bomCache[first.ParentItemcode] = boms;
+                boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, facility, ct);
+                bomCache[bomKey] = boms;
             }
 
             var totalQtyU0 = group.Sum(h => CookingInstructionQuantity.ResolveParentQtyInUnit0(
@@ -424,9 +427,11 @@ ORDER BY 1
                   COALESCE(ia.addinfo16, '') AS ia_addinfo16,
                   COALESCE(ia.addinfo17, '') AS ia_addinfo17,
                   ia.steritemprange AS ia_steritemprange,
-                  ia.steritime AS ia_steritime
+                  ia.steritime AS ia_steritime,
+                  COALESCE(sol.facilitycode, '') AS facility_code
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
+                LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN unit u1 ON u1.unitcode = i.unitcode1
@@ -510,7 +515,8 @@ ORDER BY 1
                     IaAddinfo16 = reader.GetString(33),
                     IaAddinfo17 = reader.GetString(34),
                     IaSterItemPrange = ReadDecimalFlexible(reader, 35),
-                    IaSteriTime = ReadDecimalFlexible(reader, 36)
+                    IaSteriTime = ReadDecimalFlexible(reader, 36),
+                    FacilityCode = reader.IsDBNull(37) ? null : reader.GetString(37)
                 });
             }
 
@@ -526,6 +532,7 @@ ORDER BY 1
     private async Task<List<ProductionInstructionBomSqlRow>> FetchBomsForParentAsync(
         string parentItemcode,
         DateOnly asOf,
+        string facilityCode,
         CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
@@ -559,12 +566,14 @@ ORDER BY 1
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = b.childitemcode
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
                   AND (b.enddate IS NULL OR b.enddate >= @asof)
                 ORDER BY COALESCE(b.productionorder, 0), b.bomid
                 """, conn);
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
+            cmd.Parameters.AddWithValue("facility", facilityCode);
 
             var list = new List<ProductionInstructionBomSqlRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -707,6 +716,9 @@ internal sealed class ProductionInstructionLineHeaderRow
     public string IaAddinfo17 { get; set; } = "";
     public decimal? IaSterItemPrange { get; set; }
     public decimal? IaSteriTime { get; set; }
+
+    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    public string? FacilityCode { get; set; }
 }
 
 internal sealed class ProductionInstructionBomSqlRow

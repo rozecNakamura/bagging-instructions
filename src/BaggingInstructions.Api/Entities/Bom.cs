@@ -8,6 +8,10 @@ public class Bom
     [Column("bomid")]
     public long BomId { get; set; }
 
+    /// <summary>工場コード（facility.facilitycode）。BOM 取得時は受注明細の工場コードで絞り込む。</summary>
+    [Column("facilitycode")]
+    public string? FacilityCode { get; set; }
+
     [Column("parentitemcode")]
     public string? ParentItemCd { get; set; }
 

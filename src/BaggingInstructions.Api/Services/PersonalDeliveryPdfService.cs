@@ -86,20 +86,28 @@ public class PersonalDeliveryPdfService
         if (isSummary)
         {
             var foodTypeNameMap = await LoadFoodTypeNameMapAsync(ct);
-            var pagesTagValues = new List<Dictionary<string, string>>();
+            var pagePlans = new List<(List<PersonalDeliverySummaryLine> Lines, int PageIndex)>();
             foreach (var (eatingDate, mealTime, course) in selections)
             {
                 var summaryLines = await LoadSummaryLinesAsync(eatingDate, mealTime, course, foodTypeNameMap, ct);
                 if (summaryLines.Count == 0) continue;
-                pagesTagValues.Add(BuildSummaryTagValues(summaryLines));
+
+                for (int pageIndex = 0; pageIndex * RowsPerPage < summaryLines.Count; pageIndex++)
+                    pagePlans.Add((summaryLines, pageIndex));
             }
 
-            if (pagesTagValues.Count == 0)
+            if (pagePlans.Count == 0)
                 return Array.Empty<byte>();
 
-            var totalPages = pagesTagValues.Count;
-            for (int i = 0; i < pagesTagValues.Count; i++)
-                AddPersonalDeliveryPrintTags(pagesTagValues[i], printNow, i + 1, totalPages);
+            var pagesTagValues = new List<Dictionary<string, string>>();
+            var totalPages = pagePlans.Count;
+            for (int i = 0; i < pagePlans.Count; i++)
+            {
+                var (lines, pageIndex) = pagePlans[i];
+                var tags = BuildSummaryTagValuesForPage(lines, pageIndex);
+                AddPersonalDeliveryPrintTags(tags, printNow, i + 1, totalPages);
+                pagesTagValues.Add(tags);
+            }
 
             return _juicePdfService.GeneratePdfMultiPage(
                 templateSummaryPath,
@@ -204,11 +212,12 @@ public class PersonalDeliveryPdfService
         var salesLines = await LoadSalesOrderLinesAsync(date, customerCodes, ct);
         var mealTimeNorm = (mealTime ?? "").Trim();
         var courseNorm = (course ?? "").Trim();
-        var aggregates = new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode), PersonalDeliverySummaryLine>();
-        var locationKeysByAggregate =
-            new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode), HashSet<(string CustomerCode, string LocationCode)>>();
-        var notesByAggregate =
-            new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode), HashSet<string>>();
+
+        // 受注明細から、納入場所×食種に現れる分類と、分類×食種の表示名・グラムを先に確定する。
+        var categoriesByLocation =
+            new Dictionary<(string CustomerCode, string LocationCode, string FoodTypeCode), HashSet<PersonalDeliveryHelper.SummaryItemCategory>>();
+        var metaByCategory =
+            new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode), SummaryAggregateMeta>();
 
         foreach (var line in salesLines)
         {
@@ -225,34 +234,37 @@ public class PersonalDeliveryPdfService
 
             var foodTypeCode = (line.Addinfo?.Addinfo02 ?? "").Trim();
             var category = PersonalDeliveryHelper.ResolveSummaryItemCategory(line.Item?.ItemCd);
-            var key = (category, foodTypeCode);
 
-            if (!aggregates.TryGetValue(key, out var summaryLine))
+            var locationFoodTypeKey = (custCode, locCode, foodTypeCode);
+            if (!categoriesByLocation.TryGetValue(locationFoodTypeKey, out var categories))
             {
-                summaryLine = new PersonalDeliverySummaryLine
+                categories = new HashSet<PersonalDeliveryHelper.SummaryItemCategory>();
+                categoriesByLocation[locationFoodTypeKey] = categories;
+            }
+            categories.Add(category);
+
+            var metaKey = (category, foodTypeCode);
+            if (!metaByCategory.TryGetValue(metaKey, out var meta))
+            {
+                meta = new SummaryAggregateMeta
                 {
-                    EatingDate = FormatEatingDate(eatingDate),
-                    MealTime = mealTimeNorm,
-                    MealTimeName = BaggingEatingTimeLabel.MapFromAddinfo05(mealTimeNorm),
                     Course = resolvedCourse,
-                    Category = category,
-                    FoodTypeCode = foodTypeCode,
                     FoodType = ResolveFoodTypeDisplayName(line, foodTypeCode, foodTypeNameMap)
                 };
-                aggregates[key] = summaryLine;
-                locationKeysByAggregate[key] = new HashSet<(string, string)>();
-                notesByAggregate[key] = new HashSet<string>(StringComparer.Ordinal);
+                metaByCategory[metaKey] = meta;
             }
-
-            locationKeysByAggregate[key].Add((custCode, locCode));
 
             if (category == PersonalDeliveryHelper.SummaryItemCategory.StapleFood)
             {
                 var gram = (line.Addinfo?.Addinfo01 ?? "").Trim();
-                if (gram.Length > 0 && string.IsNullOrEmpty(summaryLine.GramAmount))
-                    summaryLine.GramAmount = gram;
+                if (gram.Length > 0 && string.IsNullOrEmpty(meta.GramAmount))
+                    meta.GramAmount = gram;
             }
         }
+
+        // 数量は cstmeat 側で集計する。備考（info17）も集計キーに含め、備考が異なる分は行を分ける。
+        var aggregates =
+            new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode, string Note), PersonalDeliverySummaryLine>();
 
         foreach (var cm in cstmeatRows)
         {
@@ -269,18 +281,33 @@ public class PersonalDeliveryPdfService
             var foodTypeCode = (cm.Info05 ?? "").Trim();
             if (foodTypeCode.Length == 0) continue;
             if (!TryParseCstmeatQuantity(cm.Info07, out var qty) || qty == 0) continue;
+            if (!categoriesByLocation.TryGetValue((custCode, locCode, foodTypeCode), out var categories)) continue;
 
             var note = (cm.Info17 ?? "").Trim();
-            var locationKey = (custCode, locCode);
 
-            foreach (var (key, summaryLine) in aggregates)
+            foreach (var category in categories)
             {
-                if (!string.Equals(key.FoodTypeCode, foodTypeCode, StringComparison.Ordinal)) continue;
-                if (!locationKeysByAggregate[key].Contains(locationKey)) continue;
+                if (!metaByCategory.TryGetValue((category, foodTypeCode), out var meta)) continue;
+
+                var key = (category, foodTypeCode, note);
+                if (!aggregates.TryGetValue(key, out var summaryLine))
+                {
+                    summaryLine = new PersonalDeliverySummaryLine
+                    {
+                        EatingDate = FormatEatingDate(eatingDate),
+                        MealTime = mealTimeNorm,
+                        MealTimeName = BaggingEatingTimeLabel.MapFromAddinfo05(mealTimeNorm),
+                        Course = meta.Course,
+                        Category = category,
+                        FoodTypeCode = foodTypeCode,
+                        FoodType = meta.FoodType,
+                        GramAmount = meta.GramAmount,
+                        Note = note
+                    };
+                    aggregates[key] = summaryLine;
+                }
 
                 summaryLine.TotalQuantity += qty;
-                if (note.Length > 0 && notesByAggregate[key].Add(note))
-                    summaryLine.Note = string.Join(" ", notesByAggregate[key]);
             }
         }
 
@@ -291,6 +318,7 @@ public class PersonalDeliveryPdfService
             .ThenBy(l => l.MealTime, StringComparer.Ordinal)
             .ThenBy(l => l.Course, StringComparer.Ordinal)
             .ThenBy(l => l.FoodTypeCode, StringComparer.Ordinal)
+            .ThenBy(l => l.Note, StringComparer.Ordinal)
             .ToList();
     }
 
@@ -593,10 +621,14 @@ public class PersonalDeliveryPdfService
         return tagValues;
     }
 
-    private static Dictionary<string, string> BuildSummaryTagValues(List<PersonalDeliverySummaryLine> lines)
+    private static Dictionary<string, string> BuildSummaryTagValuesForPage(List<PersonalDeliverySummaryLine> lines, int pageIndex)
     {
         var tagValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (lines.Count == 0) return tagValues;
+
+        int start = pageIndex * RowsPerPage;
+        var pageLines = lines.Skip(start).Take(RowsPerPage).ToList();
+        if (pageLines.Count == 0) return tagValues;
 
         var first = lines[0];
         tagValues["DATE"] = first.EatingDate;
@@ -607,7 +639,7 @@ public class PersonalDeliveryPdfService
         for (int i = 0; i < MaxRows; i++)
         {
             var nn = i.ToString("D2");
-            var row = i < lines.Count ? lines[i] : null;
+            var row = i < pageLines.Count ? pageLines[i] : null;
             tagValues[$"FOODTYPE{nn}"] = row?.FoodType ?? "";
             tagValues[$"GRAM{nn}"] = row?.GramAmount ?? "";
             tagValues[$"COUNT{nn}"] = row != null
@@ -659,6 +691,14 @@ public class PersonalDeliveryPdfService
         public string RiceAmount { get; set; } = "";
         public bool HasRiceItem { get; set; }
         public string Remarks { get; set; } = "";
+    }
+
+    /// <summary>集計行の受注明細由来の情報（分類×食種で共通。備考別に行を分けても同じ値を使う）。</summary>
+    private sealed class SummaryAggregateMeta
+    {
+        public string Course { get; set; } = "";
+        public string FoodType { get; set; } = "";
+        public string GramAmount { get; set; } = "";
     }
 
     private sealed class PersonalDeliverySummaryLine

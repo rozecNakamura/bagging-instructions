@@ -220,16 +220,18 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             return new List<CutPreparationPdfLineModel>();
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
-        var bomCache = new Dictionary<string, List<PreparationBomSqlRow>>(StringComparer.Ordinal);
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
 
         var lines = new List<CutPreparationPdfLineModel>();
         foreach (var h in headers)
         {
             var asof = h.PlannedDeliveryDate ?? h.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            var bomKey = h.ParentItemcode;
+            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            var facility = BomFacility.Resolve(h.FacilityCode);
+            var bomKey = (h.ParentItemcode, facility);
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
-                boms = await FetchBomsForParentAsync(bomKey, asof, ct);
+                boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, facility, ct);
                 bomCache[bomKey] = boms;
             }
 
@@ -412,7 +414,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
                     COALESCE(ot.releasedate, sol.planneddeliverydate) AS need_date,
                     COALESCE(pu.unitname, '') AS parent_unit,
-                    COALESCE(pwh.warehousename, pwh.warehousecode, '') AS parent_warehouse
+                    COALESCE(pwh.warehousename, pwh.warehousecode, '') AS parent_warehouse,
+                    COALESCE(sol.facilitycode, '') AS facility_code
                   FROM ordertable ot
                   LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                   LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
@@ -447,7 +450,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                   b.planned_delivery,
                   b.need_date,
                   b.parent_unit,
-                  b.parent_warehouse
+                  b.parent_warehouse,
+                  b.facility_code
                 FROM base b
                 LEFT JOIN deliveryslot ds ON ds.slotcode = b.route_code
                 ORDER BY b.ordertableid
@@ -473,7 +477,8 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     PlannedDeliveryDate = ReadDateNullable(reader, 8),
                     NeedDate = ReadDateNullable(reader, 9),
                     ParentUnit = reader.GetString(10),
-                    ParentWarehouse = reader.GetString(11)
+                    ParentWarehouse = reader.GetString(11),
+                    FacilityCode = reader.IsDBNull(12) ? null : reader.GetString(12)
                 });
             }
             return list;
@@ -486,7 +491,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
     }
 
     private async Task<List<PreparationBomSqlRow>> FetchBomsForParentAsync(
-        string parentItemcode, DateOnly asOf, CancellationToken ct)
+        string parentItemcode, DateOnly asOf, string facilityCode, CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
         var shouldClose = conn.State != ConnectionState.Open;
@@ -509,12 +514,14 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                 LEFT JOIN unit u ON u.unitcode = ci.unitcode0
                 WHERE b.parentitemcode = @p
                   AND b.childitemcode IS NOT NULL
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
                   AND (b.startdate IS NULL OR b.startdate <= @asof)
                   AND (b.enddate IS NULL OR b.enddate >= @asof)
                 ORDER BY b.productionorder NULLS LAST, b.childitemcode
                 """, conn);
             cmd.Parameters.AddWithValue("p", parentItemcode);
             cmd.Parameters.AddWithValue("asof", asOf);
+            cmd.Parameters.AddWithValue("facility", facilityCode);
             var list = new List<PreparationBomSqlRow>();
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
@@ -583,4 +590,7 @@ internal sealed class CutPreparationLineHeaderRow
     public string ParentUnit { get; set; } = "";
     /// <summary>親品目の保管場所名（同上）。</summary>
     public string ParentWarehouse { get; set; } = "";
+
+    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    public string? FacilityCode { get; set; }
 }
