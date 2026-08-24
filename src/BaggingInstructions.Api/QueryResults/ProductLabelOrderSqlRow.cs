@@ -1,7 +1,8 @@
 namespace BaggingInstructions.Api.QueryResults;
 
 /// <summary>現品票 PDF 用：ordertable × item × workcenter × bom × 子品目 × 子品目単位（Npgsql 読取り用）。</summary>
-public sealed class ProductLabelOrderSqlRow
+// 現品票印刷（新）で派生クラス（ProductLabelNewChildSqlRow）が階層・便を追加するため sealed にしない。
+public class ProductLabelOrderSqlRow
 {
     public long OrderTableId { get; set; }
     public DateOnly? ReleaseDate { get; set; }

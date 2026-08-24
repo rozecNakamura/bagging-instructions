@@ -58,6 +58,7 @@ builder.Services.AddScoped<SearchService>();
 builder.Services.AddScoped<BaggingSearchExcelService>();
 builder.Services.AddScoped<BaggingPreparationExcelService>();
 builder.Services.AddScoped<ProductLabelPdfService>();
+builder.Services.AddScoped<ProductLabelNewService>();
 builder.Services.AddScoped<StockService>();
 builder.Services.AddScoped<BaggingInputService>();
 builder.Services.AddScoped<BaggingCalculatorService>();

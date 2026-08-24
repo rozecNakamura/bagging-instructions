@@ -70,6 +70,31 @@ public sealed class ProductLabelPdfService
         return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "現品票（調理）1枚", AlignmentOverrides);
     }
 
+    /// <summary>
+    /// 現品票印刷（新）用：取得済みの行（1行=1ラベル）と枚数を指定して PDF を生成する。
+    /// 行の抽出は呼び出し側（ProductLabelNewService）が行う。
+    /// </summary>
+    public byte[] GeneratePdfFromRows(
+        string rxzTemplatePath,
+        IReadOnlyList<(ProductLabelOrderSqlRow Row, int Count)> rows)
+    {
+        if (rows == null || rows.Count == 0)
+            return Array.Empty<byte>();
+
+        var pages = new List<Dictionary<string, string>>(rows.Count);
+        foreach (var (row, count) in rows)
+        {
+            var tags = BuildPageTags(row);
+            for (var i = 0; i < Math.Max(1, count); i++)
+                pages.Add(tags);
+        }
+
+        if (pages.Count == 0)
+            return Array.Empty<byte>();
+
+        return _juicePdf.GeneratePdfMultiPage(rxzTemplatePath, pages, "現品票（調理）1枚", AlignmentOverrides);
+    }
+
     private static Dictionary<string, string> BuildPageTags(ProductLabelOrderSqlRow row)
     {
         var expiryDate = row.ReleaseDate.HasValue

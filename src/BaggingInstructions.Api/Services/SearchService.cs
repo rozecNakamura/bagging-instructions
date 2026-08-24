@@ -346,7 +346,7 @@ FROM m_shokushu";
             .ToList();
     }
 
-    /// <summary>弁当箱・ご飯：得意先240/300/310、addinfo08=1、info15=1、品目3010/3011/3111/3411。</summary>
+    /// <summary>弁当箱・ご飯：得意先240/300/310、addinfo08=1、info14=1 または info15=1、品目3010/3011/3111/3411。</summary>
     private async Task<List<BentoSearchGroupDto>> SearchBentoGohanGroupedAsync(string delvedt, string? itemcd, CancellationToken ct)
     {
         var delvedtDate = ParseProductDate(delvedt);
@@ -381,7 +381,7 @@ FROM m_shokushu";
             .Where(l => BentoSearchFilter.IsTargetGohanItemCode(l.Item?.ItemCd))
             .ToList();
 
-        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info15);
+        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info14OrInfo15);
 
         var items = new List<JobordItemDto>();
         foreach (var l in lines)
@@ -468,8 +468,8 @@ FROM m_shokushu";
             }).ToList();
         }
 
-        // info15='1' のcstmeat行のみを対象とし、マップにない行は弁当箱の出力対象外とする
-        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info15);
+        // info14='1' または info15='1' のcstmeat行のみを対象とし、マップにない行は弁当箱の出力対象外とする
+        var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct, CstmeatFlagColumn.Info14OrInfo15);
 
         var result = new List<JobordItemDto>();
         foreach (var l in linesBento)
@@ -1500,8 +1500,13 @@ FROM m_shokushu";
         None,
         /// <summary>info14='1' のみ（ご飯盛り付け指示書）。</summary>
         Info14,
-        /// <summary>info15='1' のみ（弁当箱盛り付け指示書）。</summary>
-        Info15
+        /// <summary>info15='1' のみ。</summary>
+        Info15,
+        /// <summary>
+        /// info14='1' または info15='1'（弁当箱盛り付け指示書）。
+        /// info15 は得意先300/310 にしか立たず、得意先240 は info14 にしか立たないため両方を対象とする。
+        /// </summary>
+        Info14OrInfo15
     }
 
     /// <summary>
@@ -1518,6 +1523,8 @@ WHERE info03 = {0}
     {
         CstmeatFlagColumn.Info14 => "\n  AND TRIM(COALESCE(info14, '')) = '1'",
         CstmeatFlagColumn.Info15 => "\n  AND TRIM(COALESCE(info15, '')) = '1'",
+        CstmeatFlagColumn.Info14OrInfo15 =>
+            "\n  AND (TRIM(COALESCE(info14, '')) = '1' OR TRIM(COALESCE(info15, '')) = '1')",
         _ => ""
     };
 
@@ -1527,6 +1534,8 @@ WHERE info03 = {0}
         {
             CstmeatFlagColumn.Info14 => query.Where(c => (c.Info14 ?? "").Trim() == "1"),
             CstmeatFlagColumn.Info15 => query.Where(c => (c.Info15 ?? "").Trim() == "1"),
+            CstmeatFlagColumn.Info14OrInfo15 =>
+                query.Where(c => (c.Info14 ?? "").Trim() == "1" || (c.Info15 ?? "").Trim() == "1"),
             _ => query
         };
 

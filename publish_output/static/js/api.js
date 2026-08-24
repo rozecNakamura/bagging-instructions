@@ -1856,3 +1856,102 @@ export async function exportCstmeatText({ slipType, dateFrom, timeFrom, dateTo, 
         : (plainMatch ? plainMatch[1] : 'export.txt');
     return { blob, filename };
 }
+
+/* ===== 現品票印刷（新）：子品目起点の検索・印刷 ===== */
+
+/**
+ * 現品票印刷（新）：便一覧（納期当日の起点オーダに現れる便のみ）
+ * @param {string} needdate - YYYY-MM-DD または YYYYMMDD
+ */
+export async function fetchProductLabelNewSlots(needdate) {
+    const nd = needdate ? String(needdate).replace(/-/g, '') : '';
+    const params = nd ? `?needdate=${encodeURIComponent(nd)}` : '';
+    const res = await fetch(`${API_BASE_URL}/product-label-new/slots${params}`);
+    if (!res.ok) {
+        let detail = '';
+        try { const body = await res.json(); detail = body.detail ? ` - ${body.detail}` : ''; } catch (_) { /* ignore */ }
+        throw new Error(`取得エラー: ${res.status}${detail}`);
+    }
+    return await res.json();
+}
+
+/**
+ * 現品票印刷（新）検索：最上位完成品から BOM を再帰探索した子品目（孫以下も含む）を1行として取得
+ * @param {object} params
+ * @param {string} params.needDate - YYYY-MM-DD または YYYYMMDD（必須）
+ * @param {string|null} [params.childItemCode] - 子品目コード（部分一致）
+ * @param {number|string|null} [params.childMajorClassificationId] - 子品目の大分類
+ * @param {number|string|null} [params.childMiddleClassificationId] - 子品目の中分類
+ * @param {number|string|null} [params.childWarehouseId] - 子品目の倉庫
+ * @param {number|string|null} [params.majorClassificationId] - 親品目の大分類
+ * @param {string|null} [params.itemCode] - 親品目コード（部分一致）
+ * @param {number|string|null} [params.workcenterId] - 親品目の作業区
+ * @param {number|string|null} [params.warehouseId] - 親品目の倉庫
+ * @param {string[]|null} [params.slotCodes] - 便コード（複数）
+ */
+export async function searchProductLabelNew({
+    needDate,
+    childItemCode,
+    childMajorClassificationId,
+    childMiddleClassificationId,
+    childWarehouseId,
+    majorClassificationId,
+    itemCode,
+    workcenterId,
+    warehouseId,
+    slotCodes,
+} = {}) {
+    let needdateStr = needDate;
+    if (needDate && needDate.includes('-')) needdateStr = needDate.replace(/-/g, '');
+    const p = new URLSearchParams({ needdate: needdateStr });
+    const setIf = (key, value) => {
+        if (value != null && String(value).trim() !== '') p.set(key, String(value).trim());
+    };
+    setIf('childitemcode', childItemCode);
+    setIf('childmajorclassificationid', childMajorClassificationId);
+    setIf('childmiddleclassificationid', childMiddleClassificationId);
+    setIf('childwarehouseid', childWarehouseId);
+    setIf('majorclassificationid', majorClassificationId);
+    setIf('itemcode', itemCode);
+    setIf('workcenterid', workcenterId);
+    setIf('warehouseid', warehouseId);
+    (Array.isArray(slotCodes) ? slotCodes : (slotCodes ? [slotCodes] : []))
+        .map(s => String(s).trim())
+        .filter(s => s)
+        .forEach(code => p.append('slot_code', code));
+
+    const response = await fetch(`${API_BASE_URL}/product-label-new/search?${p}`);
+    if (!response.ok) {
+        let detail = '';
+        try { const body = await response.json(); detail = body.detail ? ` - ${body.detail}` : ''; } catch (_) { /* ignore */ }
+        throw new Error(`検索エラー: ${response.status}${detail}`);
+    }
+    return await response.json();
+}
+
+/**
+ * 現品票印刷（新）PDF 生成：チェックした行（親×子品目）のみを印刷
+ * @param {Array<{order_table_ids: number[], child_item_code: string, count: number}>} items
+ * @param {string} instructionType - "cut" | "seasoning" | "cooking"
+ * @param {string} [cutMode="no_cut"] - "cut_on_item_change" | "no_cut"
+ * @returns {Promise<Blob>}
+ */
+export async function generateProductLabelNewPdfBlob(items, instructionType, cutMode = 'no_cut') {
+    const response = await fetch(`${API_BASE_URL}/product-label-new/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            items,
+            label_count: 1,
+            cut_mode: cutMode,
+            instruction_type: instructionType || undefined,
+        }),
+    });
+    if (!response.ok) {
+        const t = await response.text();
+        let msg = `PDF生成エラー: ${response.status}`;
+        try { const j = JSON.parse(t); if (j.detail) msg += ' - ' + j.detail; } catch (_) { if (t) msg += ' - ' + t; }
+        throw new Error(msg);
+    }
+    return await response.blob();
+}

@@ -213,11 +213,17 @@ public class PersonalDeliveryPdfService
         var mealTimeNorm = (mealTime ?? "").Trim();
         var courseNorm = (course ?? "").Trim();
 
-        // 受注明細から、納入場所×食種に現れる分類と、分類×食種の表示名・グラムを先に確定する。
-        var categoriesByLocation =
-            new Dictionary<(string CustomerCode, string LocationCode, string FoodTypeCode), HashSet<PersonalDeliveryHelper.SummaryItemCategory>>();
-        var metaByCategory =
-            new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode), SummaryAggregateMeta>();
+        // 備考（cstmeat info17）は受注明細側に相当項目が無いため、納入場所×食種で引けるようにしておく。
+        var noteMap = BuildCstmeatNoteMap(cstmeatRows, mealTimeNorm);
+
+        // 集計は受注明細を基準に行う。食数は salesorderlineaddinfo.addinfo08。
+        // 主菜・汁物は食種単位、主食（ご飯）は品目×ご飯量単位で集計する。
+        var aggregates = new Dictionary<(SummaryGroupKey Group, string Note), PersonalDeliverySummaryLine>();
+
+        // 主菜・汁物の数量は食種ごとの食数（人数）。同一納入場所に主菜明細が複数あっても
+        // 食数は1回だけ計上する（明細数だけ重複計上しない）。
+        var countedByLocation =
+            new HashSet<(SummaryGroupKey Group, string Note, string CustomerCode, string LocationCode)>();
 
         foreach (var line in salesLines)
         {
@@ -232,83 +238,47 @@ public class PersonalDeliveryPdfService
             var (resolvedCourse, _) = PersonalDeliveryHelper.ResolveCourseAndOrder(info19, addinfo);
             if (resolvedCourse != courseNorm) continue;
 
+            var mealCount = ParseMealCount(line.Addinfo?.Addinfo08);
+            if (mealCount == 0) continue;
+
             var foodTypeCode = (line.Addinfo?.Addinfo02 ?? "").Trim();
             var category = PersonalDeliveryHelper.ResolveSummaryItemCategory(line.Item?.ItemCd);
+            var isStaple = category == PersonalDeliveryHelper.SummaryItemCategory.StapleFood;
+            var gram = (line.Addinfo?.Addinfo01 ?? "").Trim();
 
-            var locationFoodTypeKey = (custCode, locCode, foodTypeCode);
-            if (!categoriesByLocation.TryGetValue(locationFoodTypeKey, out var categories))
-            {
-                categories = new HashSet<PersonalDeliveryHelper.SummaryItemCategory>();
-                categoriesByLocation[locationFoodTypeKey] = categories;
-            }
-            categories.Add(category);
+            var group = isStaple
+                ? new SummaryGroupKey(category, (line.Item?.ItemCd ?? "").Trim(), gram)
+                : new SummaryGroupKey(category, foodTypeCode, "");
 
-            var metaKey = (category, foodTypeCode);
-            if (!metaByCategory.TryGetValue(metaKey, out var meta))
+            // ご飯量を印字する行は食種列に品目名称を印字する。
+            var printsGram = group.Gram.Length > 0;
+
+            noteMap.TryGetValue((custCode, locCode, foodTypeCode), out var note);
+            note ??= "";
+
+            if (!isStaple && !countedByLocation.Add((group, note, custCode, locCode))) continue;
+
+            var key = (group, note);
+            if (!aggregates.TryGetValue(key, out var summaryLine))
             {
-                meta = new SummaryAggregateMeta
+                summaryLine = new PersonalDeliverySummaryLine
                 {
+                    EatingDate = FormatEatingDate(eatingDate),
+                    MealTime = mealTimeNorm,
+                    MealTimeName = BaggingEatingTimeLabel.MapFromAddinfo05(mealTimeNorm),
                     Course = resolvedCourse,
-                    FoodType = ResolveFoodTypeDisplayName(line, foodTypeCode, foodTypeNameMap)
+                    Category = category,
+                    FoodTypeCode = group.GroupCode,
+                    FoodType = printsGram
+                        ? ResolveItemDisplayName(line, foodTypeCode, foodTypeNameMap)
+                        : ResolveFoodTypeDisplayName(line, foodTypeCode, foodTypeNameMap),
+                    GramAmount = group.Gram,
+                    Note = note
                 };
-                metaByCategory[metaKey] = meta;
+                aggregates[key] = summaryLine;
             }
 
-            if (category == PersonalDeliveryHelper.SummaryItemCategory.StapleFood)
-            {
-                var gram = (line.Addinfo?.Addinfo01 ?? "").Trim();
-                if (gram.Length > 0 && string.IsNullOrEmpty(meta.GramAmount))
-                    meta.GramAmount = gram;
-            }
-        }
-
-        // 数量は cstmeat 側で集計する。備考（info17）も集計キーに含め、備考が異なる分は行を分ける。
-        var aggregates =
-            new Dictionary<(PersonalDeliveryHelper.SummaryItemCategory Category, string FoodTypeCode, string Note), PersonalDeliverySummaryLine>();
-
-        foreach (var cm in cstmeatRows)
-        {
-            var custCode = (cm.Info01 ?? "").Trim();
-            var locCode = (cm.Info02 ?? "").Trim();
-            if (custCode.Length == 0 || locCode.Length == 0) continue;
-            if ((cm.Info04 ?? "").Trim() != mealTimeNorm) continue;
-
-            addinfoMap.TryGetValue((custCode, locCode), out var addinfo);
-            info19Map.TryGetValue((custCode, locCode), out var info19);
-            var (resolvedCourse, _) = PersonalDeliveryHelper.ResolveCourseAndOrder(info19, addinfo);
-            if (resolvedCourse != courseNorm) continue;
-
-            var foodTypeCode = (cm.Info05 ?? "").Trim();
-            if (foodTypeCode.Length == 0) continue;
-            if (!TryParseCstmeatQuantity(cm.Info07, out var qty) || qty == 0) continue;
-            if (!categoriesByLocation.TryGetValue((custCode, locCode, foodTypeCode), out var categories)) continue;
-
-            var note = (cm.Info17 ?? "").Trim();
-
-            foreach (var category in categories)
-            {
-                if (!metaByCategory.TryGetValue((category, foodTypeCode), out var meta)) continue;
-
-                var key = (category, foodTypeCode, note);
-                if (!aggregates.TryGetValue(key, out var summaryLine))
-                {
-                    summaryLine = new PersonalDeliverySummaryLine
-                    {
-                        EatingDate = FormatEatingDate(eatingDate),
-                        MealTime = mealTimeNorm,
-                        MealTimeName = BaggingEatingTimeLabel.MapFromAddinfo05(mealTimeNorm),
-                        Course = meta.Course,
-                        Category = category,
-                        FoodTypeCode = foodTypeCode,
-                        FoodType = meta.FoodType,
-                        GramAmount = meta.GramAmount,
-                        Note = note
-                    };
-                    aggregates[key] = summaryLine;
-                }
-
-                summaryLine.TotalQuantity += qty;
-            }
+            summaryLine.TotalQuantity += mealCount;
         }
 
         return aggregates.Values
@@ -318,8 +288,43 @@ public class PersonalDeliveryPdfService
             .ThenBy(l => l.MealTime, StringComparer.Ordinal)
             .ThenBy(l => l.Course, StringComparer.Ordinal)
             .ThenBy(l => l.FoodTypeCode, StringComparer.Ordinal)
+            .ThenBy(l => l.GramAmount, Comparer<string>.Create(PersonalDeliveryHelper.CompareDeliveryOrder))
             .ThenBy(l => l.Note, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>
+    /// 集計の備考。受注明細に相当項目が無いため cstmeat の info17 を納入場所×食種で引く。
+    /// 同一キーに複数行ある場合は最初の非空の備考を採用する。
+    /// </summary>
+    private static Dictionary<(string CustomerCode, string LocationCode, string FoodTypeCode), string> BuildCstmeatNoteMap(
+        IReadOnlyList<Cstmeat> cstmeatRows,
+        string mealTime)
+    {
+        var map = new Dictionary<(string, string, string), string>();
+        foreach (var cm in cstmeatRows)
+        {
+            if ((cm.Info04 ?? "").Trim() != mealTime) continue;
+
+            var custCode = (cm.Info01 ?? "").Trim();
+            var locCode = (cm.Info02 ?? "").Trim();
+            var foodTypeCode = (cm.Info05 ?? "").Trim();
+            if (custCode.Length == 0 || locCode.Length == 0 || foodTypeCode.Length == 0) continue;
+
+            var note = (cm.Info17 ?? "").Trim();
+            var key = (custCode, locCode, foodTypeCode);
+            if (!map.TryGetValue(key, out var existing) || existing.Length == 0)
+                map[key] = note;
+        }
+        return map;
+    }
+
+    /// <summary>食数（salesorderlineaddinfo.addinfo08）を数値化する。未登録・非数値は 0 として扱う。</summary>
+    private static decimal ParseMealCount(string? addinfo08)
+    {
+        var s = (addinfo08 ?? "").Trim();
+        if (s.Length == 0) return 0m;
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m;
     }
 
     private static List<PersonalDeliveryLine> BuildDetailLines(
@@ -563,6 +568,20 @@ public class PersonalDeliveryPdfService
                 StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// ご飯量を印字する行の食種列に表示する品目名称。取得できない場合は食種名にフォールバックする。
+    /// </summary>
+    private static string ResolveItemDisplayName(
+        SalesOrderLine? line,
+        string foodTypeCode,
+        IReadOnlyDictionary<string, string> foodTypeNameMap)
+    {
+        var itemName = (line?.Item?.ItemName ?? "").Trim();
+        if (itemName.Length > 0) return itemName;
+
+        return ResolveFoodTypeDisplayName(line, foodTypeCode, foodTypeNameMap);
+    }
+
     private static string ResolveFoodTypeDisplayName(
         SalesOrderLine? line,
         string foodTypeCode,
@@ -651,14 +670,6 @@ public class PersonalDeliveryPdfService
         return tagValues;
     }
 
-    private static bool TryParseCstmeatQuantity(string? info07, out decimal quantity)
-    {
-        quantity = 0;
-        var s = (info07 ?? "").Trim();
-        return s.Length > 0 &&
-               decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out quantity);
-    }
-
     private static string FormatCustomerName(PersonalDeliveryLine row)
     {
         var code = row.LocationCode ?? "";
@@ -693,13 +704,14 @@ public class PersonalDeliveryPdfService
         public string Remarks { get; set; } = "";
     }
 
-    /// <summary>集計行の受注明細由来の情報（分類×食種で共通。備考別に行を分けても同じ値を使う）。</summary>
-    private sealed class SummaryAggregateMeta
-    {
-        public string Course { get; set; } = "";
-        public string FoodType { get; set; } = "";
-        public string GramAmount { get; set; } = "";
-    }
+    /// <summary>
+    /// 集計行のグループキー。主菜・汁物は GroupCode に食種コード、
+    /// 主食（ご飯）は GroupCode に品目コード・Gram にご飯量を持つ。
+    /// </summary>
+    private readonly record struct SummaryGroupKey(
+        PersonalDeliveryHelper.SummaryItemCategory Category,
+        string GroupCode,
+        string Gram);
 
     private sealed class PersonalDeliverySummaryLine
     {
