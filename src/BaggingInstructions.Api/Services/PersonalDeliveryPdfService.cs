@@ -213,7 +213,7 @@ public class PersonalDeliveryPdfService
         var mealTimeNorm = (mealTime ?? "").Trim();
         var courseNorm = (course ?? "").Trim();
 
-        // 備考（cstmeat info17）は受注明細側に相当項目が無いため、納入場所×食種で引けるようにしておく。
+        // 記事（cstmeat info17）は受注明細側に相当項目が無いため、納入場所×食種で引けるようにしておく。
         var noteMap = BuildCstmeatNoteMap(cstmeatRows, mealTimeNorm);
 
         // 集計は受注明細を基準に行う。食数は salesorderlineaddinfo.addinfo08。
@@ -253,8 +253,11 @@ public class PersonalDeliveryPdfService
             // ご飯量を印字する行は食種列に品目名称を印字する。
             var printsGram = group.Gram.Length > 0;
 
-            noteMap.TryGetValue((custCode, locCode, foodTypeCode), out var note);
-            note ??= "";
+            // 記事（cstmeat info17）は主菜・汁物のみ集計キーに含める。
+            // ご飯（主食）は記事で行を分けないため、記事は付けない。
+            var note = "";
+            if (!isStaple && noteMap.TryGetValue((custCode, locCode, foodTypeCode), out var found))
+                note = found;
 
             if (!isStaple && !countedByLocation.Add((group, note, custCode, locCode))) continue;
 
@@ -294,8 +297,8 @@ public class PersonalDeliveryPdfService
     }
 
     /// <summary>
-    /// 集計の備考。受注明細に相当項目が無いため cstmeat の info17 を納入場所×食種で引く。
-    /// 同一キーに複数行ある場合は最初の非空の備考を採用する。
+    /// 集計の記事。受注明細に相当項目が無いため cstmeat の info17 を納入場所×食種で引く。
+    /// 同一キーに複数行ある場合は最初の非空の記事を採用する。
     /// </summary>
     private static Dictionary<(string CustomerCode, string LocationCode, string FoodTypeCode), string> BuildCstmeatNoteMap(
         IReadOnlyList<Cstmeat> cstmeatRows,
