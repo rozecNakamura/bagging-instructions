@@ -204,24 +204,25 @@ public class PersonalDeliveryPdfService
         var locationCodes = ExtractLocationCodes(cstmeatRows);
         var addinfoMap = await LoadLocationAddinfoMapAsync(customerCodes, locationCodes, ct);
         var info19Map = BuildInfo19Map(cstmeatRows);
-        var activeLocationKeys = cstmeatRows
-            .Select(r => ((r.Info01 ?? "").Trim(), (r.Info02 ?? "").Trim()))
-            .Where(k => k.Item1.Length > 0 && k.Item2.Length > 0)
-            .ToHashSet();
 
         var salesLines = await LoadSalesOrderLinesAsync(date, customerCodes, ct);
         var mealTimeNorm = (mealTime ?? "").Trim();
         var courseNorm = (course ?? "").Trim();
 
         // 記事（cstmeat info17）は受注明細側に相当項目が無いため、納入場所×食種で引けるようにしておく。
+        // このキー集合は「取消されていない喫食予定」の一覧も兼ねる（明細側の判定基準と揃える）。
         var noteMap = BuildCstmeatNoteMap(cstmeatRows, mealTimeNorm);
 
         // 集計は受注明細を基準に行う。食数は salesorderlineaddinfo.addinfo08。
         // 主菜・汁物は食種単位、主食（ご飯）は品目×ご飯量単位で集計する。
         var aggregates = new Dictionary<(SummaryGroupKey Group, string Note), PersonalDeliverySummaryLine>();
 
-        // 主菜・汁物の数量は食種ごとの食数（人数）。同一納入場所に主菜明細が複数あっても
+        // 数量は集計単位ごとの食数（人数）。同一納入場所に同じ集計単位の明細が複数あっても
         // 食数は1回だけ計上する（明細数だけ重複計上しない）。
+        // 主菜・汁物は食種単位、主食（ご飯）は品目×ご飯量単位で1回。
+        // 受注取込が二重実行され同一内容の明細が2セット登録されるケースがあり、
+        // 明細（個人配送指示書）は納入場所ごとに御飯明細を1件だけ採用するため影響を受けないが、
+        // 集計側は合算するため重複排除しないと食数が多く出る。
         var countedByLocation =
             new HashSet<(SummaryGroupKey Group, string Note, string CustomerCode, string LocationCode)>();
 
@@ -230,8 +231,16 @@ public class PersonalDeliveryPdfService
             var custCode = (line.SalesOrder?.CustomerCode ?? "").Trim();
             var locCode = (line.SalesOrder?.CustomerDeliveryLocation?.LocationCode ?? "").Trim();
             if (custCode.Length == 0 || locCode.Length == 0) continue;
-            if (!activeLocationKeys.Contains((custCode, locCode))) continue;
             if ((line.Addinfo?.Addinfo05 ?? "").Trim() != mealTimeNorm) continue;
+
+            var foodTypeCode = (line.Addinfo?.Addinfo02 ?? "").Trim();
+
+            // 取消された喫食予定（cstmeat info22 != '1'）は対象外。cstmeat は
+            // CstmeatDbContext のグローバルクエリフィルタで確定分のみ読み込んでいるため、
+            // 納入場所×喫食時間×食種で cstmeat 側に行が無ければ取消済みとみなす。
+            // 受注側は確定処理が行われないまま残る（status=open）ケースがあり、
+            // 受注ステータスだけでは取消を判定できない。
+            if (!noteMap.TryGetValue((custCode, locCode, foodTypeCode), out var cstmeatNote)) continue;
 
             addinfoMap.TryGetValue((custCode, locCode), out var addinfo);
             info19Map.TryGetValue((custCode, locCode), out var info19);
@@ -241,7 +250,6 @@ public class PersonalDeliveryPdfService
             var mealCount = ParseMealCount(line.Addinfo?.Addinfo08);
             if (mealCount == 0) continue;
 
-            var foodTypeCode = (line.Addinfo?.Addinfo02 ?? "").Trim();
             var category = PersonalDeliveryHelper.ResolveSummaryItemCategory(line.Item?.ItemCd);
             var isStaple = category == PersonalDeliveryHelper.SummaryItemCategory.StapleFood;
             var gram = (line.Addinfo?.Addinfo01 ?? "").Trim();
@@ -255,11 +263,9 @@ public class PersonalDeliveryPdfService
 
             // 記事（cstmeat info17）は主菜・汁物のみ集計キーに含める。
             // ご飯（主食）は記事で行を分けないため、記事は付けない。
-            var note = "";
-            if (!isStaple && noteMap.TryGetValue((custCode, locCode, foodTypeCode), out var found))
-                note = found;
+            var note = isStaple ? "" : cstmeatNote;
 
-            if (!isStaple && !countedByLocation.Add((group, note, custCode, locCode))) continue;
+            if (!countedByLocation.Add((group, note, custCode, locCode))) continue;
 
             var key = (group, note);
             if (!aggregates.TryGetValue(key, out var summaryLine))
@@ -299,6 +305,8 @@ public class PersonalDeliveryPdfService
     /// <summary>
     /// 集計の記事。受注明細に相当項目が無いため cstmeat の info17 を納入場所×食種で引く。
     /// 同一キーに複数行ある場合は最初の非空の記事を採用する。
+    /// cstmeat は確定分（info22='1'）のみ読み込むため、返却されるキー集合は
+    /// 取消されていない喫食予定（納入場所×食種）の一覧としても使う。
     /// </summary>
     private static Dictionary<(string CustomerCode, string LocationCode, string FoodTypeCode), string> BuildCstmeatNoteMap(
         IReadOnlyList<Cstmeat> cstmeatRows,
@@ -381,7 +389,8 @@ public class PersonalDeliveryPdfService
                 RiceType = ResolveRiceTypeName(riceLine, minorClassResolver),
                 RiceAmount = riceLine?.Addinfo?.Addinfo01 ?? "",
                 HasRiceItem = riceLine != null,
-                Remarks = (cm.Info17 ?? "").Trim()
+                // 明細の記事は cstmeat info16。集計は info17 を使うため一致しない。
+                Remarks = (cm.Info16 ?? "").Trim()
             });
         }
 

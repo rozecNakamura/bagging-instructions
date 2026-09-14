@@ -11,8 +11,9 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 検品記録簿用の検索・PDF 行生成サービス。
 /// ordertable（ordertype=PO、suppliercode、itemcode）→ supplier マスタ、item、itemadditionalinformation、unit を用いる。
-/// PDF・検索の数量は単位0換算（<c>qtyuni0</c> 優先、無ければ <c>qtyuniN×item.conversionvalueN</c>、無ければ <c>qty</c> を ia.car1/car2/car3/car0 で換算）。
-/// 規格（PDF）は <c>itemadditionalinformation.std</c>。単位名は <c>unit.unitname</c>（unitcode0）。
+/// PDF・検索の数量はいったん単位0換算（<c>qtyuni0</c> 優先、無ければ <c>qtyuniN×item.conversionvalueN</c>、無ければ <c>qty</c> を ia.car1/car2/car3/car0 で換算）し、
+/// さらに <c>item.purchaseorderunitcode</c>（発注単位）へ換算して表示・印刷する（未設定時は単位0のまま）。
+/// 規格（PDF）は <c>itemadditionalinformation.std</c>。単位名は <c>unit.unitname</c>。
 /// </summary>
 public sealed class InspectionRecordService
 {
@@ -165,11 +166,18 @@ public sealed class InspectionRecordService
                   ot.qtyuni3,
                   i.conversionvalue1,
                   i.conversionvalue2,
-                  i.conversionvalue3
+                  i.conversionvalue3,
+                  i.purchaseorderunitcode,
+                  i.unitcode0,
+                  i.unitcode1,
+                  i.unitcode2,
+                  i.unitcode3,
+                  COALESCE(upo.unitname, '')
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = NULLIF(TRIM(ot.itemcode), '')
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN unit upo ON upo.unitcode = NULLIF(TRIM(i.purchaseorderunitcode), '')
                 LEFT JOIN supplier s ON s.suppliercode = ot.suppliercode
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'PO'
                   AND ot.needdate = @needDate
@@ -215,6 +223,18 @@ public sealed class InspectionRecordService
                 var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
                     qtyRaw, qtyUni0, qtyUni1, qtyUni2, qtyUni3, iaCar1, iaCar2, iaCar3, iaCar0, cv1, cv2, cv3);
 
+                // 発注単位（item.purchaseorderunitcode）へ換算。未設定などのときは単位0のまま。
+                var (qtyPo, unitNamePo) = PurchaseOrderUnitConverter.FromUnit0(
+                    qtyU0,
+                    reader.IsDBNull(20) ? null : reader.GetString(20),
+                    reader.IsDBNull(21) ? null : reader.GetString(21),
+                    reader.IsDBNull(22) ? null : reader.GetString(22),
+                    reader.IsDBNull(23) ? null : reader.GetString(23),
+                    reader.IsDBNull(24) ? null : reader.GetString(24),
+                    cv1, cv2, cv3,
+                    reader.IsDBNull(25) ? "" : reader.GetString(25),
+                    reader.IsDBNull(7) ? "" : reader.GetString(7));
+
                 list.Add(new InspectionRecordSearchSqlRow
                 {
                     OrderTableId = reader.GetInt64(0),
@@ -224,8 +244,8 @@ public sealed class InspectionRecordService
                     NeedDate = reader.IsDBNull(4) ? "" : reader.GetString(4),
                     ItemCode = reader.IsDBNull(5) ? "" : reader.GetString(5),
                     ItemName = reader.IsDBNull(6) ? "" : reader.GetString(6),
-                    UnitName = reader.IsDBNull(7) ? "" : reader.GetString(7),
-                    Qty = qtyU0
+                    UnitName = unitNamePo,
+                    Qty = qtyPo
                 });
             }
 
@@ -272,11 +292,18 @@ public sealed class InspectionRecordService
                   i.conversionvalue3,
                   COALESCE(w.warehousename, '') AS warehouse_name,
                   COALESCE(s.suppliername, '') AS supplier_name,
-                  COALESCE(TRIM(ot.suppliercode), '') AS supplier_code
+                  COALESCE(TRIM(ot.suppliercode), '') AS supplier_code,
+                  i.purchaseorderunitcode,
+                  i.unitcode0,
+                  i.unitcode1,
+                  i.unitcode2,
+                  i.unitcode3,
+                  COALESCE(upo.unitname, '') AS purchase_order_unit_name
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = NULLIF(TRIM(ot.itemcode), '')
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
+                LEFT JOIN unit upo ON upo.unitcode = NULLIF(TRIM(i.purchaseorderunitcode), '')
                 LEFT JOIN warehouses w ON w.warehousecode = i.warehousecode
                 LEFT JOIN supplier s ON s.suppliercode = ot.suppliercode
                 WHERE ot.ordertableid = ANY(@ids)
@@ -317,6 +344,18 @@ public sealed class InspectionRecordService
                 var qtyU0 = CookingInstructionQuantity.ResolveParentQtyInUnit0(
                     qtyRaw, qtyUni0, qtyUni1, qtyUni2, qtyUni3, iaCar1, iaCar2, iaCar3, iaCar0, cv1, cv2, cv3);
 
+                // 発注単位（item.purchaseorderunitcode）へ換算。未設定などのときは単位0のまま。
+                var (qtyPo, unitNamePo) = PurchaseOrderUnitConverter.FromUnit0(
+                    qtyU0,
+                    reader.IsDBNull(22) ? null : reader.GetString(22),
+                    reader.IsDBNull(23) ? null : reader.GetString(23),
+                    reader.IsDBNull(24) ? null : reader.GetString(24),
+                    reader.IsDBNull(25) ? null : reader.GetString(25),
+                    reader.IsDBNull(26) ? null : reader.GetString(26),
+                    cv1, cv2, cv3,
+                    reader.IsDBNull(27) ? "" : reader.GetString(27),
+                    reader.GetString(6));
+
                 list.Add(new InspectionRecordHeaderRow
                 {
                     OrderTableId = reader.GetInt64(0),
@@ -325,8 +364,8 @@ public sealed class InspectionRecordService
                     ItemCode = reader.GetString(3),
                     ItemName = reader.GetString(4),
                     Spec = reader.GetString(5),
-                    UnitName = reader.GetString(6),
-                    Qty = qtyU0,
+                    UnitName = unitNamePo,
+                    Qty = qtyPo,
                     WarehouseName = reader.IsDBNull(19) ? "" : reader.GetString(19),
                     SupplierName = reader.IsDBNull(20) ? "" : reader.GetString(20),
                     SupplierCode = reader.IsDBNull(21) ? "" : reader.GetString(21)

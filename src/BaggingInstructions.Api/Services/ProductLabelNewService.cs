@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -11,7 +11,9 @@ namespace BaggingInstructions.Api.Services;
 
 /// <summary>
 /// 現品票印刷（新）：子品目起点の検索・印刷行生成。
-/// 起点は「ordertype='MO' かつ BOM の childitemcode に存在しない品目（=最上位の完成品）」で、
+/// 起点は「ordertype='MO' かつ、BOM 上の先祖品目に同一納期のオーダーが 1 件も無いオーダー」。
+/// [ROOT-DESCENT] BOM 最上位品目は先祖を持たないため必ず起点になり、最上位品目のオーダーが
+/// その納期に無い場合は、オーダーが存在する階層まで自動的に下りてそこが実質的な最上位になる。
 /// そこから BOM を再帰探索（最大10階層）し、直接の子だけでなく孫以下も 1行=1子品目 として返す。
 /// 便は ordertable に列が無いため productno から解決する（既存の製造指示書と同じ SLOT-CHAIN 方式）。
 /// </summary>
@@ -66,7 +68,67 @@ public sealed class ProductLabelNewService
     /// <summary>roots の前に置く CTE（dedup）と roots 本体の SQL。</summary>
     private sealed record RootsSql(string PreambleCtes, string RootsSelect);
 
-    /// <summary>起点オーダを取り出す非再帰 CTE（roots）の SQL を組み立て、cmd にパラメータを追加する。</summary>
+    /// <summary>
+    /// [ROOT-DESCENT] 起点判定用の CTE 群（ordered_items / ancestors / covered）。
+    /// ordered_items … 指定納期に MO オーダーが存在する品目（工場コード別）。画面の絞り込みは掛けない。
+    /// ancestors     … その品目から BOM を上へ辿った先祖品目（最大 MaxBomDepth 階層）。
+    /// covered       … 先祖品目に同一納期のオーダーがある品目 = 起点にしない品目。
+    /// これにより「最上位品目のオーダーが無ければ 1 階層下りる」を任意階層・枝ごとに実現する。
+    /// 再帰 CTE を含むため、呼び出し側は WITH RECURSIVE で始める必要がある。
+    /// </summary>
+    private static string AncestorCoveredCtesSql()
+    {
+        var facility = BomFacility.SqlResolve("sol2.facilitycode");
+        return $"""
+            ordered_items AS MATERIALIZED (
+              SELECT DISTINCT
+                {facility}        AS facilitycode,
+                TRIM(o3.itemcode) AS itemcode
+              FROM ordertable o3
+              LEFT JOIN salesorderline sol2 ON sol2.salesorderlineid = o3.salesorderlineid
+              WHERE o3.releasedate = @needDate
+                AND TRIM(COALESCE(o3.ordertype, '')) = 'MO'
+                AND COALESCE(TRIM(o3.itemcode), '') <> ''
+            ),
+            ancestors AS (
+              SELECT
+                oi.facilitycode,
+                oi.itemcode             AS base_itemcode,
+                TRIM(b3.parentitemcode) AS anc_itemcode,
+                1                       AS depth
+              FROM ordered_items oi
+              INNER JOIN bom b3 ON TRIM(b3.childitemcode) = oi.itemcode
+                AND TRIM(BOTH FROM COALESCE(b3.facilitycode, '')) = oi.facilitycode
+                AND COALESCE(TRIM(b3.parentitemcode), '') <> ''
+                AND (b3.startdate IS NULL OR b3.startdate <= @needDate)
+                AND (b3.enddate IS NULL OR b3.enddate >= @needDate)
+              UNION ALL
+              SELECT
+                a.facilitycode,
+                a.base_itemcode,
+                TRIM(b3.parentitemcode),
+                a.depth + 1
+              FROM ancestors a
+              INNER JOIN bom b3 ON TRIM(b3.childitemcode) = a.anc_itemcode
+                AND TRIM(BOTH FROM COALESCE(b3.facilitycode, '')) = a.facilitycode
+                AND COALESCE(TRIM(b3.parentitemcode), '') <> ''
+                AND (b3.startdate IS NULL OR b3.startdate <= @needDate)
+                AND (b3.enddate IS NULL OR b3.enddate >= @needDate)
+              WHERE a.depth < {MaxBomDepth}
+                AND a.anc_itemcode <> a.base_itemcode
+            ),
+            covered AS MATERIALIZED (
+              SELECT DISTINCT a.facilitycode, a.base_itemcode
+              FROM ancestors a
+              INNER JOIN ordered_items oi
+                ON oi.facilitycode = a.facilitycode
+               AND oi.itemcode = a.anc_itemcode
+            ),
+
+            """;
+    }
+
+    /// <summary>起点オーダを取り出す roots CTE の SQL を組み立て、cmd にパラメータを追加する。</summary>
     private static RootsSql BuildRootsCteSql(RootFilter f, NpgsqlCommand cmd)
     {
         var byIds = f.OrderTableIds is { Length: > 0 };
@@ -112,14 +174,13 @@ public sealed class ProductLabelNewService
         sql.AppendLine("WHERE ot.releasedate = @needDate");
         cmd.Parameters.AddWithValue("needDate", f.NeedDate!.Value);
         sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
-        // 最上位の完成品のみ（BOM の子側に現れない品目）
+        // [ROOT-DESCENT] 実質的な最上位のみ：BOM 上の先祖品目に同一納期のオーダーが無いもの。
+        // BOM 最上位品目のオーダーが無い納期は、オーダーが存在する階層が起点に昇格する。
         sql.AppendLine($"""
             AND NOT EXISTS (
-              SELECT 1 FROM bom b2
-              WHERE b2.childitemcode = ot.itemcode
-                AND TRIM(BOTH FROM COALESCE(b2.facilitycode, '')) = {facility}
-                AND (b2.startdate IS NULL OR b2.startdate <= @needDate)
-                AND (b2.enddate IS NULL OR b2.enddate >= @needDate)
+              SELECT 1 FROM covered c
+              WHERE c.facilitycode = {facility}
+                AND c.base_itemcode = TRIM(ot.itemcode)
             )
             """);
 
@@ -175,7 +236,7 @@ public sealed class ProductLabelNewService
               GROUP BY 1, 2
             ),
             """;
-        return new RootsSql(dedupCte + "\n", sql.ToString());
+        return new RootsSql(AncestorCoveredCtesSql() + dedupCte + "\n", sql.ToString());
     }
 
     /// <summary>roots から BOM を下へ再帰探索する CTE（bom_tree）の SQL。</summary>
@@ -270,7 +331,7 @@ public sealed class ProductLabelNewService
     };
 
     /// <summary>
-    /// 便マスタ（複数選択プルダウン用）。指定納期の起点オーダ（MO・最上位完成品）に現れる便のみ。
+    /// 便マスタ（複数選択プルダウン用）。指定納期の起点オーダ（MO・実質的な最上位）に現れる便のみ。
     /// </summary>
     public async Task<List<ProductionInstructionSlotOptionDto>> ListSlotsAsync(string needDateYyyymmdd, CancellationToken ct = default)
     {
@@ -286,7 +347,7 @@ public sealed class ProductLabelNewService
             await using var cmd = new NpgsqlCommand("", conn);
             var roots = BuildRootsCteSql(new RootFilter { NeedDate = date.Value }, cmd);
             cmd.CommandText = $"""
-                WITH {roots.PreambleCtes}roots AS (
+                WITH RECURSIVE {roots.PreambleCtes}roots AS (
                 {roots.RootsSelect}
                 )
                 SELECT DISTINCT roots.slotcode, roots.slotname
@@ -315,7 +376,7 @@ public sealed class ProductLabelNewService
     }
 
     /// <summary>
-    /// 現品票印刷（新）：納期の最上位完成品から BOM を再帰探索し、子孫品目を1行として返す。
+    /// 現品票印刷（新）：納期の実質的な最上位オーダから BOM を再帰探索し、子孫品目を1行として返す。
     /// 子品目条件（コード部分一致・大分類・中分類・倉庫）は「表示する子品目そのもの」への絞り込み。
     /// 親品目条件（大分類・品目コード・作業区・倉庫）と便は起点オーダへの絞り込み。
     /// </summary>

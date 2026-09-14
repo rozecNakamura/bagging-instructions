@@ -15,6 +15,7 @@ namespace BaggingInstructions.Api.Services;
 /// 個人配食（300）: ITEMNM=請求区分コード4文字目以降:喫食時間（朝/昼/夕）:info17。
 /// 病院向（310）: 3011/3111/3411品目がある場合は ITEMNM=食種名:ご飯量(addinfo01)、なければ ITEMNM=食種名。
 /// 個人配食（300）: 備考欄に受注明細のご飯品目（3010/3011/3111/3411）の addinfo01 を "{量}g" で印字。
+/// ご飯量は明細の食種（cstmeat.info05 = salesorderlineaddinfo.addinfo02）＋喫食時間で突合し、確定（confirmed）受注を優先する。
 /// </summary>
 public class DeliveryNotePdfService
 {
@@ -85,32 +86,60 @@ public class DeliveryNotePdfService
             .Select(d => d!.Value)
             .ToList();
 
+        // planneddeliverydate は DateOnly? への ValueConverter 付きのため IN（配列パラメータ）に変換できない。
+        // DB 側は喫食日の範囲で絞り込み、厳密な一致はメモリ側で行う（全期間の読み込みは避けられる）。
+        DateOnly? minDate = info03Dates.Count > 0 ? info03Dates.Min() : null;
+        DateOnly? maxDate = info03Dates.Count > 0 ? info03Dates.Max() : null;
+
         var salesOrderIds = new List<long>();
         if (info03Dates.Count > 0)
         {
             var locCodeTrimmed = (locationCode ?? "").Trim();
+            // 喫食日の範囲までは DB 側で絞り込む（全期間の受注読み込みを避ける）
             var candidates = _appDb.SalesOrders
                 .AsNoTracking()
                 .Include(so => so.SalesOrderLines)
                 .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Order)
                 .Where(so =>
                     so.CustomerCode == custCodeTrimmed &&
-                    so.CustomerDeliveryLocationCode == locCodeTrimmed)
+                    so.CustomerDeliveryLocationCode == locCodeTrimmed &&
+                    so.SalesOrderLines.Any(l =>
+                        l.PlannedDeliveryDate >= minDate && l.PlannedDeliveryDate <= maxDate))
                 .ToList();
 
+            // 同一喫食日に予定（open）受注と確定（confirmed）受注が並存し得るため、確定受注を先に並べる
             salesOrderIds = candidates
-                .Where(so => so.SalesOrderLines.Any(l => l.PlannedDeliveryDate.HasValue && info03Dates.Contains(l.PlannedDeliveryDate!.Value)))
-                .Select(so => so.SalesOrderId)
-                .Distinct()
-                .OrderBy(id => id)
+                .Select(so => new
+                {
+                    so.SalesOrderId,
+                    MatchedLines = so.SalesOrderLines
+                        .Where(l => l.PlannedDeliveryDate.HasValue && info03Dates.Contains(l.PlannedDeliveryDate!.Value))
+                        .ToList()
+                })
+                .Where(x => x.MatchedLines.Count > 0)
+                .Select(x => new
+                {
+                    x.SalesOrderId,
+                    HasConfirmed = x.MatchedLines.Any(l =>
+                        string.Equals(l.Status, SalesOrderStatusFilter.StatusConfirmed, StringComparison.OrdinalIgnoreCase))
+                })
+                .GroupBy(x => x.SalesOrderId)
+                .Select(g => new { SalesOrderId = g.Key, HasConfirmed = g.Any(x => x.HasConfirmed) })
+                .OrderByDescending(x => x.HasConfirmed)
+                .ThenBy(x => x.SalesOrderId)
+                .Select(x => x.SalesOrderId)
                 .ToList();
         }
 
-        // 個人配食(300): 喫食時間(addinfo05)→ご飯量(addinfo01) のマップを構築
+        // 個人配食(300): (食種(addinfo02), 喫食時間(addinfo05)) → ご飯量(addinfo01) のマップを構築。
+        // 同一喫食日に予定（食種違い）と確定が並存し得るため、明細の食種（cstmeat.info05）で突合できるようにする。
+        // 食種で引けない場合に備え、喫食時間のみのマップも用意する（確定優先の順序で先勝ち）。
+        var riceAmountByShokushuAndMealTime = new Dictionary<(string, string), string>(new KeyComparer());
         var riceAmountByMealTime = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (customerType == "personal" && info03Dates.Count > 0)
         {
             var locCode = (locationCode ?? "").Trim();
+            // 喫食日の範囲までは DB 側で絞り込む（全期間の受注明細読み込みを避ける）
             var riceLines = _appDb.SalesOrderLines
                 .AsNoTracking()
                 .Include(l => l.SalesOrder)
@@ -120,17 +149,26 @@ public class DeliveryNotePdfService
                 .Where(l =>
                     l.SalesOrder != null &&
                     l.SalesOrder.CustomerCode == custCodeTrimmed &&
-                    l.SalesOrder.CustomerDeliveryLocationCode == locCode)
+                    l.SalesOrder.CustomerDeliveryLocationCode == locCode &&
+                    l.PlannedDeliveryDate >= minDate && l.PlannedDeliveryDate <= maxDate)
                 .ToList()
                 .Where(l => l.PlannedDeliveryDate.HasValue && info03Dates.Contains(l.PlannedDeliveryDate!.Value))
+                // 確定（confirmed）を優先し、同条件では受注明細IDの新しい順。DBの返却順に依存させない。
+                .OrderByDescending(l => string.Equals(l.Status, SalesOrderStatusFilter.StatusConfirmed, StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(l => l.SalesOrderLineId)
                 .ToList();
 
             foreach (var line in riceLines)
             {
                 if (!PersonalDeliveryHelper.IsRiceItemCode(line.Item?.ItemCd)) continue;
                 var mealTime = (line.Addinfo?.Addinfo05 ?? "").Trim();
+                var shokushu = (line.Addinfo?.Addinfo02 ?? "").Trim();
                 var amount = (line.Addinfo?.Addinfo01 ?? "").Trim();
-                if (mealTime.Length > 0 && amount.Length > 0 && !riceAmountByMealTime.ContainsKey(mealTime))
+                if (mealTime.Length == 0 || amount.Length == 0) continue;
+
+                if (shokushu.Length > 0 && !riceAmountByShokushuAndMealTime.ContainsKey((shokushu, mealTime)))
+                    riceAmountByShokushuAndMealTime[(shokushu, mealTime)] = amount;
+                if (!riceAmountByMealTime.ContainsKey(mealTime))
                     riceAmountByMealTime[mealTime] = amount;
             }
         }
@@ -217,8 +255,17 @@ public class DeliveryNotePdfService
                     customerType, info05, info04, foodtypename, eattimename,
                     tankaCdName, info17, info06, seikyuKubunByCd);
 
-                var note = customerType == "personal" && riceAmountByMealTime.TryGetValue(info04, out var riceAmt)
-                    ? $"{riceAmt}g" : "";
+                // 備考（ご飯量）は明細の食種（info05）＋喫食時間（info04）で引く。
+                // 食種で引けない場合のみ、喫食時間のみのマップ（確定優先）にフォールバックする。
+                var note = "";
+                if (customerType == "personal")
+                {
+                    var shokushuKey = info05.Trim();
+                    var mealTimeKey = info04.Trim();
+                    if (riceAmountByShokushuAndMealTime.TryGetValue((shokushuKey, mealTimeKey), out var riceAmt) ||
+                        riceAmountByMealTime.TryGetValue(mealTimeKey, out riceAmt))
+                        note = $"{riceAmt}g";
+                }
 
                 return new
                 {
