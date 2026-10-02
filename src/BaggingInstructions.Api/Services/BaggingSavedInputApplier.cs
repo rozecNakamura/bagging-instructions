@@ -32,6 +32,44 @@ file static class BaggingInputLineLookup
 /// <summary>登録済み投入量に基づき、右上表示用の全体量と納品先按分を適用する。</summary>
 public static class BaggingSavedInputApplier
 {
+    /// <summary>按分値の丸め桁数。baggedquantity の numeric(18,6) に合わせる。</summary>
+    private const int AllocationScale = 6;
+
+    /// <summary>
+    /// <paramref name="total"/> を受注数量比で施設に按分する。
+    /// decimal 除算は 28 桁で丸められるため <c>total × (受注 ÷ 受注合計)</c> をそのまま使うと
+    /// 割り切れる施設でも 699.99999999999999999999999999 のような値になり、
+    /// <see cref="Math.Floor(decimal)"/>（丸めた商）と <c>%</c>（丸めない剰余）が食い違う。
+    /// 各要素を <see cref="AllocationScale"/> 桁に丸め、残差は最終要素へ寄せて
+    /// Σ(戻り値) == <paramref name="total"/> を保証する。
+    /// </summary>
+    public static List<decimal> AllocateByOrderShare(decimal total, IReadOnlyList<decimal> orderQuantities)
+    {
+        var n = orderQuantities.Count;
+        var result = new List<decimal>(n);
+        if (n == 0) return result;
+
+        var totalOrder = orderQuantities.Sum();
+        if (totalOrder <= 0)
+        {
+            for (var i = 0; i < n; i++)
+                result.Add(0m);
+            return result;
+        }
+
+        var assigned = 0m;
+        for (var i = 0; i < n - 1; i++)
+        {
+            var v = Math.Round(total * orderQuantities[i] / totalOrder, AllocationScale, MidpointRounding.AwayFromZero);
+            result.Add(v);
+            assigned += v;
+        }
+
+        // 残差は最終要素へ。total が numeric(18,6) の範囲なら Σ(戻り値) == total が厳密に成立する。
+        result.Add(Math.Round(total - assigned, AllocationScale, MidpointRounding.AwayFromZero));
+        return result;
+    }
+
     public static List<BaggingIngredientRowDto> BuildIngredientDisplayRows(
         IReadOnlyList<MbomDetailDto> mboms,
         IReadOnlyList<decimal> globalTotals,
@@ -84,8 +122,15 @@ public static class BaggingSavedInputApplier
                                    && totalOrder > 0
                                    && mboms.Count > 0;
 
-        foreach (var item in items)
+        // 子品目ごとの施設按分。残差を最終施設へ寄せ、Σ(施設按分) == globalTotals[j] を保証する。
+        var orderQuantities = items.Select(i => i.PlannedQuantity).ToList();
+        var childAllocations = globalTotalsForSeasoning is { Count: > 0 }
+            ? globalTotalsForSeasoning.Select(t => AllocateByOrderShare(t, orderQuantities)).ToList()
+            : new List<List<decimal>>();
+
+        for (var i = 0; i < items.Count; i++)
         {
+            var item = items[i];
             var (standardCount, irregularCount, seasoningList) = RoundingService.RoundUpQuantityWithSeasoning(
                 item.PlannedQuantity, divisor, seasoningBoms, item.Item);
             item.AdjustedQuantity = standardCount + irregularCount;
@@ -95,7 +140,6 @@ public static class BaggingSavedInputApplier
 
             if (useGKgIngredientPath)
             {
-                var share = item.PlannedQuantity / totalOrder;
                 var proportional = new List<SeasoningAmountDto>();
                 var n = Math.Min(mboms.Count, globalTotalsForSeasoning!.Count);
                 for (var j = 0; j < n; j++)
@@ -106,7 +150,7 @@ public static class BaggingSavedInputApplier
                         Citemcd = m.Citemcd ?? "",
                         Amu = m.Amu ?? 0,
                         Otp = m.Otp ?? 0,
-                        CalculatedAmount = globalTotalsForSeasoning[j] * share,
+                        CalculatedAmount = childAllocations[j][i],
                         ChildItem = m.ChildItem
                     });
                 }
@@ -128,13 +172,12 @@ public static class BaggingSavedInputApplier
                 continue;
             }
 
-            var share2 = item.PlannedQuantity / totalOrder;
             var proportional2 = new List<SeasoningAmountDto>();
             var n2 = Math.Min(seasoningBoms.Count, globalTotalsForSeasoning!.Count);
             for (var j = 0; j < n2; j++)
             {
                 var row = seasoningBoms[j];
-                var amt = globalTotalsForSeasoning[j] * share2;
+                var amt = childAllocations[j][i];
                 var dto = new SeasoningAmountDto
                 {
                     Citemcd = row.ChildItemCd ?? "",
@@ -184,15 +227,22 @@ public static class BaggingSavedInputApplier
             && globalTotalsForSeasoning is { Count: > 0 }
             && totalOrder > 0;
 
-        foreach (var item in items)
+        // 残差を最終施設に寄せた按分。Σ(袋数 × 規格数量 + 端数) == 総数量 を保証する。
+        var allocated = useDirectChildAllocation
+            ? AllocateByOrderShare(globalTotalsForSeasoning!.Sum(), items.Select(i => i.PlannedQuantity).ToList())
+            : null;
+
+        for (var i = 0; i < items.Count; i++)
         {
+            var item = items[i];
             if (useDirectChildAllocation)
             {
                 // 按分量を規格数量で割り、余りをそのまま端数とする（切り上げなし→合計Aと一致）
-                var share = totalOrder > 0 ? item.PlannedQuantity / totalOrder : 0m;
-                var baseQty = globalTotalsForSeasoning!.Sum() * share;
+                var baseQty = allocated![i];
                 var standardBags = (int)Math.Floor(baseQty / specQty);
-                var rem = baseQty % specQty;
+                // 剰余は Floor と同じ基準で求める。baseQty % specQty は除算の丸めとずれて
+                // 「N袋なのに端数が規格1袋分ある」矛盾した値になり得る。
+                var rem = baseQty - standardBags * specQty;
                 const decimal eps = 0.0000000001m;
                 var irregularQuantity = rem > eps ? rem : 0m;
                 item.StandardBags = standardBags;

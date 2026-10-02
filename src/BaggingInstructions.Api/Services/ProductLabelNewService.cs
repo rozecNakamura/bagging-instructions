@@ -15,7 +15,7 @@ namespace BaggingInstructions.Api.Services;
 /// [ROOT-DESCENT] BOM 最上位品目は先祖を持たないため必ず起点になり、最上位品目のオーダーが
 /// その納期に無い場合は、オーダーが存在する階層まで自動的に下りてそこが実質的な最上位になる。
 /// そこから BOM を再帰探索（最大10階層）し、直接の子だけでなく孫以下も 1行=1子品目 として返す。
-/// 便は ordertable に列が無いため productno から解決する（既存の製造指示書と同じ SLOT-CHAIN 方式）。
+/// 便は ordertable に列が無いため自オーダーの productno から解決する（親は遡らず、MRP品は便なし）。
 /// </summary>
 public sealed class ProductLabelNewService
 {
@@ -35,17 +35,12 @@ public sealed class ProductLabelNewService
         + $"THEN SPLIT_PART({alias}.productno, '|', 3) ELSE SPLIT_PART({alias}.productno, '|', 2) END, '')), '')";
 
     /// <summary>
-    /// 便の解決（CROSS JOIN LATERAL）。自オーダーが製番品ならその便。
-    /// [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno 非空）のときのみ。
+    /// 便の解決（CROSS JOIN LATERAL）。自オーダーの productno のみで判定し、MRP品（productno 空）は便なし。
     /// </summary>
     private static string SlotLateralSql() => $"""
         CROSS JOIN LATERAL (
           SELECT COALESCE(
             {SlotFromProductNo("ot")},
-            CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> ''
-                 THEN {SlotFromProductNo("parent_ot")} END,
-            CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> '' AND COALESCE(TRIM(gp_ot.productno), '') <> ''
-                 THEN {SlotFromProductNo("gp_ot")} END,
             ''
           ) AS slotcode
         ) sc
@@ -155,8 +150,6 @@ public sealed class ProductLabelNewService
               w.workcentercode = TRIM(BOTH FROM ot.workcentercode)
               OR w.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
             )
-            LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-            LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
             {SlotLateralSql()}
             LEFT JOIN deliveryslot ds ON ds.slotcode = sc.slotcode
             """);

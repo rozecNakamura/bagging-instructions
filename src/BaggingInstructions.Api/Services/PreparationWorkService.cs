@@ -97,20 +97,10 @@ SELECT
   COALESCE(NULLIF(TRIM(ds.slotname), ''), NULLIF(sc.slotcode, ''), '') AS ""Name""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-LEFT JOIN ordertable gp_ot     ON gp_ot.ordertableid     = parent_ot.parentordertableid
 CROSS JOIN LATERAL (
   SELECT COALESCE(
     -- 自オーダーが製番品ならその便
     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-    -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
-    -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら製造便なし（''）として扱う。
-    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> ''
-         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), '')
-    END,
-    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> '' AND COALESCE(TRIM(gp_ot.productno), '') <> ''
-         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), '')
-    END,
     ''
   ) AS slotcode
 ) sc
@@ -201,7 +191,6 @@ SELECT
   COUNT(*)::int AS ""LineCount""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
 LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclassificationcode
@@ -209,7 +198,7 @@ LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclass
 WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
   AND ({mfgRoutes.Length} = 0 OR
-        TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')) = ANY ({mfgRoutes})
+        TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')) = ANY ({mfgRoutes})
       )
   AND ({wcIds.Length} = 0 OR (
         EXISTS (
@@ -301,7 +290,6 @@ ORDER BY ""MajorCode"", ""MiddleCode""
 SELECT ot.ordertableid AS ""Ordertableid""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
 LEFT JOIN majorclassification mc ON mc.majorclassificationcode = i.majorclassificationcode
 LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorclassificationcode
@@ -312,7 +300,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}
   AND ({mfgRoutes.Length} = 0 OR
-        TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')) = ANY ({mfgRoutes})
+        TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')) = ANY ({mfgRoutes})
       )
   AND ({wcIds.Length} = 0 OR (
         EXISTS (
@@ -365,7 +353,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
 
         // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
         // 製番区分（productno の有無）をキーに含めるのは、製番品（袋品）とMRP品の合算を防ぐため。
-        // MRP品の製造便は親からの継承値であり、製番品の便と一致しても同一オーダー群とは言えない。
+        // MRP品は便なし（親を遡らない）だが、productno の便欄が空の製番品と混ざらないよう区分も持つ。
         var groups = headers
             .GroupBy(BuildAggregationKey)
             .ToList();
@@ -446,7 +434,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
 
         // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
         // 製番区分（productno の有無）をキーに含めるのは、製番品（袋品）とMRP品の合算を防ぐため。
-        // MRP品の製造便は親からの継承値であり、製番品の便と一致しても同一オーダー群とは言えない。
+        // MRP品は便なし（親を遡らない）だが、productno の便欄が空の製番品と混ざらないよう区分も持つ。
         var groups = headers
             .GroupBy(BuildAggregationKey)
             .ToList();
@@ -534,7 +522,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
 
     /// <summary>
     /// 数量合算の単位（製造便コード・親品目コード・製番区分）。
-    /// 製番区分を含めないと、親から便を継承したMRP品が同一便の製番品と合算される。
+    /// MRP品は便なしになるため通常は便で分かれるが、製番品とMRP品の合算を確実に防ぐため区分も含める。
     /// </summary>
     internal static (string ManufacturingRouteCode, string ParentItemcode, bool HasProductNo) BuildAggregationKey(
         PreparationLineHeaderRow header)
@@ -650,8 +638,6 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                   OR wc_ord.workcenterid::text = TRIM(BOTH FROM ot.workcentercode)
                 )
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                LEFT JOIN ordertable parent_ot ON parent_ot.ordertableid = ot.parentordertableid
-                LEFT JOIN ordertable gp_ot ON gp_ot.ordertableid = parent_ot.parentordertableid
                 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                 LEFT JOIN minorclassification mn ON mn.majorclassificationcode = i.majorclassificationcode
                   AND mn.middleclassificationcode = i.middleclassificationcode
@@ -662,14 +648,6 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                   SELECT COALESCE(
                     -- 自オーダーが製番品ならその便
                     NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-                    -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
-                    -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら製造便なし（''）として扱う。
-                    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> ''
-                         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(parent_ot.productno, '|')) >= 5 THEN SPLIT_PART(parent_ot.productno, '|', 3) ELSE SPLIT_PART(parent_ot.productno, '|', 2) END, '')), '')
-                    END,
-                    CASE WHEN COALESCE(TRIM(parent_ot.productno), '') <> '' AND COALESCE(TRIM(gp_ot.productno), '') <> ''
-                         THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp_ot.productno, '|')) >= 5 THEN SPLIT_PART(gp_ot.productno, '|', 3) ELSE SPLIT_PART(gp_ot.productno, '|', 2) END, '')), '')
-                    END,
                     ''
                   ) AS slotcode
                 ) sc

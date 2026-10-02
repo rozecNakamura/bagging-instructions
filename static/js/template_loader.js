@@ -420,10 +420,15 @@ function injectTableData(container, data) {
         let irregular = item.irregular_quantity != null ? Number(item.irregular_quantity) || 0
                       : specQty > 0 ? rawQty % specQty
                       : 0;
-        // 浮動小数点誤差で irregular >= specQty になる場合の安全策
+        // 端数が規格数量以上になるのは API 側の按分が壊れているとき。
+        // ここで袋を足すと API の袋数と二重補正になり袋数が増えるため、警告のみで値は触らない。
         if (specQty > 0 && irregular >= specQty) {
-            stdBags += Math.floor(irregular / specQty);
-            irregular = irregular % specQty;
+            console.warn('[袋詰指示書] 端数が規格数量以上です（API の按分要確認）:', {
+                facility: item.facility_name || item.shpctrnm || '',
+                specQty,
+                standardBags: stdBags,
+                irregular
+            });
         }
         // g/kg モード：有効配分量（stdBags × specQty + 端数）に対する端数の比率
         const effectiveQty = specQty > 0 ? (stdBags * specQty + irregular) : rawQty;
@@ -627,9 +632,14 @@ function injectIngredientsTableData(container, data, correctedTotals = null) {
         let irregular = item.irregular_quantity != null ? Number(item.irregular_quantity) || 0
                       : specQtyTop > 0 ? (Number(item.planned_quantity) || 0) % specQtyTop
                       : 0;
+        // 下テーブルと同様、二重補正になるため値は触らず警告のみ。
         if (specQtyTop > 0 && irregular >= specQtyTop) {
-            stdBags += Math.floor(irregular / specQtyTop);
-            irregular = irregular % specQtyTop;
+            console.warn('[袋詰指示書] 端数が規格数量以上です（API の按分要確認）:', {
+                facility: item.shpctrnm || '',
+                specQty: specQtyTop,
+                standardBags: stdBags,
+                irregular
+            });
         }
         computedTotalStdBags += stdBags;
         if (irregular > 0) computedIrregularBagCount += 1;

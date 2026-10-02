@@ -53,28 +53,10 @@ WITH mfg AS (
     COALESCE(
       -- 自オーダーが製番品ならその便
       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-      -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
-      -- 自オーダーにproductnoが無い＝MRP品で、親もproductno空なら祖父は見ない（無関係な先祖の便を拾わない）。
-      CASE WHEN COALESCE(TRIM(p.productno), '') <> ''
-           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), '')
-      END,
-      CASE WHEN COALESCE(TRIM(p.productno), '') <> '' AND COALESCE(TRIM(gp.productno), '') <> ''
-           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), '')
-      END,
-      -- 先祖から取れない場合、同じ親を持つ兄弟受注の製造便を継承（切込予定表のみの仕様）
-      NULLIF((
-        SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
-        FROM ordertable s
-        WHERE ot.parentordertableid IS NOT NULL
-          AND s.parentordertableid = ot.parentordertableid
-          AND TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')) <> ''
-      ), ''),
       ''
     ) AS route_code
   FROM ordertable ot
   LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-  LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
-  LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
   -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
   WHERE (
     COALESCE(TRIM(ot.productno), '') = ''
@@ -155,28 +137,11 @@ ORDER BY ""Delvedt"", ""MfgRouteCode""
 SELECT DISTINCT ot.ordertableid AS ""Ordertableid""
 FROM ordertable ot
 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
-LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
 WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(
         -- 自オーダーが製番品ならその便
         NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-        -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
-        CASE WHEN COALESCE(TRIM(p.productno), '') <> ''
-             THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), '')
-        END,
-        CASE WHEN COALESCE(TRIM(p.productno), '') <> '' AND COALESCE(TRIM(gp.productno), '') <> ''
-             THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), '')
-        END,
-        -- 先祖から取れない場合、同じ親を持つ兄弟受注の製造便を継承（切込予定表のみの仕様）
-        NULLIF((
-          SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
-          FROM ordertable s
-          WHERE ot.parentordertableid IS NOT NULL
-            AND s.parentordertableid = ot.parentordertableid
-            AND TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')) <> ''
-        ), ''),
         ''
       ) = {routeCode}
   AND ({wcIds.Length} = 0 OR EXISTS (
@@ -394,21 +359,6 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     COALESCE(
                       -- 自オーダーが製番品ならその便
                       NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')), ''),
-                      -- [SLOT-CHAIN] 親を遡るのは親自身が製番品（productno非空）のときのみ。
-                      CASE WHEN COALESCE(TRIM(p.productno), '') <> ''
-                           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(p.productno, '|')) >= 5 THEN SPLIT_PART(p.productno, '|', 3) ELSE SPLIT_PART(p.productno, '|', 2) END, '')), '')
-                      END,
-                      CASE WHEN COALESCE(TRIM(p.productno), '') <> '' AND COALESCE(TRIM(gp.productno), '') <> ''
-                           THEN NULLIF(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(gp.productno, '|')) >= 5 THEN SPLIT_PART(gp.productno, '|', 3) ELSE SPLIT_PART(gp.productno, '|', 2) END, '')), '')
-                      END,
-                      -- 先祖から取れない場合、同じ親を持つ兄弟受注の製造便を継承（切込予定表のみの仕様）
-                      NULLIF((
-                        SELECT MIN(TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')))
-                        FROM ordertable s
-                        WHERE ot.parentordertableid IS NOT NULL
-                          AND s.parentordertableid = ot.parentordertableid
-                          AND TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(s.productno, '|')) >= 5 THEN SPLIT_PART(s.productno, '|', 3) ELSE SPLIT_PART(s.productno, '|', 2) END, '')) <> ''
-                      ), ''),
                       ''
                     ) AS route_code,
                     COALESCE(sol.planneddeliverydate, ot.releasedate) AS planned_delivery,
@@ -418,8 +368,6 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     COALESCE(sol.facilitycode, '') AS facility_code
                   FROM ordertable ot
                   LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
-                  LEFT JOIN ordertable p  ON p.ordertableid  = ot.parentordertableid
-                  LEFT JOIN ordertable gp ON gp.ordertableid = p.parentordertableid
                   INNER JOIN item parent_i ON TRIM(BOTH FROM parent_i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
                   LEFT JOIN item sol_i ON TRIM(sol_i.itemcode) = TRIM(COALESCE(NULLIF(TRIM(sol.itemcode), ''), ''))
                   LEFT JOIN middleclassification mid ON mid.majorclassificationcode = parent_i.majorclassificationcode
