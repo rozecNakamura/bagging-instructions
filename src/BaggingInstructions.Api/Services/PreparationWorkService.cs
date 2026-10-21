@@ -704,7 +704,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
         }
     }
 
-    private async Task<List<PreparationBomSqlRow>> FetchBomsForParentAsync(string parentItemcode, DateOnly asOf, string facilityCode, CancellationToken ct)
+    internal async Task<List<PreparationBomSqlRow>> FetchBomsForParentAsync(string parentItemcode, DateOnly asOf, string facilityCode, CancellationToken ct)
     {
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
         var shouldClose = conn.State != ConnectionState.Open;
@@ -773,7 +773,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
         }
     }
 
-    private static DateOnly? ParseYyyymmdd(string? s)
+    internal static DateOnly? ParseYyyymmdd(string? s)
     {
         if (string.IsNullOrEmpty(s) || s.Length != 8) return null;
         if (int.TryParse(s.AsSpan(0, 4), out var y) && int.TryParse(s.AsSpan(4, 2), out var m) && int.TryParse(s.AsSpan(6, 2), out var d))

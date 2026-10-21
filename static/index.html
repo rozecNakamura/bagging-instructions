@@ -96,6 +96,7 @@
                 <li><button type="button" class="menu-btn" data-screen="aggregate-summary">集計表</button></li>
                 <li><button type="button" class="menu-btn" data-screen="cut-preparation">カット前準備書・現品ラベル</button></li>
                 <li><button type="button" class="menu-btn" data-screen="preparation-work">作業前準備書</button></li>
+                <li><button type="button" class="menu-btn" data-screen="planning-preparation-work">作業前準備書（計画オーダー）</button></li>
                 <li><button type="button" class="menu-btn" data-screen="cooking-instruction">調理指示書</button></li>
                 <li><button type="button" class="menu-btn" data-screen="production-instruction">調味液配合表仕様</button></li>
                 <li><button type="button" class="menu-btn" data-screen="production-instruction-hoikolo">生産指示書_ホイコーロー</button></li>
@@ -1589,6 +1590,107 @@
                 </div>
             </div>
 
+            <!-- 作業前準備書（計画オーダー）画面 -->
+            <div id="screen-planning-preparation-work" class="screen">
+                <div class="container">
+                    <header>
+                        <h1>作業前準備書（計画オーダー）</h1>
+                    </header>
+                    <section class="search-section">
+                        <h2>検索条件</h2>
+                        <div class="search-form">
+                            <div class="form-group">
+                                <label for="planPrepNeedDate">納期<span class="field-required-mark" aria-label="必須">*</span>:</label>
+                                <input type="date" id="planPrepNeedDate" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label>作業区:</label>
+                                <div class="multi-select-dropdown" id="planPrepWorkcenterDropdown">
+                                    <div class="multi-select-display" id="planPrepWorkcenterDisplay">
+                                        <span id="planPrepWorkcenterSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="planPrepWorkcenterOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>倉庫:</label>
+                                <div class="multi-select-dropdown" id="planPrepWarehouseDropdown">
+                                    <div class="multi-select-display" id="planPrepWarehouseDisplay">
+                                        <span id="planPrepWarehouseSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="planPrepWarehouseOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>製造便:</label>
+                                <div class="multi-select-dropdown" id="planPrepManufacturingRouteDropdown">
+                                    <div class="multi-select-display" id="planPrepManufacturingRouteDisplay">
+                                        <span id="planPrepManufacturingRouteSelectedLabel" class="multi-select-summary">納期を選択してください</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="planPrepManufacturingRouteOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="planPrepItemCode">品目コード:</label>
+                                <input type="text" id="planPrepItemCode" placeholder="品目コードを入力">
+                            </div>
+                            <div class="form-group">
+                                <label>大分類:</label>
+                                <div class="multi-select-dropdown" id="planPrepMajorDropdown">
+                                    <div class="multi-select-display" id="planPrepMajorDisplay">
+                                        <span id="planPrepMajorSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="planPrepMajorOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>中分類:</label>
+                                <div class="multi-select-dropdown" id="planPrepMiddleDropdown">
+                                    <div class="multi-select-display" id="planPrepMiddleDisplay">
+                                        <span id="planPrepMiddleSelectedLabel" class="multi-select-summary">未選択</span>
+                                        <span class="multi-select-caret">▼</span>
+                                    </div>
+                                    <div id="planPrepMiddleOptions" class="multi-select-panel" style="display:none;"></div>
+                                </div>
+                            </div>
+                            <button type="button" id="planPrepSearchBtn" class="btn btn-primary">検索</button>
+                            <div id="planPrepOutputSection" class="search-form-inline-actions print-section" style="display: none;">
+                                <button type="button" id="planPrepCsvBtn" class="btn btn-primary">データ出力（CSV）</button>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="results-section" id="planPrepResultsSection" style="display: none;">
+                        <h2>検索結果</h2>
+                        <div class="results-header">
+                            <span id="planPrepResultCount">0件</span>
+                            <div class="checkbox-controls">
+                                <button type="button" id="planPrepSelectAllBtn" class="btn btn-secondary">全選択</button>
+                                <button type="button" id="planPrepDeselectAllBtn" class="btn btn-secondary">全解除</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="planPrepResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="planPrepHeaderCheckbox"></th>
+                                        <th>日付</th>
+                                        <th>大分類</th>
+                                        <th>中分類</th>
+                                        <th>件数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="planPrepResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
             <!-- 商奉行出力画面 -->
             <div id="screen-akinaibugyou" class="screen">
                 <div class="container">
@@ -1674,6 +1776,7 @@
     <script type="module" src="js/cut_preparation_search.js"></script>
     <script type="module" src="js/preparation_work_search.js"></script>
     <script type="module" src="js/preparation_work_print.js"></script>
+    <script type="module" src="js/planning_preparation_work_search.js"></script>
     <script type="module" src="js/cooking_instruction_search.js"></script>
     <script type="module" src="js/cooking_instruction_print.js"></script>
         <script type="module" src="js/production_instruction_search.js"></script>

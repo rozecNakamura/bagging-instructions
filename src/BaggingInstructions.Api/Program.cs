@@ -66,6 +66,7 @@ builder.Services.AddScoped<BaggingLabelPdfService>();
 builder.Services.AddScoped<JuicePdfService>();
 builder.Services.AddScoped<PreparationWorkService>();
 builder.Services.AddScoped<PreparationWorkPdfService>();
+builder.Services.AddScoped<PlanningPreparationWorkService>();
 builder.Services.AddScoped<CutPreparationService>();
 builder.Services.AddScoped<CutPreparationPdfService>();
 builder.Services.AddScoped<CutPreparationExcelService>();
