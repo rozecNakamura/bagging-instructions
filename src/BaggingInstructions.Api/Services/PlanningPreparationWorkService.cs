@@ -202,28 +202,29 @@ public class PlanningPreparationWorkService
             filterRequest.WarehouseIds ?? new List<long>(),
             ct);
 
-        var all = new HashSet<long>();
-        foreach (var key in groupKeys)
-        {
-            var parameters = filter.ToParameters().ToList();
-            parameters.Add(new NpgsqlParameter("keyDelvedt", NpgsqlDbType.Text) { Value = key.Delvedt ?? "" });
-            parameters.Add(new NpgsqlParameter("keyMajor", NpgsqlDbType.Text) { Value = key.MajorClassificationCode ?? "" });
-            parameters.Add(new NpgsqlParameter("keyMiddle", NpgsqlDbType.Text) { Value = key.MiddleClassificationCode ?? "" });
+        // 選択グループごとに検索すると最新MRP実行の集計をグループ数だけくり返すため、検索と同じ条件で1回だけ取得し、
+        // グループの絞り込みは C# で行う（SQL でグループキーの IN を足すと実行計画が悪くなり本番データで約13秒かかった）
+        var keys = groupKeys
+            .Select(k => (k.Delvedt ?? "", k.MajorClassificationCode ?? "", k.MiddleClassificationCode ?? ""))
+            .ToHashSet();
 
-            var ids = await _db.Database
-                .SqlQueryRaw<PlanningPreparationWorkIdSqlRow>($"""
-                    SELECT po.planningorderid AS "Planningorderid"
-                    {FilterFromWhereSql}
-                      AND TO_CHAR(COALESCE(po.releasedate, po.needdate), 'YYYYMMDD') = @keyDelvedt
-                      AND COALESCE(mc.majorclassificationcode, '') = @keyMajor
-                      AND COALESCE(mid.middleclassificationcode, '') = @keyMiddle
-                    """, parameters.ToArray())
-                .ToListAsync(ct);
-            foreach (var row in ids)
-                all.Add(row.Planningorderid);
-        }
+        var rows = await _db.Database
+            .SqlQueryRaw<PlanningPreparationWorkIdSqlRow>($"""
+                SELECT
+                  po.planningorderid AS "Planningorderid",
+                  TO_CHAR(COALESCE(po.releasedate, po.needdate), 'YYYYMMDD') AS "Delvedt",
+                  COALESCE(mc.majorclassificationcode, '') AS "MajorCode",
+                  COALESCE(mid.middleclassificationcode, '') AS "MiddleCode"
+                {FilterFromWhereSql}
+                """, filter.ToParameters())
+            .ToListAsync(ct);
 
-        return all.OrderBy(x => x).ToList();
+        return rows
+            .Where(r => keys.Contains((r.Delvedt, r.MajorCode, r.MiddleCode)))
+            .Select(r => r.Planningorderid)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
     }
 
     public async Task<List<PlanningPreparationCsvRow>> BuildCsvRowsAsync(IReadOnlyList<long> planningOrderIds, CancellationToken ct = default)
@@ -235,6 +236,11 @@ public class PlanningPreparationWorkService
         var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
         var finalProductCache = new Dictionary<(string ParentItemcode, string ProductNo, string FacilityCode), PlanningFinalProductInfo>();
 
+        // 最終製品の候補となる計画オーダー（同じ productno）を、全 productno 分まとめて1回で取得する
+        var productNoOrders = await FetchValidOrdersByProductNoAsync(
+            headers.Select(h => h.ProductNo?.Trim() ?? "").Where(p => p.Length > 0).Distinct(StringComparer.Ordinal).ToArray(),
+            ct);
+
         // 計画オーダーごとに最終製品（productno で特定）を求める
         var resolved = new List<(PlanningOrderHeaderRow Header, string Facility, PlanningFinalProductInfo Final)>();
         foreach (var h in headers)
@@ -245,7 +251,7 @@ public class PlanningPreparationWorkService
             var key = (h.ParentItemcode, productNo, facility);
             if (!finalProductCache.TryGetValue(key, out var final))
             {
-                final = await ResolveFinalProductAsync(h.ParentItemcode, productNo, AsOf(h), facility, ct);
+                final = await ResolveFinalProductAsync(h.ParentItemcode, productNo, AsOf(h), facility, productNoOrders, ct);
                 finalProductCache[key] = final;
             }
             resolved.Add((h, facility, final));
@@ -402,75 +408,23 @@ public class PlanningPreparationWorkService
     /// 最終製品と、その製造日（最終製品の計画オーダーの着手日。releasedate が無ければ needdate）。
     /// BOM を親方向に遡り、同じ productno の計画オーダーを持つ最上位の品目を最終製品とする。
     /// productno が無い・一致する計画オーダーが無い場合は BOM 上の最上位品目とし、製造日は空欄。
-    /// 「最上位」は親品目からの最長の段数（depth）が最大の品目。経路を展開すると BOM が大きいとき行数が爆発するため、
-    /// 品目×段数で重複を除いて辿る（段数は20で打ち切り）。
+    /// 「最上位」は親品目からの最長の段数（depth）が最大の品目。
+    /// 計画オーダーとの突き合わせは <see cref="FetchValidOrdersByProductNoAsync"/> の結果を使い、ここでは BOM だけを SQL で辿る。
     /// </summary>
     private async Task<PlanningFinalProductInfo> ResolveFinalProductAsync(
         string parentItemcode,
         string productNo,
         DateOnly asOf,
         string facilityCode,
+        IReadOnlyDictionary<string, List<PlanningPreparationWorkProductNoOrderSqlRow>> productNoOrders,
         CancellationToken ct)
     {
-        if (productNo.Length > 0)
+        if (productNo.Length > 0 && productNoOrders.TryGetValue(productNo, out var orders))
         {
-            var matched = await _db.Database
-                .SqlQueryRaw<PlanningPreparationWorkFinalProductOrderSqlRow>($"""
-                    WITH RECURSIVE up AS (
-                      SELECT @p::text AS itemcode, 0 AS depth
-                      UNION
-                      SELECT TRIM(b.parentitemcode), up.depth + 1
-                      FROM up
-                      INNER JOIN bom b ON b.childitemcode = up.itemcode
-                      WHERE b.parentitemcode IS NOT NULL
-                        AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
-                        AND (b.startdate IS NULL OR b.startdate <= @asof)
-                        AND (b.enddate IS NULL OR b.enddate >= @asof)
-                        AND up.depth < 20
-                    ),
-                    nodes AS (
-                      SELECT itemcode, MAX(depth) AS depth FROM up GROUP BY itemcode
-                    ),
-                    matched AS (
-                      SELECT n.itemcode, n.depth, COALESCE(fo.releasedate, fo.needdate) AS mfg_date
-                      FROM nodes n
-                      INNER JOIN planningorder fo ON fo.itemcode = n.itemcode
-                        AND TRIM(fo.productno) = @productNo
-                      WHERE TRUE
-                        {DedupConditionSql("fo")}
-                    )
-                    SELECT
-                      m.itemcode AS "Itemcode",
-                      COALESCE(i.itemname, '') AS "Itemname",
-                      m.mfg_date AS "ManufacturingDate"
-                    FROM matched m
-                    LEFT JOIN item i ON TRIM(i.itemcode) = m.itemcode
-                    WHERE m.depth = (SELECT MAX(depth) FROM matched)
-                    GROUP BY m.itemcode, i.itemname, m.mfg_date
-                    ORDER BY 1, 3
-                    """,
-                    new NpgsqlParameter("p", NpgsqlDbType.Text) { Value = parentItemcode },
-                    new NpgsqlParameter("facility", NpgsqlDbType.Text) { Value = facilityCode },
-                    new NpgsqlParameter("asof", NpgsqlDbType.Date) { Value = asOf },
-                    new NpgsqlParameter("productNo", NpgsqlDbType.Text) { Value = productNo })
-                .ToListAsync(ct);
-
-            if (matched.Count > 0)
-            {
-                var items = matched
-                    .GroupBy(m => m.Itemcode, StringComparer.Ordinal)
-                    .Select(g => (Code: g.Key, Name: g.First().Itemname))
-                    .ToList();
-                return new PlanningFinalProductInfo(
-                    string.Join("、", items.Select(x => x.Code)),
-                    string.Join("、", items.Select(x => x.Name)),
-                    string.Join("、", matched
-                        .Where(m => m.ManufacturingDate.HasValue)
-                        .Select(m => m.ManufacturingDate!.Value)
-                        .Distinct()
-                        .OrderBy(d => d)
-                        .Select(d => FormatDate(d))));
-            }
+            var ancestors = await FetchBomAncestorsAsync(parentItemcode, asOf, facilityCode, ct);
+            var final = SelectFinalProductByProductNo(ancestors, orders);
+            if (final != null)
+                return final;
         }
 
         var finals = await FetchFinalProductsAsync(parentItemcode, asOf, facilityCode, ct);
@@ -478,6 +432,138 @@ public class PlanningPreparationWorkService
             string.Join("、", finals.Select(f => f.Itemcode)),
             string.Join("、", finals.Select(f => f.Itemname)),
             "");
+    }
+
+    /// <summary>
+    /// BOM 上の祖先（同じ productno の計画オーダーを持つもの）のうち、親品目からの段数が最大の品目を最終製品とする。
+    /// 該当が無ければ null。
+    /// </summary>
+    internal static PlanningFinalProductInfo? SelectFinalProductByProductNo(
+        IReadOnlyList<PlanningPreparationWorkBomAncestorSqlRow> ancestors,
+        IReadOnlyList<PlanningPreparationWorkProductNoOrderSqlRow> orders)
+    {
+        var nodes = ancestors.ToDictionary(a => a.Itemcode, StringComparer.Ordinal);
+        var matched = orders
+            .Where(o => nodes.ContainsKey(o.Itemcode))
+            .Select(o => (Node: nodes[o.Itemcode], o.ManufacturingDate))
+            .ToList();
+        if (matched.Count == 0)
+            return null;
+
+        var maxDepth = matched.Max(m => m.Node.Depth);
+        var top = matched.Where(m => m.Node.Depth == maxDepth).ToList();
+        var items = top
+            .Select(m => m.Node)
+            .DistinctBy(n => n.Itemcode, StringComparer.Ordinal)
+            .OrderBy(n => n.Itemcode, StringComparer.Ordinal)
+            .ToList();
+        return new PlanningFinalProductInfo(
+            string.Join("、", items.Select(n => n.Itemcode)),
+            string.Join("、", items.Select(n => n.Itemname)),
+            string.Join("、", top
+                .Where(m => m.ManufacturingDate.HasValue)
+                .Select(m => m.ManufacturingDate!.Value)
+                .Distinct()
+                .OrderBy(d => d)
+                .Select(d => FormatDate(d))));
+    }
+
+    /// <summary>
+    /// 親品目から BOM を親方向に遡った品目（親品目自身を含む）と、親品目からの最長の段数。
+    /// 経路を展開すると BOM が大きいとき行数が爆発するため、品目×段数で重複を除いて辿る（段数は20で打ち切り）。
+    /// </summary>
+    private async Task<List<PlanningPreparationWorkBomAncestorSqlRow>> FetchBomAncestorsAsync(
+        string parentItemcode,
+        DateOnly asOf,
+        string facilityCode,
+        CancellationToken ct)
+    {
+        return await _db.Database
+            .SqlQueryRaw<PlanningPreparationWorkBomAncestorSqlRow>("""
+                WITH RECURSIVE up AS (
+                  SELECT @p::text AS itemcode, 0 AS depth
+                  UNION
+                  SELECT TRIM(b.parentitemcode), up.depth + 1
+                  FROM up
+                  INNER JOIN bom b ON b.childitemcode = up.itemcode
+                  WHERE b.parentitemcode IS NOT NULL
+                    AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
+                    AND (b.startdate IS NULL OR b.startdate <= @asof)
+                    AND (b.enddate IS NULL OR b.enddate >= @asof)
+                    AND up.depth < 20
+                ),
+                nodes AS (
+                  SELECT itemcode, MAX(depth) AS depth FROM up GROUP BY itemcode
+                )
+                SELECT
+                  n.itemcode AS "Itemcode",
+                  COALESCE(i.itemname, '') AS "Itemname",
+                  n.depth AS "Depth"
+                FROM nodes n
+                LEFT JOIN item i ON TRIM(i.itemcode) = n.itemcode
+                """,
+                new NpgsqlParameter("p", NpgsqlDbType.Text) { Value = parentItemcode },
+                new NpgsqlParameter("facility", NpgsqlDbType.Text) { Value = facilityCode },
+                new NpgsqlParameter("asof", NpgsqlDbType.Date) { Value = asOf })
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// 指定 productno（TRIM 後）の計画オーダーのうち、[DEDUP-mrprunat]（<see cref="DedupConditionSql"/>）で有効なものを productno ごとに返す。
+    /// CSV 1回につき1回だけ実行する。工場ごとの最新 MRP 実行は planningorder 全体の集計で重いため、
+    /// <c>AS MATERIALIZED</c> で1回だけ集計する（親品目ごとにくり返すと本番でタイムアウトした）。
+    /// productno があるオーダーの注番優先グループは「同一品目・同一productno」なので、候補の中だけで判定できる。
+    /// </summary>
+    private async Task<Dictionary<string, List<PlanningPreparationWorkProductNoOrderSqlRow>>> FetchValidOrdersByProductNoAsync(
+        string[] productNos,
+        CancellationToken ct)
+    {
+        if (productNos.Length == 0)
+            return new Dictionary<string, List<PlanningPreparationWorkProductNoOrderSqlRow>>(StringComparer.Ordinal);
+
+        var rows = await _db.Database
+            .SqlQueryRaw<PlanningPreparationWorkProductNoOrderSqlRow>("""
+                WITH cand AS MATERIALIZED (
+                  SELECT
+                    fo.itemcode,
+                    TRIM(fo.productno) AS productno,
+                    COALESCE(fo.facilitycode, '') AS facility,
+                    fo.mrprunat,
+                    COALESCE(fo.releasedate, fo.needdate) AS mfg_date,
+                    EXISTS (SELECT 1 FROM ordertable ot WHERE ot.planningorderid = fo.planningorderid) AS has_ot
+                  FROM planningorder fo
+                  WHERE TRIM(fo.productno) = ANY (@productNos)
+                ),
+                latest AS MATERIALIZED (
+                  SELECT COALESCE(lr.facilitycode, '') AS facility, MAX(lr.mrprunat) AS mrprunat
+                  FROM planningorder lr
+                  WHERE lr.mrprunat IS NOT NULL
+                  GROUP BY COALESCE(lr.facilitycode, '')
+                ),
+                judged AS (
+                  SELECT c.*, BOOL_OR(c.has_ot) OVER (PARTITION BY c.itemcode, c.productno) AS group_has_ot
+                  FROM cand c
+                )
+                SELECT DISTINCT
+                  TRIM(j.itemcode) AS "Itemcode",
+                  j.productno AS "ProductNo",
+                  j.mfg_date AS "ManufacturingDate"
+                FROM judged j
+                WHERE j.has_ot
+                   OR (
+                     NOT j.group_has_ot
+                     AND (
+                       j.mrprunat IS NULL
+                       OR EXISTS (SELECT 1 FROM latest l WHERE l.facility = j.facility AND l.mrprunat = j.mrprunat)
+                     )
+                   )
+                """,
+                new NpgsqlParameter("productNos", NpgsqlDbType.Text | NpgsqlDbType.Array) { Value = productNos })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.ProductNo, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
     }
 
     /// <summary>子品目の購買単位換算に必要な品目情報（<c>item.purchaseorderunitcode</c>・単位0～3・換算値）。</summary>
@@ -538,7 +624,7 @@ public class PlanningPreparationWorkService
         }
     }
 
-    private sealed record PlanningFinalProductInfo(string Itemcodes, string Itemnames, string ManufacturingDates);
+    internal sealed record PlanningFinalProductInfo(string Itemcodes, string Itemnames, string ManufacturingDates);
 
     private sealed record PlanningPurchaseUnitInfo(
         string? PurchaseOrderUnitCode,

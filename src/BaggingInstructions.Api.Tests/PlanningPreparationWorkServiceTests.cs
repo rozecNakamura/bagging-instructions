@@ -1,5 +1,6 @@
 using System.Text;
 using BaggingInstructions.Api.Services;
+using BaggingInstructions.Api.QueryResults;
 
 namespace BaggingInstructions.Api.Tests;
 
@@ -67,5 +68,35 @@ public class PlanningPreparationWorkServiceTests
             .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal("注番,最終製品製造日,納期,最終製品コード,最終製品,親品目コード,親品目,子品目コード,子品目,数量,単位,購買単位数量,購買単位", lines[0]);
         Assert.Equal("101・102,2026/10/21,2026/10/20,F1、F2,製品A、製品B,P1,親,C1,\"子,1\",3000,g,3,kg", lines[1]);
+    }
+
+    private static PlanningPreparationWorkBomAncestorSqlRow Node(string code, string name, int depth) =>
+        new() { Itemcode = code, Itemname = name, Depth = depth };
+
+    private static PlanningPreparationWorkProductNoOrderSqlRow Order(string code, int? day) =>
+        new() { Itemcode = code, ProductNo = "PN", ManufacturingDate = day is int d ? new DateOnly(2026, 10, d) : null };
+
+    [Fact]
+    public void SelectFinalProductByProductNo_picks_deepest_ancestor_with_same_productno()
+    {
+        var ancestors = new[] { Node("P1", "親", 0), Node("M1", "中間", 1), Node("F2", "製品B", 2), Node("F1", "製品A", 2), Node("TOP", "最上位", 3) };
+        // TOP は同じ productno のオーダーが無いので対象外。BOM 外の品目（X1）も対象外。
+        var orders = new[] { Order("P1", 20), Order("M1", 20), Order("F2", 22), Order("F1", 21), Order("F1", 21), Order("X1", 25) };
+
+        var final = PlanningPreparationWorkService.SelectFinalProductByProductNo(ancestors, orders);
+
+        Assert.NotNull(final);
+        Assert.Equal("F1、F2", final!.Itemcodes);
+        Assert.Equal("製品A、製品B", final.Itemnames);
+        Assert.Equal("2026/10/21、2026/10/22", final.ManufacturingDates);
+    }
+
+    [Fact]
+    public void SelectFinalProductByProductNo_returns_null_when_no_ancestor_has_order()
+    {
+        var final = PlanningPreparationWorkService.SelectFinalProductByProductNo(
+            new[] { Node("P1", "親", 0) }, new[] { Order("X1", 20) });
+
+        Assert.Null(final);
     }
 }

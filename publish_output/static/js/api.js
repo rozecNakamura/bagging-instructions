@@ -419,7 +419,7 @@ export async function fetchPreparationWarehouses() {
 /**
  * 作業前準備書：製造便一覧（納期当日の受注付帯より）
  */
-export async function fetchPreparationManufacturingRoutes(delvedt) {
+export async function fetchPreparationManufacturingRoutes(delvedt, apiPath = 'preparation-work') {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -428,7 +428,7 @@ export async function fetchPreparationManufacturingRoutes(delvedt) {
         return [];
     }
     const params = new URLSearchParams({ delvedt: delvedtStr });
-    const res = await fetch(`${API_BASE_URL}/preparation-work/manufacturing-routes?${params}`);
+    const res = await fetch(`${API_BASE_URL}/${apiPath}/manufacturing-routes?${params}`);
     if (!res.ok) {
         let detail = '';
         try {
@@ -443,7 +443,7 @@ export async function fetchPreparationManufacturingRoutes(delvedt) {
 /**
  * 作業前準備書：検索（納期・製造便・作業区・倉庫・品目・大分類・中分類 → グループ行）
  */
-export async function searchPreparationWork(delvedt, options = {}) {
+export async function searchPreparationWork(delvedt, options = {}, apiPath = 'preparation-work') {
     let delvedtStr = delvedt;
     if (delvedt && delvedt.includes('-')) {
         delvedtStr = delvedt.replace(/-/g, '');
@@ -478,7 +478,7 @@ export async function searchPreparationWork(delvedt, options = {}) {
     });
     if (middleId) params.set('middleclassificationid', String(middleId));
 
-    const res = await fetch(`${API_BASE_URL}/preparation-work/search?${params}`);
+    const res = await fetch(`${API_BASE_URL}/${apiPath}/search?${params}`);
     if (!res.ok) {
         let detail = '';
         try {
@@ -493,7 +493,7 @@ export async function searchPreparationWork(delvedt, options = {}) {
 /**
  * 作業前準備書：CSV 出力
  */
-export async function exportPreparationCsv(filter, groupKeys) {
+export async function exportPreparationCsv(filter, groupKeys, apiPath = 'preparation-work') {
     const body = {
         delvedt: filter.delvedt,
         manufacturing_route_codes:
@@ -513,7 +513,7 @@ export async function exportPreparationCsv(filter, groupKeys) {
             middleClassificationCode: k.middleClassificationCode ?? null
         }))
     };
-    const res = await fetch(`${API_BASE_URL}/preparation-work/csv`, {
+    const res = await fetch(`${API_BASE_URL}/${apiPath}/csv`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
