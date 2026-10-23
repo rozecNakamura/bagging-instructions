@@ -27,13 +27,12 @@ public class PlanningPreparationWorkService
     }
 
     /// <summary>
-    /// 計画オーダーの検索条件（納期・製造便・作業区・倉庫・品目・大分類・中分類）。
-    /// 納期は <c>planningorder.releasedate</c>（NULL なら needdate）、製造便は <c>planningorder.slotcode</c>。
-    /// </summary>
-    /// <summary>
-    /// [DEDUP-mrprunat] MRP の再実行で残った重複オーダーを除外する条件（<c>AND (...)</c> の形）。
-    /// 同じグループ（<see cref="SameDedupGroupSql"/>）に注番（<c>ordertable</c>）が紐づくオーダーがあれば、紐づくものだけを採用する。
-    /// 無ければ mrprunat が最新のものだけを採用し、mrprunat が NULL（MPS由来・手動登録）は常に採用する。
+    /// [DEDUP-mrprunat] 有効な計画オーダーだけを採用する条件（<c>AND (...)</c> の形）。CraftLineAX の MRP 画面（latest_run）と同じ判定。
+    /// MRP は工場単位で計画を作り直し、過去の実行結果を削除せず残すため、次の順で判定する。
+    /// 1. 注番（<c>ordertable</c>）が紐づくオーダーは常に採用。同じグループ（<see cref="SameDedupGroupSql"/>）に紐づくものがあれば、紐づかないものは除外。
+    /// 2. 紐づかないオーダーは、mrprunat がその工場の最新 MRP 実行（工場ごとの MAX(mrprunat)）と一致するものだけ採用。
+    /// 3. mrprunat が NULL（MPS由来・手動登録）は採用。
+    /// 工場ごとの最新実行は相関しないサブクエリにして、行ごとに再集計しないようにしている。
     /// </summary>
     private static string DedupConditionSql(string alias) => $"""
         AND (
@@ -46,10 +45,11 @@ public class PlanningPreparationWorkService
             )
             AND (
               {alias}.mrprunat IS NULL
-              OR NOT EXISTS (
-                SELECT 1 FROM planningorder p2
-                WHERE {SameDedupGroupSql(alias)}
-                  AND p2.mrprunat > {alias}.mrprunat
+              OR (COALESCE({alias}.facilitycode, ''), {alias}.mrprunat) IN (
+                SELECT COALESCE(lr.facilitycode, ''), MAX(lr.mrprunat)
+                FROM planningorder lr
+                WHERE lr.mrprunat IS NOT NULL
+                GROUP BY COALESCE(lr.facilitycode, '')
               )
             )
           )
@@ -57,7 +57,7 @@ public class PlanningPreparationWorkService
         """;
 
     /// <summary>
-    /// 重複判定のグループ（<c>p2</c> と <paramref name="alias"/> が同じグループか）。
+    /// 注番優先の判定に使うグループ（<c>p2</c> と <paramref name="alias"/> が同じグループか）。
     /// productno あり: 同一品目・同一productno（日付をまたいで判定）。productno なし: 同一品目・同一工場・同一日付。
     /// </summary>
     private static string SameDedupGroupSql(string alias) => $"""
@@ -70,6 +70,10 @@ public class PlanningPreparationWorkService
                 )
         """;
 
+    /// <summary>
+    /// 計画オーダーの検索条件（納期・製造便・作業区・倉庫・品目・大分類・中分類）。
+    /// 納期は <c>planningorder.releasedate</c>（NULL なら needdate）、製造便は <c>planningorder.slotcode</c>。
+    /// </summary>
     private static readonly string FilterFromWhereSql = $"""
         FROM planningorder po
         INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM po.itemcode)
@@ -398,6 +402,8 @@ public class PlanningPreparationWorkService
     /// 最終製品と、その製造日（最終製品の計画オーダーの着手日。releasedate が無ければ needdate）。
     /// BOM を親方向に遡り、同じ productno の計画オーダーを持つ最上位の品目を最終製品とする。
     /// productno が無い・一致する計画オーダーが無い場合は BOM 上の最上位品目とし、製造日は空欄。
+    /// 「最上位」は親品目からの最長の段数（depth）が最大の品目。経路を展開すると BOM が大きいとき行数が爆発するため、
+    /// 品目×段数で重複を除いて辿る（段数は20で打ち切り）。
     /// </summary>
     private async Task<PlanningFinalProductInfo> ResolveFinalProductAsync(
         string parentItemcode,
@@ -411,22 +417,24 @@ public class PlanningPreparationWorkService
             var matched = await _db.Database
                 .SqlQueryRaw<PlanningPreparationWorkFinalProductOrderSqlRow>($"""
                     WITH RECURSIVE up AS (
-                      SELECT @p::text AS itemcode, ARRAY[@p::text] AS path, 0 AS depth
-                      UNION ALL
-                      SELECT TRIM(b.parentitemcode), up.path || TRIM(b.parentitemcode), up.depth + 1
+                      SELECT @p::text AS itemcode, 0 AS depth
+                      UNION
+                      SELECT TRIM(b.parentitemcode), up.depth + 1
                       FROM up
                       INNER JOIN bom b ON b.childitemcode = up.itemcode
                       WHERE b.parentitemcode IS NOT NULL
                         AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = @facility
                         AND (b.startdate IS NULL OR b.startdate <= @asof)
                         AND (b.enddate IS NULL OR b.enddate >= @asof)
-                        AND NOT (TRIM(b.parentitemcode) = ANY (up.path))
-                        AND CARDINALITY(up.path) < 20
+                        AND up.depth < 20
+                    ),
+                    nodes AS (
+                      SELECT itemcode, MAX(depth) AS depth FROM up GROUP BY itemcode
                     ),
                     matched AS (
-                      SELECT up.itemcode, up.depth, COALESCE(fo.releasedate, fo.needdate) AS mfg_date
-                      FROM up
-                      INNER JOIN planningorder fo ON fo.itemcode = up.itemcode
+                      SELECT n.itemcode, n.depth, COALESCE(fo.releasedate, fo.needdate) AS mfg_date
+                      FROM nodes n
+                      INNER JOIN planningorder fo ON fo.itemcode = n.itemcode
                         AND TRIM(fo.productno) = @productNo
                       WHERE TRUE
                         {DedupConditionSql("fo")}
@@ -650,7 +658,8 @@ public class PlanningPreparationWorkService
 
     /// <summary>
     /// 親品目から BOM を親方向へ最上位まで遡り、最終製品（それ以上親を持たない品目）を返す。
-    /// 親品目自身が BOM 上の最上位であれば親品目自身を最終製品とする。BOM の工場・有効期間で絞り込み、循環は経路で除外する。
+    /// 親品目自身が BOM 上の最上位であれば親品目自身を最終製品とする。BOM の工場・有効期間で絞り込む。
+    /// 経路ではなく品目単位で辿る（UNION で訪問済みを除く）ため、BOM が大きくても行数が品目数で頭打ちになり、循環でも止まる。
     /// </summary>
     private async Task<List<PlanningPreparationWorkFinalProductSqlRow>> FetchFinalProductsAsync(
         string parentItemcode,
@@ -661,17 +670,15 @@ public class PlanningPreparationWorkService
         return await _db.Database
             .SqlQuery<PlanningPreparationWorkFinalProductSqlRow>($@"
 WITH RECURSIVE up AS (
-  SELECT {parentItemcode}::text AS itemcode, ARRAY[{parentItemcode}::text] AS path
-  UNION ALL
-  SELECT TRIM(b.parentitemcode), up.path || TRIM(b.parentitemcode)
+  SELECT {parentItemcode}::text AS itemcode
+  UNION
+  SELECT TRIM(b.parentitemcode)
   FROM up
   INNER JOIN bom b ON b.childitemcode = up.itemcode
   WHERE b.parentitemcode IS NOT NULL
     AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {facilityCode}
     AND (b.startdate IS NULL OR b.startdate <= {asOf})
     AND (b.enddate IS NULL OR b.enddate >= {asOf})
-    AND NOT (TRIM(b.parentitemcode) = ANY (up.path))
-    AND CARDINALITY(up.path) < 20
 )
 SELECT DISTINCT
   up.itemcode AS ""Itemcode"",
