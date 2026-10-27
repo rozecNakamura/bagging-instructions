@@ -8,14 +8,8 @@ public sealed class PlanningPreparationWorkIdSqlRow
     public string MiddleCode { get; set; } = "";
 }
 
-public sealed class PlanningPreparationWorkFinalProductSqlRow
-{
-    public string Itemcode { get; set; } = "";
-    public string Itemname { get; set; } = "";
-}
-
-/// <summary>最終製品の候補となる計画オーダー（productno 単位で取得）。</summary>
-public sealed class PlanningPreparationWorkProductNoOrderSqlRow
+/// <summary>最終製品の候補となる計画オーダー（productno または期間で取得）。</summary>
+public sealed class PlanningPreparationWorkCandidateOrderSqlRow
 {
     public string Itemcode { get; set; } = "";
     public string ProductNo { get; set; } = "";

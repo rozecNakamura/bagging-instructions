@@ -13,6 +13,7 @@ namespace BaggingInstructions.Api.Services;
 /// <summary>
 /// 作業前準備書（計画オーダー）。<c>planningorder</c> を基に、親品目＝計画オーダーの品目、子品目＝BOM で展開する。
 /// 最終製品は BOM を親方向に遡り、同じ productno の計画オーダーを持つ最上位の品目（複数あれば「、」区切り）。
+/// productno で決まらないときは、納期から数日後までに計画オーダーを持つ最上位の品目（製造計画に無い品目は出さない）。
 /// 子品目の数量は単位0と購買単位（<c>item.purchaseorderunitcode</c>）換算の両方を出力する。
 /// </summary>
 public class PlanningPreparationWorkService
@@ -234,34 +235,61 @@ public class PlanningPreparationWorkService
 
         var headers = await FetchPlanningOrderHeadersAsync(planningOrderIds, ct);
         var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
-        var finalProductCache = new Dictionary<(string ParentItemcode, string ProductNo, string FacilityCode), PlanningFinalProductInfo>();
+        var ancestorCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<PlanningPreparationWorkBomAncestorSqlRow>>();
 
         // 最終製品の候補となる計画オーダー（同じ productno）を、全 productno 分まとめて1回で取得する
         var productNoOrders = await FetchValidOrdersByProductNoAsync(
             headers.Select(h => h.ProductNo?.Trim() ?? "").Where(p => p.Length > 0).Distinct(StringComparer.Ordinal).ToArray(),
             ct);
 
-        // 計画オーダーごとに最終製品（productno で特定）を求める
-        var resolved = new List<(PlanningOrderHeaderRow Header, string Facility, PlanningFinalProductInfo Final)>();
+        // 計画オーダーごとに BOM の祖先を辿り、まず productno で最終製品を求める
+        var prepared = new List<(PlanningOrderHeaderRow Header, string Facility, List<PlanningPreparationWorkBomAncestorSqlRow> Ancestors, PlanningFinalProductInfo? Final)>();
         foreach (var h in headers)
         {
             // BOM は計画オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
             var facility = BomFacility.Resolve(h.FacilityCode);
-            var productNo = h.ProductNo?.Trim() ?? "";
-            var key = (h.ParentItemcode, productNo, facility);
-            if (!finalProductCache.TryGetValue(key, out var final))
+            var ancestorKey = (h.ParentItemcode, facility, AsOf(h));
+            if (!ancestorCache.TryGetValue(ancestorKey, out var ancestors))
             {
-                final = await ResolveFinalProductAsync(h.ParentItemcode, productNo, AsOf(h), facility, productNoOrders, ct);
-                finalProductCache[key] = final;
+                ancestors = await FetchBomAncestorsAsync(h.ParentItemcode, AsOf(h), facility, ct);
+                ancestorCache[ancestorKey] = ancestors;
             }
-            resolved.Add((h, facility, final));
+
+            var productNo = h.ProductNo?.Trim() ?? "";
+            var final = productNo.Length > 0 && productNoOrders.TryGetValue(productNo, out var orders)
+                ? SelectFinalProduct(ancestors, orders)
+                : null;
+            prepared.Add((h, facility, ancestors, final));
         }
 
-        // 表示列（最終製品・最終製品の製造日・親品目）が同じ計画オーダーを集約して数量を合算する。
+        // productno で決まらなかったもの（productno なし・一致なし）は、納期から数日後までの計画オーダーで判定する。
+        // 候補のオーダーはまとめて1回で取得する。
+        var pending = prepared.Where(p => p.Final == null).ToList();
+        var windowOrders = new List<PlanningPreparationWorkCandidateOrderSqlRow>();
+        if (pending.Count > 0)
+        {
+            windowOrders = await FetchValidOrdersInPeriodAsync(
+                pending.SelectMany(p => p.Ancestors).Select(a => a.Itemcode).Distinct(StringComparer.Ordinal).ToArray(),
+                pending.Min(p => AsOf(p.Header)),
+                pending.Max(p => AsOf(p.Header)).AddDays(FinalProductWindowDays),
+                ct);
+        }
+
+        var resolved = prepared
+            .Select(p => (
+                p.Header,
+                p.Facility,
+                Final: p.Final
+                    ?? SelectFinalProduct(p.Ancestors, OrdersInWindow(windowOrders, AsOf(p.Header)))
+                    ?? new PlanningFinalProductInfo("", "", "")))
+            .ToList();
+
+        // 表示列（製造便・最終製品・最終製品の製造日・親品目）が同じ計画オーダーを集約して数量を合算する。
         // 既存の作業前準備書と同様、製番品とMRP品は合算しないよう製番区分もキーに含める。
         var groups = resolved
             .GroupBy(r => (
                 r.Header.ParentItemcode,
+                r.Header.SlotDisplay,
                 HasProductNo: !string.IsNullOrWhiteSpace(r.Header.ProductNo),
                 r.Final.Itemcodes,
                 r.Final.Itemnames,
@@ -292,6 +320,7 @@ public class PlanningPreparationWorkService
                 rows.Add(new PlanningPreparationCsvRow
                 {
                     OrderNo = orderNo,
+                    Slot = first.SlotDisplay,
                     FinalManufacturingDate = final.ManufacturingDates,
                     DeliveryDate = deliveryDate,
                     FinalItemcode = final.Itemcodes,
@@ -308,6 +337,7 @@ public class PlanningPreparationWorkService
                 rows.Add(new PlanningPreparationCsvRow
                 {
                     OrderNo = orderNo,
+                    Slot = first.SlotDisplay,
                     FinalManufacturingDate = final.ManufacturingDates,
                     DeliveryDate = deliveryDate,
                     FinalItemcode = final.Itemcodes,
@@ -353,7 +383,7 @@ public class PlanningPreparationWorkService
 
     private static string FormatDate(DateOnly? d) => d?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "";
 
-    /// <summary>並び順: 納期 → 最終製品の製造日 → 最終製品コード → 親品目コード → レシピ並び順（NULL は末尾）→ 子品目コード。</summary>
+    /// <summary>並び順: 納期 → 最終製品の製造日 → 最終製品コード → 親品目コード → 製造便 → レシピ並び順（NULL は末尾）→ 子品目コード。</summary>
     internal static List<PlanningPreparationCsvRow> SortCsvRows(IReadOnlyList<PlanningPreparationCsvRow> rows)
     {
         return rows
@@ -361,6 +391,7 @@ public class PlanningPreparationWorkService
             .ThenBy(r => r.FinalManufacturingDate ?? "", StringComparer.Ordinal)
             .ThenBy(r => r.FinalItemcode ?? "", StringComparer.Ordinal)
             .ThenBy(r => r.ParentItemcode ?? "", StringComparer.Ordinal)
+            .ThenBy(r => r.Slot ?? "", StringComparer.Ordinal)
             .ThenBy(r => r.ProductionOrder ?? decimal.MaxValue)
             .ThenBy(r => r.ChildItemcode ?? "", StringComparer.Ordinal)
             .ToList();
@@ -377,10 +408,11 @@ public class PlanningPreparationWorkService
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("注番,最終製品製造日,納期,最終製品コード,最終製品,親品目コード,親品目,子品目コード,子品目,数量,単位,購買単位数量,購買単位");
+        sb.AppendLine("注番,製造便,最終製品製造日,納期,最終製品コード,最終製品,親品目コード,親品目,子品目コード,子品目,数量,単位,購買単位数量,購買単位");
         foreach (var r in rows)
         {
             sb.Append(Esc(r.OrderNo)).Append(',')
+                .Append(Esc(r.Slot)).Append(',')
                 .Append(Esc(r.FinalManufacturingDate)).Append(',')
                 .Append(Esc(r.DeliveryDate)).Append(',')
                 .Append(Esc(r.FinalItemcode)).Append(',')
@@ -404,43 +436,34 @@ public class PlanningPreparationWorkService
         return result;
     }
 
-    /// <summary>
-    /// 最終製品と、その製造日（最終製品の計画オーダーの着手日。releasedate が無ければ needdate）。
-    /// BOM を親方向に遡り、同じ productno の計画オーダーを持つ最上位の品目を最終製品とする。
-    /// productno が無い・一致する計画オーダーが無い場合は BOM 上の最上位品目とし、製造日は空欄。
-    /// 「最上位」は親品目からの最長の段数（depth）が最大の品目。
-    /// 計画オーダーとの突き合わせは <see cref="FetchValidOrdersByProductNoAsync"/> の結果を使い、ここでは BOM だけを SQL で辿る。
-    /// </summary>
-    private async Task<PlanningFinalProductInfo> ResolveFinalProductAsync(
-        string parentItemcode,
-        string productNo,
-        DateOnly asOf,
-        string facilityCode,
-        IReadOnlyDictionary<string, List<PlanningPreparationWorkProductNoOrderSqlRow>> productNoOrders,
-        CancellationToken ct)
-    {
-        if (productNo.Length > 0 && productNoOrders.TryGetValue(productNo, out var orders))
-        {
-            var ancestors = await FetchBomAncestorsAsync(parentItemcode, asOf, facilityCode, ct);
-            var final = SelectFinalProductByProductNo(ancestors, orders);
-            if (final != null)
-                return final;
-        }
+    /// <summary>productno で最終製品が決まらないとき、納期から何日後までの計画オーダーを候補にするか。</summary>
+    internal const int FinalProductWindowDays = 5;
 
-        var finals = await FetchFinalProductsAsync(parentItemcode, asOf, facilityCode, ct);
-        return new PlanningFinalProductInfo(
-            string.Join("、", finals.Select(f => f.Itemcode)),
-            string.Join("、", finals.Select(f => f.Itemname)),
-            "");
+    /// <summary>
+    /// 候補のオーダーのうち、着手日が納期～納期＋<see cref="FinalProductWindowDays"/> 日のもの。
+    /// 製造日には期間内の別の日の計画まで並べないよう、品目ごとに最も早い着手日の1件だけを残す。
+    /// </summary>
+    internal static List<PlanningPreparationWorkCandidateOrderSqlRow> OrdersInWindow(
+        IEnumerable<PlanningPreparationWorkCandidateOrderSqlRow> orders,
+        DateOnly asOf)
+    {
+        var to = asOf.AddDays(FinalProductWindowDays);
+        return orders
+            .Where(o => o.ManufacturingDate is DateOnly d && d >= asOf && d <= to)
+            .GroupBy(o => o.Itemcode, StringComparer.Ordinal)
+            .Select(g => g.MinBy(o => o.ManufacturingDate)!)
+            .ToList();
     }
 
     /// <summary>
-    /// BOM 上の祖先（同じ productno の計画オーダーを持つもの）のうち、親品目からの段数が最大の品目を最終製品とする。
-    /// 該当が無ければ null。
+    /// 最終製品と、その製造日（最終製品の計画オーダーの着手日。releasedate が無ければ needdate）。
+    /// BOM 上の祖先（親品目自身を含む）のうち、候補の計画オーダーを持ち、親品目からの段数が最大の品目を最終製品とする。
+    /// 候補は productno が一致する計画オーダー、productno で決まらないときは納期から数日後までの計画オーダー。
+    /// 製造計画に無い品目は最終製品にしない。該当が無ければ null。
     /// </summary>
-    internal static PlanningFinalProductInfo? SelectFinalProductByProductNo(
+    internal static PlanningFinalProductInfo? SelectFinalProduct(
         IReadOnlyList<PlanningPreparationWorkBomAncestorSqlRow> ancestors,
-        IReadOnlyList<PlanningPreparationWorkProductNoOrderSqlRow> orders)
+        IReadOnlyList<PlanningPreparationWorkCandidateOrderSqlRow> orders)
     {
         var nodes = ancestors.ToDictionary(a => a.Itemcode, StringComparer.Ordinal);
         var matched = orders
@@ -514,15 +537,15 @@ public class PlanningPreparationWorkService
     /// <c>AS MATERIALIZED</c> で1回だけ集計する（親品目ごとにくり返すと本番でタイムアウトした）。
     /// productno があるオーダーの注番優先グループは「同一品目・同一productno」なので、候補の中だけで判定できる。
     /// </summary>
-    private async Task<Dictionary<string, List<PlanningPreparationWorkProductNoOrderSqlRow>>> FetchValidOrdersByProductNoAsync(
+    private async Task<Dictionary<string, List<PlanningPreparationWorkCandidateOrderSqlRow>>> FetchValidOrdersByProductNoAsync(
         string[] productNos,
         CancellationToken ct)
     {
         if (productNos.Length == 0)
-            return new Dictionary<string, List<PlanningPreparationWorkProductNoOrderSqlRow>>(StringComparer.Ordinal);
+            return new Dictionary<string, List<PlanningPreparationWorkCandidateOrderSqlRow>>(StringComparer.Ordinal);
 
         var rows = await _db.Database
-            .SqlQueryRaw<PlanningPreparationWorkProductNoOrderSqlRow>("""
+            .SqlQueryRaw<PlanningPreparationWorkCandidateOrderSqlRow>("""
                 WITH cand AS MATERIALIZED (
                   SELECT
                     fo.itemcode,
@@ -564,6 +587,36 @@ public class PlanningPreparationWorkService
         return rows
             .GroupBy(r => r.ProductNo, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// 指定品目の計画オーダーのうち、着手日（releasedate、無ければ needdate）が期間内で、[DEDUP-mrprunat] で有効なもの。
+    /// productno で最終製品が決まらない計画オーダーの判定に使う。CSV 1回につき1回だけ実行する。
+    /// </summary>
+    private async Task<List<PlanningPreparationWorkCandidateOrderSqlRow>> FetchValidOrdersInPeriodAsync(
+        string[] itemcodes,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct)
+    {
+        if (itemcodes.Length == 0)
+            return new List<PlanningPreparationWorkCandidateOrderSqlRow>();
+
+        return await _db.Database
+            .SqlQueryRaw<PlanningPreparationWorkCandidateOrderSqlRow>($"""
+                SELECT DISTINCT
+                  TRIM(po.itemcode) AS "Itemcode",
+                  COALESCE(TRIM(po.productno), '') AS "ProductNo",
+                  COALESCE(po.releasedate, po.needdate) AS "ManufacturingDate"
+                FROM planningorder po
+                WHERE po.itemcode = ANY (@codes)
+                  AND COALESCE(po.releasedate, po.needdate) BETWEEN @from AND @to
+                  {DedupConditionSql("po")}
+                """,
+                new NpgsqlParameter("codes", NpgsqlDbType.Text | NpgsqlDbType.Array) { Value = itemcodes },
+                new NpgsqlParameter("from", NpgsqlDbType.Date) { Value = from },
+                new NpgsqlParameter("to", NpgsqlDbType.Date) { Value = to })
+            .ToListAsync(ct);
     }
 
     /// <summary>子品目の購買単位換算に必要な品目情報（<c>item.purchaseorderunitcode</c>・単位0～3・換算値）。</summary>
@@ -705,10 +758,12 @@ public class PlanningPreparationWorkService
                   COALESCE(NULLIF(TRIM(po.facilitycode), ''), sol.facilitycode) AS facility_code,
                   (SELECT string_agg(ot.ordertableid::text, '・' ORDER BY ot.ordertableid)
                    FROM ordertable ot
-                   WHERE ot.planningorderid = po.planningorderid) AS order_no
+                   WHERE ot.planningorderid = po.planningorderid) AS order_no,
+                  COALESCE(NULLIF(TRIM(ds.slotname), ''), NULLIF(TRIM(po.slotcode), ''), '') AS slot_display
                 FROM planningorder po
                 INNER JOIN item i ON TRIM(BOTH FROM i.itemcode) = TRIM(BOTH FROM po.itemcode)
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = po.salesorderlineid
+                LEFT JOIN deliveryslot ds ON ds.slotcode = po.slotcode
                 WHERE po.planningorderid = ANY(@ids)
                 ORDER BY po.planningorderid
                 """, conn);
@@ -729,7 +784,8 @@ public class PlanningPreparationWorkService
                     NeedDate = ReadDateNullable(reader, 4),
                     ProductNo = reader.IsDBNull(5) ? null : reader.GetString(5),
                     FacilityCode = reader.IsDBNull(6) ? null : reader.GetString(6),
-                    OrderNo = reader.IsDBNull(7) ? "" : reader.GetString(7)
+                    OrderNo = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                    SlotDisplay = reader.GetString(8)
                 });
             }
 
@@ -740,48 +796,6 @@ public class PlanningPreparationWorkService
             if (shouldClose && conn.State == ConnectionState.Open)
                 await conn.CloseAsync();
         }
-    }
-
-    /// <summary>
-    /// 親品目から BOM を親方向へ最上位まで遡り、最終製品（それ以上親を持たない品目）を返す。
-    /// 親品目自身が BOM 上の最上位であれば親品目自身を最終製品とする。BOM の工場・有効期間で絞り込む。
-    /// 経路ではなく品目単位で辿る（UNION で訪問済みを除く）ため、BOM が大きくても行数が品目数で頭打ちになり、循環でも止まる。
-    /// </summary>
-    private async Task<List<PlanningPreparationWorkFinalProductSqlRow>> FetchFinalProductsAsync(
-        string parentItemcode,
-        DateOnly asOf,
-        string facilityCode,
-        CancellationToken ct)
-    {
-        return await _db.Database
-            .SqlQuery<PlanningPreparationWorkFinalProductSqlRow>($@"
-WITH RECURSIVE up AS (
-  SELECT {parentItemcode}::text AS itemcode
-  UNION
-  SELECT TRIM(b.parentitemcode)
-  FROM up
-  INNER JOIN bom b ON b.childitemcode = up.itemcode
-  WHERE b.parentitemcode IS NOT NULL
-    AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {facilityCode}
-    AND (b.startdate IS NULL OR b.startdate <= {asOf})
-    AND (b.enddate IS NULL OR b.enddate >= {asOf})
-)
-SELECT DISTINCT
-  up.itemcode AS ""Itemcode"",
-  COALESCE(i.itemname, '') AS ""Itemname""
-FROM up
-LEFT JOIN item i ON TRIM(i.itemcode) = up.itemcode
-WHERE NOT EXISTS (
-  SELECT 1 FROM bom b2
-  WHERE b2.childitemcode = up.itemcode
-    AND b2.parentitemcode IS NOT NULL
-    AND TRIM(BOTH FROM COALESCE(b2.facilitycode, '')) = {facilityCode}
-    AND (b2.startdate IS NULL OR b2.startdate <= {asOf})
-    AND (b2.enddate IS NULL OR b2.enddate >= {asOf})
-)
-ORDER BY 1
-")
-            .ToListAsync(ct);
     }
 
     private static DateOnly? ReadDateNullable(NpgsqlDataReader reader, int ordinal)
@@ -823,6 +837,8 @@ public sealed class PlanningPreparationCsvRow
 {
     /// <summary>注番（<c>ordertable.ordertableid</c>。合算した場合は「・」区切り、紐づかなければ空）。</summary>
     public string OrderNo { get; set; } = "";
+    /// <summary>製造便（計画オーダー自身の <c>slotcode</c> の便名。便名が無ければ slotcode、MRP品など未設定なら空）。</summary>
+    public string Slot { get; set; } = "";
     /// <summary>最終製品の製造日（最終製品の計画オーダーの着手日。複数あれば「、」区切り）。</summary>
     public string FinalManufacturingDate { get; set; } = "";
     /// <summary>納期（親品目の計画オーダーの着手日＝子品目の使用日）。</summary>
@@ -861,4 +877,6 @@ internal sealed class PlanningOrderHeaderRow
     public string? FacilityCode { get; set; }
     /// <summary>注番（<c>planningorderid</c> で紐づく <c>ordertable.ordertableid</c>）。紐づかなければ空。</summary>
     public string OrderNo { get; set; } = "";
+    /// <summary>製造便の表示名（<c>deliveryslot.slotname</c>、無ければ slotcode）。</summary>
+    public string SlotDisplay { get; set; } = "";
 }
