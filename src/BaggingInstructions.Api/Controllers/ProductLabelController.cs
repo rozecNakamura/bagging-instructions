@@ -159,6 +159,7 @@ public class ProductLabelController : ControllerBase
                 body.ChildMajorClassificationId,
                 body.ChildMiddleClassificationId,
                 body.ChildWarehouseId,
+                body.OrderTableIds,
                 ct);
             return Ok(new ProductLabelChildFilterResponseDto { ItemCodes = codes });
         }

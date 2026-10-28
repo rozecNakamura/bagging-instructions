@@ -186,6 +186,7 @@ document.getElementById('productLabelSearchBtn').addEventListener('click', async
             if (rows.length > 0 && hasChildConditions(childCond)) {
                 const matched = await filterProductLabelByChild({
                     itemCodes: rows.map(r => r.itemCode).filter(Boolean),
+                    orderTableIds: rows.map(r => Number(r.orderTableId)).filter(id => id > 0),
                     ...childCond,
                 });
                 const allowed = new Set(matched);

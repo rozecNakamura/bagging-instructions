@@ -96,6 +96,10 @@ public class ProductLabelChildFilterRequestDto
 
     [JsonPropertyName("childwarehouseid")]
     public long? ChildWarehouseId { get; set; }
+
+    /// <summary>親品目の ordertableid。指定時は各オーダーの工場コード・日付で BOM を判定する。</summary>
+    [JsonPropertyName("order_table_ids")]
+    public List<long>? OrderTableIds { get; set; }
 }
 
 public class ProductLabelChildFilterResponseDto

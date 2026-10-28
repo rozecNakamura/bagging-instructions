@@ -268,7 +268,7 @@ ORDER BY 1
         if (headers.Count == 0)
             return new List<ProductionInstructionPdfLineModel>();
 
-        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<ProductionInstructionBomSqlRow>>();
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<ProductionInstructionBomSqlRow>>();
         var lines = new List<ProductionInstructionPdfLineModel>();
 
         // 同一製造便・同一品目のオーダーを集約して数量を合算
@@ -281,9 +281,9 @@ ORDER BY 1
             var first = group.First();
             var asof = first.NeedDate ?? first.ReleaseDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            // BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
             var facility = BomFacility.Resolve(first.FacilityCode);
-            var bomKey = (first.ParentItemcode, facility);
+            var bomKey = (first.ParentItemcode, facility, asof);
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
                 boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, facility, ct);
@@ -408,7 +408,7 @@ ORDER BY 1
                   COALESCE(ia.addinfo17, '') AS ia_addinfo17,
                   ia.steritemprange AS ia_steritemprange,
                   ia.steritime AS ia_steritime,
-                  COALESCE(sol.facilitycode, '') AS facility_code
+                  COALESCE(NULLIF(TRIM(ot.facilitycode), ''), sol.facilitycode, '') AS facility_code
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
@@ -687,7 +687,7 @@ internal sealed class ProductionInstructionLineHeaderRow
     public decimal? IaSterItemPrange { get; set; }
     public decimal? IaSteriTime { get; set; }
 
-    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    /// <summary>製造オーダーの工場コード（<c>ordertable.facilitycode</c>、未設定なら <c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
     public string? FacilityCode { get; set; }
 }
 

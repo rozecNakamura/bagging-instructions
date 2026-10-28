@@ -348,7 +348,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             return new List<PreparationCsvRow>();
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
-        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<PreparationBomSqlRow>>();
         var rows = new List<PreparationCsvRow>();
 
         // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
@@ -365,9 +365,9 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             var mergedOrderNo = string.Join("・", grp.Select(h => h.Ordertableid));
             var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            // BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
             var facility = BomFacility.Resolve(first.FacilityCode);
-            var bomKey = (first.ParentItemcode, facility);
+            var bomKey = (first.ParentItemcode, facility, asof);
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
                 boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, facility, ct);
@@ -429,7 +429,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             return new List<PreparationPdfLineModel>();
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
-        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<PreparationBomSqlRow>>();
         var lines = new List<PreparationPdfLineModel>();
 
         // 同一製造便・同一品目・同一製番区分のオーダーを集約して数量を合算。
@@ -447,9 +447,9 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             var hasProductNo = grp.Key.HasProductNo;
             var asof = first.PlannedDeliveryDate ?? first.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
-            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            // BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
             var facility = BomFacility.Resolve(first.FacilityCode);
-            var bomKey = (first.ParentItemcode, facility);
+            var bomKey = (first.ParentItemcode, facility, asof);
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
                 boms = await FetchBomsForParentAsync(first.ParentItemcode, asof, facility, ct);
@@ -631,7 +631,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                   sc.slotcode AS manufacturing_route_code,
                   COALESCE(mid.middleclassificationcode, '') AS middle_class_code,
                   ot.productno,
-                  COALESCE(sol.facilitycode, '') AS facility_code
+                  COALESCE(NULLIF(TRIM(ot.facilitycode), ''), sol.facilitycode, '') AS facility_code
                 FROM ordertable ot
                 LEFT JOIN workcenter wc_ord ON (
                      wc_ord.workcentercode = TRIM(BOTH FROM ot.workcentercode)
@@ -853,7 +853,7 @@ internal sealed class PreparationLineHeaderRow
     /// <summary>ordertable.productno（null の場合はその他、値があれば袋品）。</summary>
     public string? ProductNo { get; set; }
 
-    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    /// <summary>製造オーダーの工場コード（<c>ordertable.facilitycode</c>、未設定なら <c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
     public string? FacilityCode { get; set; }
 }
 

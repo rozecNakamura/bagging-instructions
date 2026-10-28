@@ -73,7 +73,7 @@ public sealed class ProductLabelNewService
     /// </summary>
     private static string AncestorCoveredCtesSql()
     {
-        var facility = BomFacility.SqlResolve("sol2.facilitycode");
+        var facility = BomFacility.SqlResolve("o3.facilitycode", "sol2.facilitycode");
         return $"""
             ordered_items AS MATERIALIZED (
               SELECT DISTINCT
@@ -128,7 +128,7 @@ public sealed class ProductLabelNewService
     {
         var byIds = f.OrderTableIds is { Length: > 0 };
         var joinWh = !byIds && f.WarehouseId.HasValue && f.WarehouseId.Value > 0;
-        var facility = BomFacility.SqlResolve("sol.facilitycode");
+        var facility = BomFacility.SqlResolve("ot.facilitycode", "sol.facilitycode");
 
         var sql = new StringBuilder();
         sql.AppendLine($"""
@@ -270,7 +270,7 @@ public sealed class ProductLabelNewService
         FROM bom_tree bt
         INNER JOIN bom b ON b.parentitemcode = bt.current_itemcode
           AND b.childitemcode IS NOT NULL
-          -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+          -- BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
           AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = bt.facilitycode
           AND (b.startdate IS NULL OR b.startdate <= bt.bom_asof)
           AND (b.enddate IS NULL OR b.enddate >= bt.bom_asof)

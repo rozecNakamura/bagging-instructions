@@ -234,7 +234,7 @@ public class PlanningPreparationWorkService
             return new List<PlanningPreparationCsvRow>();
 
         var headers = await FetchPlanningOrderHeadersAsync(planningOrderIds, ct);
-        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<PreparationBomSqlRow>>();
         var ancestorCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<PlanningPreparationWorkBomAncestorSqlRow>>();
 
         // 最終製品の候補となる計画オーダー（同じ productno）を、全 productno 分まとめて1回で取得する
@@ -302,7 +302,7 @@ public class PlanningPreparationWorkService
             var (first, facility, final) = grp.First();
             var totalQty = grp.Sum(r => r.Header.Qty);
 
-            var bomKey = (first.ParentItemcode, facility);
+            var bomKey = (first.ParentItemcode, facility, AsOf(first));
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
                 boms = await _preparationWorkService.FetchBomsForParentAsync(first.ParentItemcode, AsOf(first), facility, ct);

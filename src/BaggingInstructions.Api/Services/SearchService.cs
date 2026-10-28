@@ -819,8 +819,8 @@ FROM m_shokushu";
                       SELECT DISTINCT
                         ot0.itemcode AS root_itemcode,
                         ot0.itemcode AS current_itemcode,
-                        -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
-                        {BomFacility.SqlResolve("sol0.facilitycode")} AS facilitycode,
+                        -- BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
+                        {BomFacility.SqlResolve("ot0.facilitycode", "sol0.facilitycode")} AS facilitycode,
                         0            AS depth
                       FROM ordertable ot0
                       LEFT JOIN salesorderline sol0 ON sol0.salesorderlineid = ot0.salesorderlineid
@@ -860,7 +860,7 @@ FROM m_shokushu";
                   COALESCE(w.workcentername, ''),
                   (SELECT COUNT(*) FROM bom b
                     WHERE b.parentitemcode = ot.itemcode
-                      AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {BomFacility.SqlResolve("sol.facilitycode")}
+                      AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {BomFacility.SqlResolve("ot.facilitycode", "sol.facilitycode")}
                       AND (b.startdate IS NULL OR b.startdate <= @needDate)
                       AND (b.enddate IS NULL OR b.enddate >= @needDate))
                 FROM ordertable ot
@@ -880,7 +880,7 @@ FROM m_shokushu";
                 AND NOT EXISTS (
                   SELECT 1 FROM bom b2
                   WHERE b2.childitemcode = ot.itemcode
-                    AND TRIM(BOTH FROM COALESCE(b2.facilitycode, '')) = {BomFacility.SqlResolve("sol.facilitycode")}
+                    AND TRIM(BOTH FROM COALESCE(b2.facilitycode, '')) = {BomFacility.SqlResolve("ot.facilitycode", "sol.facilitycode")}
                     AND (b2.startdate IS NULL OR b2.startdate <= @needDate)
                     AND (b2.enddate IS NULL OR b2.enddate >= @needDate)
                 )
@@ -1069,6 +1069,8 @@ FROM m_shokushu";
     /// 現品票：与えられた親品目コードのうち、子品目条件に一致する子品目（BOM全階層・最大10階層）を持つものだけを返す。
     /// 調味液配合表（親大分類55）のように別ルートで検索した結果へ子品目条件を後掛けするために使用する。
     /// 子品目条件が未指定の場合は入力をそのまま返す（絞り込みなし）。
+    /// <paramref name="orderTableIds"/> 指定時は各製造オーダーの工場コード（未設定なら受注明細の工場、それも無ければ MATSUYAMA）と
+    /// 着手日（無ければ必要日）で BOM を判定する。未指定時は工場を問わず当日基準で判定する。
     /// </summary>
     public async Task<List<string>> FilterProductLabelParentsByChildAsync(
         IReadOnlyList<string> parentItemCodes,
@@ -1076,6 +1078,7 @@ FROM m_shokushu";
         long? childMajorClassificationId = null,
         long? childMiddleClassificationId = null,
         long? childWarehouseId = null,
+        IReadOnlyList<long>? orderTableIds = null,
         CancellationToken ct = default)
     {
         var codes = (parentItemCodes ?? Array.Empty<string>())
@@ -1102,26 +1105,56 @@ FROM m_shokushu";
             cmd.Parameters.Add(new NpgsqlParameter("itemCodes", NpgsqlDbType.Text | NpgsqlDbType.Array) { Value = codes });
             var childConds = BuildProductLabelChildConditions(criteria, cmd);
 
+            var ids = (orderTableIds ?? Array.Empty<long>()).Where(id => id > 0).Distinct().ToArray();
+            string rootSql;
+            if (ids.Length > 0)
+            {
+                // 親品目のオーダーが存在する工場の BOM を見る（製造オーダー → 受注明細 → MATSUYAMA）
+                cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlDbType.Bigint | NpgsqlDbType.Array) { Value = ids });
+                rootSql = $"""
+                  SELECT DISTINCT
+                    TRIM(ot.itemcode) AS root_itemcode,
+                    TRIM(ot.itemcode) AS current_itemcode,
+                    {BomFacility.SqlResolve("ot.facilitycode", "sol.facilitycode")} AS facilitycode,
+                    COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE) AS bom_asof,
+                    0                 AS depth
+                  FROM ordertable ot
+                  LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
+                  WHERE ot.ordertableid = ANY(@ids)
+                    AND TRIM(ot.itemcode) = ANY(@itemCodes)
+                """;
+            }
+            else
+            {
+                // オーダーを特定できない場合は工場を問わず（全工場の BOM）・当日基準で判定する
+                rootSql = """
+                  SELECT
+                    c.itemcode   AS root_itemcode,
+                    c.itemcode   AS current_itemcode,
+                    NULL::text   AS facilitycode,
+                    CURRENT_DATE AS bom_asof,
+                    0            AS depth
+                  FROM UNNEST(@itemCodes) AS c(itemcode)
+                """;
+            }
+
             // [CHILD-FILTER] 与えられた親品目コードを起点に BOM を再帰探索し、条件一致の子品目を持つ親のみ返す。
             cmd.CommandText = $"""
                 WITH RECURSIVE bom_desc AS (
-                  SELECT
-                    c.itemcode AS root_itemcode,
-                    c.itemcode AS current_itemcode,
-                    0          AS depth
-                  FROM UNNEST(@itemCodes) AS c(itemcode)
+                {rootSql}
                   UNION ALL
                   SELECT
                     d0.root_itemcode,
                     b0.childitemcode,
+                    d0.facilitycode,
+                    d0.bom_asof,
                     d0.depth + 1
                   FROM bom_desc d0
                   INNER JOIN bom b0 ON b0.parentitemcode = d0.current_itemcode
                     AND b0.childitemcode IS NOT NULL
-                    -- 品目コードのみが入力で受注明細を特定できないため、既定工場（MATSUYAMA）・当日基準で判定する
-                    AND TRIM(BOTH FROM COALESCE(b0.facilitycode, '')) = '{BomFacility.Default}'
-                    AND (b0.startdate IS NULL OR b0.startdate <= CURRENT_DATE)
-                    AND (b0.enddate IS NULL OR b0.enddate >= CURRENT_DATE)
+                    AND (d0.facilitycode IS NULL OR TRIM(BOTH FROM COALESCE(b0.facilitycode, '')) = d0.facilitycode)
+                    AND (b0.startdate IS NULL OR b0.startdate <= d0.bom_asof)
+                    AND (b0.enddate IS NULL OR b0.enddate >= d0.bom_asof)
                   WHERE d0.depth < 10
                 )
                 SELECT DISTINCT d.root_itemcode
@@ -1197,8 +1230,8 @@ FROM m_shokushu";
                 )
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                 LEFT JOIN bom b ON b.parentitemcode = ot.itemcode
-                  -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
-                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {BomFacility.SqlResolve("sol.facilitycode")}
+                  -- BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
+                  AND TRIM(BOTH FROM COALESCE(b.facilitycode, '')) = {BomFacility.SqlResolve("ot.facilitycode", "sol.facilitycode")}
                   AND (b.startdate IS NULL OR b.startdate <= COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE))
                   AND (b.enddate IS NULL OR b.enddate >= COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE))
                 LEFT JOIN item ci ON ci.itemcode = b.childitemcode
@@ -1270,8 +1303,8 @@ FROM m_shokushu";
                 ot.itemcode        AS root_itemcode,
                 ot.qty             AS accumulated_qty,
                 ot.itemcode        AS current_itemcode,
-                -- BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
-                {BomFacility.SqlResolve("sol.facilitycode")} AS facilitycode,
+                -- BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
+                {BomFacility.SqlResolve("ot.facilitycode", "sol.facilitycode")} AS facilitycode,
                 COALESCE(ot.releasedate, ot.needdate, CURRENT_DATE) AS bom_asof,
                 0                  AS depth
               FROM ordertable ot

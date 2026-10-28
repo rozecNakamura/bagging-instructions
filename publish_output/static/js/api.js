@@ -835,6 +835,7 @@ export async function fetchProductLabelWarehouses() {
  * @param {number|string|null} [params.childMajorClassificationId]
  * @param {number|string|null} [params.childMiddleClassificationId]
  * @param {number|string|null} [params.childWarehouseId]
+ * @param {number[]} [params.orderTableIds] - 親品目の ordertableid（各オーダーの工場コード・日付で BOM を判定）
  * @returns {Promise<string[]>} 条件に一致した親品目コード
  */
 export async function filterProductLabelByChild({
@@ -843,8 +844,11 @@ export async function filterProductLabelByChild({
     childMajorClassificationId,
     childMiddleClassificationId,
     childWarehouseId,
+    orderTableIds,
 } = {}) {
     const body = { item_codes: Array.isArray(itemCodes) ? itemCodes : [] };
+    if (Array.isArray(orderTableIds) && orderTableIds.length > 0)
+        body.order_table_ids = orderTableIds;
     if (childItemCode && childItemCode.trim() !== '')
         body.childitemcode = childItemCode.trim();
     if (childMajorClassificationId != null && String(childMajorClassificationId).trim() !== '')

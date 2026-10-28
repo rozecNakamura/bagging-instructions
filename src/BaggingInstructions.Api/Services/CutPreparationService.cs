@@ -185,15 +185,15 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
             return new List<CutPreparationPdfLineModel>();
 
         var headers = await FetchLineHeadersAsync(lineIds, ct);
-        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<PreparationBomSqlRow>>();
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<PreparationBomSqlRow>>();
 
         var lines = new List<CutPreparationPdfLineModel>();
         foreach (var h in headers)
         {
             var asof = h.PlannedDeliveryDate ?? h.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            // BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
             var facility = BomFacility.Resolve(h.FacilityCode);
-            var bomKey = (h.ParentItemcode, facility);
+            var bomKey = (h.ParentItemcode, facility, asof);
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
                 boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, facility, ct);
@@ -365,7 +365,7 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                     COALESCE(ot.releasedate, sol.planneddeliverydate) AS need_date,
                     COALESCE(pu.unitname, '') AS parent_unit,
                     COALESCE(pwh.warehousename, pwh.warehousecode, '') AS parent_warehouse,
-                    COALESCE(sol.facilitycode, '') AS facility_code
+                    COALESCE(NULLIF(TRIM(ot.facilitycode), ''), sol.facilitycode, '') AS facility_code
                   FROM ordertable ot
                   LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
                   INNER JOIN item parent_i ON TRIM(BOTH FROM parent_i.itemcode) = TRIM(BOTH FROM COALESCE(NULLIF(TRIM(BOTH FROM sol.itemcode), ''), ot.itemcode))
@@ -539,6 +539,6 @@ internal sealed class CutPreparationLineHeaderRow
     /// <summary>親品目の保管場所名（同上）。</summary>
     public string ParentWarehouse { get; set; } = "";
 
-    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    /// <summary>製造オーダーの工場コード（<c>ordertable.facilitycode</c>、未設定なら <c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
     public string? FacilityCode { get; set; }
 }

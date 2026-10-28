@@ -231,15 +231,15 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
         if (headers.Count == 0)
             return new List<CookingInstructionPdfLineModel>();
 
-        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode), List<CookingInstructionBomSqlRow>>();
+        var bomCache = new Dictionary<(string ParentItemcode, string FacilityCode, DateOnly AsOf), List<CookingInstructionBomSqlRow>>();
 
         var lines = new List<CookingInstructionPdfLineModel>();
         foreach (var h in headers)
         {
             var asof = h.NeedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            // BOM は受注明細の工場コードで絞り込む（未設定なら MATSUYAMA）
+            // BOM は製造オーダーの工場コードで絞り込む（未設定なら受注明細の工場、それも無ければ MATSUYAMA）
             var facility = BomFacility.Resolve(h.FacilityCode);
-            var bomKey = (h.ParentItemcode, facility);
+            var bomKey = (h.ParentItemcode, facility, asof);
             if (!bomCache.TryGetValue(bomKey, out var boms))
             {
                 boms = await FetchBomsForParentAsync(h.ParentItemcode, asof, facility, ct);
@@ -441,7 +441,7 @@ ORDER BY i.itemname, sc.slotcode, ot.ordertableid
                   COALESCE(NULLIF(TRIM(c3.classification3name), ''), TRIM(COALESCE(i.classification3code, ''))) AS work_name,
                   COALESCE(ot.releasedate, ot.needdate) AS need_date,
                   ot.ordertableid::text AS order_no_for_pdf,
-                  COALESCE(sol.facilitycode, '') AS facility_code
+                  COALESCE(NULLIF(TRIM(ot.facilitycode), ''), sol.facilitycode, '') AS facility_code
                 FROM ordertable ot
                 INNER JOIN item i ON i.itemcode = ot.itemcode
                 LEFT JOIN salesorderline sol ON sol.salesorderlineid = ot.salesorderlineid
@@ -667,7 +667,7 @@ internal sealed class CookingInstructionLineHeaderRow
     /// <summary>PDF 注番: ordertable.ordertableid（文字列）。</summary>
     public string OrderNo { get; set; } = "";
 
-    /// <summary>受注明細の工場コード（<c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
+    /// <summary>製造オーダーの工場コード（<c>ordertable.facilitycode</c>、未設定なら <c>salesorderline.facilitycode</c>）。BOM 取得の絞り込みに使用。未設定なら MATSUYAMA。</summary>
     public string? FacilityCode { get; set; }
 }
 
