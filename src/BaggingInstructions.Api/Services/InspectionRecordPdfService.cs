@@ -48,14 +48,17 @@ public sealed class InspectionRecordPdfService
     }
 
     /// <summary>
-    /// 仕入先名 → 仕入先コード → 注番 でソート後、
+    /// 仕入先名 → 仕入先コード → 品目コード → 注番 でソート後、
     /// 仕入先コードが変わるか 12 行超で改ページする。
     /// </summary>
     internal static List<List<InspectionRecordPdfLineModel>> SplitIntoPages(IReadOnlyList<InspectionRecordPdfLineModel> lines)
     {
+        // 注番は ordertableid の文字列のため、桁数が異なっても数値順になるよう数値で比較する。
         var sorted = lines
             .OrderBy(l => l.SupplierName ?? "", StringComparer.Ordinal)
             .ThenBy(l => l.SupplierCode ?? "", StringComparer.Ordinal)
+            .ThenBy(l => l.ItemCode ?? "", StringComparer.Ordinal)
+            .ThenBy(l => long.TryParse(l.OrderNo, out var n) ? n : long.MaxValue)
             .ThenBy(l => l.OrderNo ?? "", StringComparer.Ordinal)
             .ToList();
 
