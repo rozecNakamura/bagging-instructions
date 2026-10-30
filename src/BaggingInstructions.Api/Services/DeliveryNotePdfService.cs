@@ -140,7 +140,7 @@ public class DeliveryNotePdfService
         {
             var locCode = (locationCode ?? "").Trim();
             // 喫食日の範囲までは DB 側で絞り込む（全期間の受注明細読み込みを避ける）
-            var riceLines = _appDb.SalesOrderLines
+            var loadedLines = _appDb.SalesOrderLines
                 .AsNoTracking()
                 .Include(l => l.SalesOrder)
                 .Include(l => l.Item)
@@ -151,7 +151,8 @@ public class DeliveryNotePdfService
                     l.SalesOrder.CustomerCode == custCodeTrimmed &&
                     l.SalesOrder.CustomerDeliveryLocationCode == locCode &&
                     l.PlannedDeliveryDate >= minDate && l.PlannedDeliveryDate <= maxDate)
-                .ToList()
+                .ToList();
+            var riceLines = SalesOrderStatusFilter.ExcludeCancelledOpenLines(_appDb.SalesOrderLines, loadedLines)
                 .Where(l => l.PlannedDeliveryDate.HasValue && info03Dates.Contains(l.PlannedDeliveryDate!.Value))
                 // 確定（confirmed）を優先し、同条件では受注明細IDの新しい順。DBの返却順に依存させない。
                 .OrderByDescending(l => string.Equals(l.Status, SalesOrderStatusFilter.StatusConfirmed, StringComparison.OrdinalIgnoreCase))

@@ -158,6 +158,7 @@ public class SearchService
         var linesJuice = await query
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
+        linesJuice = await SalesOrderStatusFilter.ExcludeCancelledOpenLinesAsync(_db.SalesOrderLines, linesJuice, ct);
 
         var cstmeatMap = await LoadCstmeatQuantityMapAsync(delvedtDate.Value, ct);
 
@@ -374,6 +375,7 @@ FROM m_shokushu";
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
 
         var lines = await query.OrderBy(l => l.SalesOrderLineId).ToListAsync(ct);
+        lines = await SalesOrderStatusFilter.ExcludeCancelledOpenLinesAsync(_db.SalesOrderLines, lines, ct);
 
         lines = lines
             .Where(l => BentoSearchFilter.IsTargetCustomer(l.SalesOrder?.Customer?.CustomerCode ?? l.SalesOrder?.CustomerCode))
@@ -457,6 +459,7 @@ FROM m_shokushu";
         var linesBento = await query
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
+        linesBento = await SalesOrderStatusFilter.ExcludeCancelledOpenLinesAsync(_db.SalesOrderLines, linesBento, ct);
 
         var addinfo08TypeStr = (addinfo08Type ?? "").Trim();
         if (addinfo08TypeStr.Length > 0)
@@ -540,6 +543,7 @@ FROM m_shokushu";
         var linesGohan = await query
             .OrderBy(l => l.SalesOrderLineId)
             .ToListAsync(ct);
+        linesGohan = await SalesOrderStatusFilter.ExcludeCancelledOpenLinesAsync(_db.SalesOrderLines, linesGohan, ct);
 
         linesGohan = linesGohan
             .Where(l => GohanSearchFilter.IsTargetCustomer(l.SalesOrder?.Customer?.CustomerCode ?? l.SalesOrder?.CustomerCode, addinfo08Type))

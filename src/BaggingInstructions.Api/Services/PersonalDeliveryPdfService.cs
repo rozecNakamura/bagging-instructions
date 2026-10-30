@@ -490,7 +490,7 @@ public class PersonalDeliveryPdfService
         IReadOnlyList<string> customerCodes,
         CancellationToken ct)
     {
-        return await _appDb.SalesOrderLines
+        var lines = await _appDb.SalesOrderLines
             .AsNoTracking()
             .Include(l => l.Addinfo)
             .Include(l => l.SalesOrder!)
@@ -504,6 +504,8 @@ public class PersonalDeliveryPdfService
             .Where(SalesOrderStatusFilter.ConfirmedOrOrder2Line)
             .Where(l => l.SalesOrder != null && customerCodes.Contains(l.SalesOrder.CustomerCode ?? ""))
             .ToListAsync(ct);
+
+        return await SalesOrderStatusFilter.ExcludeCancelledOpenLinesAsync(_appDb.SalesOrderLines, lines, ct);
     }
 
     private static Dictionary<(string LocCode, string MealTime, string FoodType), List<SalesOrderLine>> BuildSalesLineIndex(

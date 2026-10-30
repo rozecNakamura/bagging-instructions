@@ -148,6 +148,110 @@ public class SalesOrderStatusFilterTests
         Assert.True(predicate(OrderWithLines("confirmed", "open", "open")));
     }
 
+    /// <summary>明細 1 件だけの受注（個人配送の取込形式）を作る。</summary>
+    private static SalesOrderLine SingleLineOrder(
+        long id,
+        string? lineStatus,
+        string? orderStatus = "confirmed",
+        string location = "001980",
+        string deliveryDate = "2026-10-29",
+        string mealTime = "3",
+        string foodType = "5AD",
+        string? addinfo07 = "order1")
+    {
+        var order = new SalesOrder
+        {
+            SalesOrderId = id,
+            Status = orderStatus,
+            CustomerCode = "300",
+            CustomerDeliveryLocationCode = location
+        };
+        var line = new SalesOrderLine
+        {
+            SalesOrderLineId = id,
+            SalesOrderId = id,
+            SalesOrder = order,
+            Status = lineStatus,
+            PlannedDeliveryDate = DateOnly.Parse(deliveryDate),
+            Addinfo = new SalesOrderLineAddinfo
+            {
+                SalesOrderLineId = id,
+                Addinfo02 = foodType,
+                Addinfo05 = mealTime,
+                Addinfo07 = addinfo07
+            }
+        };
+        order.SalesOrderLines.Add(line);
+        return line;
+    }
+
+    /// <summary>読み込み済み明細 <paramref name="loaded"/> に対し、DB 全体を <paramref name="allLines"/> として取消判定する。</summary>
+    private static List<SalesOrderLine> ExcludeCancelledOpen(SalesOrderLine[] loaded, params SalesOrderLine[] allLines) =>
+        SalesOrderStatusFilter.ExcludeCancelledOpenLines(allLines.AsQueryable(), loaded.ToList());
+
+    [Fact]
+    public void ExcludeCancelledOpenLines_excludes_open_when_same_meal_is_confirmed_in_other_order()
+    {
+        // 御飯のみ取消: 御飯は予定取込のまま open、おかずは別受注で確定済み
+        var rice = SingleLineOrder(1, "open", orderStatus: "draft");
+        var sideDish = SingleLineOrder(2, "confirmed");
+
+        var result = ExcludeCancelledOpen([rice, sideDish], rice, sideDish);
+        Assert.Equal([sideDish], result);
+    }
+
+    [Fact]
+    public void ExcludeCancelledOpenLines_uses_confirmed_lines_not_in_loaded_set()
+    {
+        // ご飯盛り付け指示書のように御飯品目だけを読み込む場合も、DB 上のおかずの確定で判定する
+        var rice = SingleLineOrder(1, "open", orderStatus: "draft");
+        var sideDish = SingleLineOrder(2, "confirmed");
+
+        Assert.Empty(ExcludeCancelledOpen([rice], rice, sideDish));
+    }
+
+    [Theory]
+    [InlineData("001981", "2026-10-29", "3", "5AD")]
+    [InlineData("001980", "2026-10-30", "3", "5AD")]
+    [InlineData("001980", "2026-10-29", "2", "5AD")]
+    [InlineData("001980", "2026-10-29", "3", "5AE")]
+    public void ExcludeCancelledOpenLines_keeps_open_when_confirmed_line_is_for_another_meal(
+        string location, string deliveryDate, string mealTime, string foodType)
+    {
+        var open = SingleLineOrder(1, "open", orderStatus: "draft");
+        var other = SingleLineOrder(2, "confirmed", location: location, deliveryDate: deliveryDate,
+            mealTime: mealTime, foodType: foodType);
+
+        Assert.Equal([open], ExcludeCancelledOpen([open], open, other));
+    }
+
+    [Fact]
+    public void ExcludeCancelledOpenLines_ignores_confirmed_line_of_cancelled_order()
+    {
+        var open = SingleLineOrder(1, "open", orderStatus: "draft");
+        var cancelled = SingleLineOrder(2, "confirmed", orderStatus: "cancelled");
+
+        Assert.Equal([open], ExcludeCancelledOpen([open], open, cancelled));
+    }
+
+    [Fact]
+    public void ExcludeCancelledOpenLines_keeps_order2_even_when_same_meal_is_confirmed()
+    {
+        var order2 = SingleLineOrder(1, "open", orderStatus: "draft", addinfo07: " ORDER2 ");
+        var confirmed = SingleLineOrder(2, "confirmed");
+
+        Assert.Equal([order2], ExcludeCancelledOpen([order2], order2, confirmed));
+    }
+
+    [Fact]
+    public void ExcludeCancelledOpenLines_matches_codes_ignoring_surrounding_spaces()
+    {
+        var open = SingleLineOrder(1, "open", orderStatus: "draft", mealTime: "3 ", foodType: " 5AD");
+        var confirmed = SingleLineOrder(2, "confirmed");
+
+        Assert.Empty(ExcludeCancelledOpen([open], open, confirmed));
+    }
+
     [Theory]
     [InlineData("order2", true)]
     [InlineData(" order2 ", true)]
