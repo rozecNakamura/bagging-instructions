@@ -142,6 +142,8 @@ FROM (
          OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
     AND s0.customercode = ANY ({customerCodes})
     AND (s0.status IS NULL OR s0.status <> 'cancelled')
+    -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+    AND NOT (COALESCE(s.status, '') = 'cancelled' AND LOWER(TRIM(COALESCE(s1.addinfo07, ''))) = 'order2')
     AND ({mealTimeStr.Length} = 0 OR COALESCE(s1.addinfo05, '') = {mealTimeStr})
 ) x
 WHERE x.custcode <> ''
@@ -171,6 +173,8 @@ GROUP BY x.custcode
             .Include(l => l.Addinfo)
             .Where(l => l.PlannedDeliveryDate == plannedDate)
             .Where(l => l.SalesOrder != null && l.SalesOrder.Status != "cancelled")
+            // [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+            .Where(SalesOrderStatusFilter.NotCancelledOrder2Line)
             .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)
@@ -251,6 +255,8 @@ WHERE s.planneddeliverydate = {plannedDate}
        OR TRIM(COALESCE(s.slotcode, '')) = ANY ({slotArr}))
   AND s0.customercode = ANY ({customerCodes})
   AND (s0.status IS NULL OR s0.status <> 'cancelled')
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(s.status, '') = 'cancelled' AND LOWER(TRIM(COALESCE(s1.addinfo07, ''))) = 'order2')
   AND ({mealTimeStr.Length} = 0 OR COALESCE(s1.addinfo05, '') = {mealTimeStr})
 ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
 ")
@@ -296,6 +302,8 @@ ORDER BY COALESCE(i.itemcode, ''), s.salesorderlineid
             .Include(l => l.Addinfo)
             .Where(l => l.PlannedDeliveryDate == plannedDate)
             .Where(l => l.SalesOrder != null && l.SalesOrder.Status != "cancelled")
+            // [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+            .Where(SalesOrderStatusFilter.NotCancelledOrder2Line)
             .Where(l => TargetCustomerCodes.Contains(l.SalesOrder!.CustomerCode ?? ""));
 
         if (slots.Count > 0)

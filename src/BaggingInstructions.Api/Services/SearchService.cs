@@ -34,7 +34,9 @@ public class SearchService
                 .ThenInclude(so => so!.CustomerDeliveryLocation)
             .Include(l => l.Addinfo)
             .Include(l => l.Item)
-            .Where(l => l.ProductDate == prddtDate);
+            .Where(l => l.ProductDate == prddtDate)
+            // [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+            .Where(SalesOrderStatusFilter.NotCancelledOrder2Line);
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
@@ -70,7 +72,9 @@ public class SearchService
             .Include(l => l.SalesOrder)
             .Where(l => l.ProductDate == prddtDate)
             .Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.StartsWith("40"))
-            .Where(l => l.SalesOrder.Status != "cancelled");
+            .Where(l => l.SalesOrder.Status != "cancelled")
+            // [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+            .Where(SalesOrderStatusFilter.NotCancelledOrder2Line);
 
         if (!string.IsNullOrEmpty(itemcd))
             query = query.Where(l => l.Item != null && l.Item.ItemCd != null && l.Item.ItemCd.Contains(itemcd));
@@ -880,6 +884,13 @@ FROM m_shokushu";
 
             sql.AppendLine("WHERE ot.releasedate = @needDate");
             sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
+            // [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+            sql.AppendLine("""
+                AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+                  SELECT 1 FROM salesorderlineaddinfo o2c
+                  WHERE o2c.salesorderlineid = sol.salesorderlineid
+                    AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
+                """);
             sql.AppendLine($"""
                 AND NOT EXISTS (
                   SELECT 1 FROM bom b2

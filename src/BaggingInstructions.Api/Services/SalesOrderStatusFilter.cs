@@ -27,6 +27,16 @@ public static class SalesOrderStatusFilter
         string.Equals((addinfo07 ?? "").Trim(), Order2, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 明細が取消（cancelled）の order2 ではないか。受注ヘッダ取消のみ除いている画面で、order2 の明細取消も除くために使う。
+    /// order2 以外の明細の扱いは変えない。IQueryable にそのまま渡せる。
+    /// </summary>
+    public static Expression<Func<SalesOrderLine, bool>> NotCancelledOrder2Line => l =>
+        !(l.Status == StatusCancelled
+          && l.Addinfo != null
+          && l.Addinfo.Addinfo07 != null
+          && l.Addinfo.Addinfo07.Trim().ToLower() == Order2);
+
+    /// <summary>
     /// 受注明細が確定分、order2（取消以外）、または確定明細が 1 件も無い受注の open 明細か。
     /// 受注ヘッダが取消の場合は常に対象外。IQueryable にそのまま渡せる。
     /// </summary>

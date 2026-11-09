@@ -67,6 +67,11 @@ WITH mfg AS (
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo o2c
+        WHERE o2c.salesorderlineid = sol.salesorderlineid
+          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
 )
 SELECT
   TO_CHAR(m.needdate_combined, 'YYYYMMDD') AS ""Delvedt"",
@@ -162,6 +167,11 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
         AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
     )
   )
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo o2c
+        WHERE o2c.salesorderlineid = sol.salesorderlineid
+          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
 ")
                 .ToListAsync(ct);
             foreach (var row in ids)
@@ -385,6 +395,11 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                           AND COALESCE(o2.releasedate, o2.needdate) IS NOT DISTINCT FROM COALESCE(ot.releasedate, ot.needdate)
                       )
                     )
+                    -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+                    AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+                          SELECT 1 FROM salesorderlineaddinfo o2c
+                          WHERE o2c.salesorderlineid = sol.salesorderlineid
+                            AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
                 )
                 SELECT
                   b.ordertableid,

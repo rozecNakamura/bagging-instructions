@@ -37,6 +37,28 @@ public class SalesOrderStatusFilterTests
     }
 
     [Theory]
+    [InlineData("cancelled", "order2", false)]
+    [InlineData("cancelled", " ORDER2 ", false)]
+    [InlineData("cancelled", null, true)]
+    [InlineData("cancelled", "order1", true)]
+    [InlineData("open", "order2", true)]
+    [InlineData("confirmed", "order2", true)]
+    [InlineData("confirmed", null, true)]
+    public void NotCancelledOrder2Line_excludes_only_cancelled_order2(
+        string? status, string? addinfo07, bool expected)
+    {
+        var predicate = SalesOrderStatusFilter.NotCancelledOrder2Line.Compile();
+        Assert.Equal(expected, predicate(Line(status, addinfo07)));
+    }
+
+    [Fact]
+    public void NotCancelledOrder2Line_keeps_line_without_addinfo()
+    {
+        var predicate = SalesOrderStatusFilter.NotCancelledOrder2Line.Compile();
+        Assert.True(predicate(new SalesOrderLine { SalesOrderLineId = 1, Status = "cancelled" }));
+    }
+
+    [Theory]
     [InlineData("confirmed", "draft", true)]
     [InlineData("confirmed", null, true)]
     [InlineData("draft", "confirmed", false)]

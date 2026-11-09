@@ -160,6 +160,13 @@ ORDER BY 1
                 ) sc
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sc.slotcode
                 WHERE UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+                  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+                  AND NOT EXISTS (
+                        SELECT 1 FROM salesorderline sol_c
+                        INNER JOIN salesorderlineaddinfo o2c ON o2c.salesorderlineid = sol_c.salesorderlineid
+                        WHERE sol_c.salesorderlineid = ot.salesorderlineid
+                          AND sol_c.status = 'cancelled'
+                          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2')
                   AND TO_CHAR(COALESCE(ot.releasedate, ot.needdate), 'YYYYMMDD') = @needdate
                   AND (@slot_count = 0 OR sc.slotcode = ANY(@slots))
                   AND (@wc_count = 0 OR (
@@ -426,6 +433,11 @@ ORDER BY 1
                 LEFT JOIN workcenter wc ON wc.workcentercode = ot.workcentercode
                 WHERE ot.ordertableid = ANY(@ids)
                   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+                  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+                  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+                        SELECT 1 FROM salesorderlineaddinfo o2c
+                        WHERE o2c.salesorderlineid = sol.salesorderlineid
+                          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
                   -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
                   AND (
                     COALESCE(TRIM(ot.productno), '') = ''

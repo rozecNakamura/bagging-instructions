@@ -83,6 +83,13 @@ public class PlanningPreparationWorkService
           AND mid.middleclassificationcode = i.middleclassificationcode
         WHERE COALESCE(po.releasedate, po.needdate) = @date
           AND UPPER(TRIM(COALESCE(po.ordertype, ''))) = 'MO'
+          -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+          AND NOT EXISTS (
+                SELECT 1 FROM salesorderline sol_c
+                INNER JOIN salesorderlineaddinfo o2c ON o2c.salesorderlineid = sol_c.salesorderlineid
+                WHERE sol_c.salesorderlineid = po.salesorderlineid
+                  AND sol_c.status = 'cancelled'
+                  AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2')
           AND (CARDINALITY(@routes) = 0 OR TRIM(COALESCE(po.slotcode, '')) = ANY (@routes))
           AND (CARDINALITY(@wcIds) = 0 OR EXISTS (
                 SELECT 1 FROM itemworkcentermapping m3

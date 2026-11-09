@@ -167,6 +167,13 @@ public sealed class ProductLabelNewService
         sql.AppendLine("WHERE ot.releasedate = @needDate");
         cmd.Parameters.AddWithValue("needDate", f.NeedDate!.Value);
         sql.AppendLine("AND TRIM(COALESCE(ot.ordertype, '')) = 'MO'");
+        // [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+        sql.AppendLine("""
+            AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+              SELECT 1 FROM salesorderlineaddinfo o2c
+              WHERE o2c.salesorderlineid = sol.salesorderlineid
+                AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
+            """);
         // [ROOT-DESCENT] 実質的な最上位のみ：BOM 上の先祖品目に同一納期のオーダーが無いもの。
         // BOM 最上位品目のオーダーが無い納期は、オーダーが存在する階層が起点に昇格する。
         sql.AppendLine($"""

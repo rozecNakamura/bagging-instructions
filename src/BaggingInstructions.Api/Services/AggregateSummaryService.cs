@@ -78,6 +78,11 @@ LEFT JOIN bom b ON b.parentitemcode = i.itemcode
   AND (b.startdate IS NULL OR b.startdate <= COALESCE(ot_first.releasedate, sol.planneddeliverydate))
   AND (b.enddate IS NULL OR b.enddate >= COALESCE(ot_first.releasedate, sol.planneddeliverydate))
 WHERE COALESCE(ot_first.releasedate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo o2c
+        WHERE o2c.salesorderlineid = sol.salesorderlineid
+          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND ({majorList.Length} = 0 OR mc.majorclassificationcode = ANY ({majorList}))
   AND ({middleList.Length} = 0 OR mid.middleclassificationcode = ANY ({middleList}))
@@ -161,6 +166,11 @@ LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorcla
   AND midt.middleclassificationcode = i.middleclassificationcode
 WHERE COALESCE(ot_first.releasedate, sol.planneddeliverydate) BETWEEN {from.Value} AND {to}
   AND TO_CHAR(COALESCE(ot_first.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.ShipDate}
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo o2c
+        WHERE o2c.salesorderlineid = sol.salesorderlineid
+          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
   AND ({itemF} = '' OR i.itemcode ILIKE '%' || {itemF} || '%')
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}

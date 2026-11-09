@@ -173,6 +173,8 @@ public sealed class AcceptanceRecordService
                 LEFT JOIN unit u0 ON u0.unitcode = i.unitcode0
                 LEFT JOIN itemadditionalinformation ia ON ia.itemcode = i.itemcode
                 WHERE sol.plannedshipdate = @shipDate
+                  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+                  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND LOWER(TRIM(COALESCE(a.addinfo07, ''))) = 'order2')
                   AND (@deliveryStr = '' OR TO_CHAR(sol.planneddeliverydate, 'YYYYMMDD') = @deliveryStr)
                   AND (@customerStr = '' OR TRIM(COALESCE(so.customercode, '')) = @customerStr)
                   AND (

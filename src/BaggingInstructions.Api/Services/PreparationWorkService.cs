@@ -197,6 +197,11 @@ LEFT JOIN middleclassification mid ON mid.majorclassificationcode = i.majorclass
   AND mid.middleclassificationcode = i.middleclassificationcode
 WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo o2c
+        WHERE o2c.salesorderlineid = sol.salesorderlineid
+          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
   AND ({mfgRoutes.Length} = 0 OR
         TRIM(COALESCE(CASE WHEN CARDINALITY(STRING_TO_ARRAY(ot.productno, '|')) >= 5 THEN SPLIT_PART(ot.productno, '|', 3) ELSE SPLIT_PART(ot.productno, '|', 2) END, '')) = ANY ({mfgRoutes})
       )
@@ -296,6 +301,11 @@ LEFT JOIN middleclassification midt ON midt.majorclassificationcode = i.majorcla
   AND midt.middleclassificationcode = i.middleclassificationcode
 WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
   AND UPPER(TRIM(COALESCE(ot.ordertype, ''))) = 'MO'
+  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+        SELECT 1 FROM salesorderlineaddinfo o2c
+        WHERE o2c.salesorderlineid = sol.salesorderlineid
+          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
   AND TO_CHAR(COALESCE(ot.releasedate, sol.planneddeliverydate), 'YYYYMMDD') = {key.Delvedt}
   AND COALESCE(mc.majorclassificationcode, '') = {maj}
   AND COALESCE(midt.middleclassificationcode, '') = {mid}
@@ -653,6 +663,11 @@ WHERE COALESCE(ot.releasedate, sol.planneddeliverydate) = {date.Value}
                 ) sc
                 LEFT JOIN deliveryslot ds ON ds.slotcode = sc.slotcode
                 WHERE ot.ordertableid = ANY(@ids)
+                  -- [ORDER2-CANCEL] order2 は明細が取消（cancelled）なら対象外
+                  AND NOT (COALESCE(sol.status, '') = 'cancelled' AND EXISTS (
+                        SELECT 1 FROM salesorderlineaddinfo o2c
+                        WHERE o2c.salesorderlineid = sol.salesorderlineid
+                          AND LOWER(TRIM(COALESCE(o2c.addinfo07, ''))) = 'order2'))
                   -- [DEDUP-productno] 同一品目・同一productno（同一実効日付）は最新ordertableidのみ採用（MRP重複対策）
                   AND (
                     COALESCE(TRIM(ot.productno), '') = ''
